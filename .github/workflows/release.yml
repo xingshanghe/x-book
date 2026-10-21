@@ -327,8 +327,8 @@ jobs:
           if [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ]; then
             pnpm exec tauri ios build --export-method app-store-connect --ci
           else
-            echo "::warning::未配置 iOS 签名信息，导出未签名 .app"
-            pnpm exec tauri ios build --ci --debug
+            echo "::warning::未配置 iOS 签名信息，产出未签名 .app（无证书时导出 IPA 必然失败）"
+            pnpm exec tauri ios build --ci --no-sign --archive-only --target aarch64
           fi
 
       - name: 整理产物
@@ -337,7 +337,8 @@ jobs:
           if compgen -G "src-tauri/gen/apple/build/**/*.ipa" > /dev/null; then
             find src-tauri/gen/apple/build -name '*.ipa' -type f -exec cp {} artifacts/qingyue-${TAG}-ios.ipa \; 2>/dev/null || true
           fi
-          APP_DIR=$(find src-tauri/gen/apple/build -maxdepth 6 -type d -name '*.app' | head -n 1)
+          # .app 可能在 xcarchive 内（无签名 archive-only 路径），不限制深度
+          APP_DIR=$(find src-tauri/gen/apple/build -type d -name '*.app' 2>/dev/null | head -n 1)
           if [ -n "$APP_DIR" ]; then
             (cd "$(dirname "$APP_DIR")" && zip -r -y -q "$GITHUB_WORKSPACE/artifacts/qingyue-${TAG}-ios-unsigned.zip" "$(basename "$APP_DIR")")
           else
