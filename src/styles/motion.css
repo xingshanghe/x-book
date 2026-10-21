@@ -1,0 +1,97 @@
+/* ==========================================================================
+   动效：只描述「纸感」的三条曲线，其余交给组件
+   ========================================================================== */
+
+@keyframes qy-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes qy-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes qy-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes qy-page-next {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes qy-page-prev {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes qy-indeterminate {
+  0% {
+    transform: translateX(-70%) scaleX(0.3);
+  }
+  50% {
+    transform: translateX(20%) scaleX(0.7);
+  }
+  100% {
+    transform: translateX(120%) scaleX(0.3);
+  }
+}
+
+@keyframes qy-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 书页翻动的纸感：轻位移 + 淡入，不做 3D */
+@keyframes qy-flip {
+  from {
+    opacity: 0;
+    transform: translateX(2.5%) skewY(0.4deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) skewY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

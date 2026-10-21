@@ -1,0 +1,175 @@
+/* ==========================================================================
+   轻阅 QINGYUE · 设计令牌
+   三套纸面：day(米黄纸) / night(黛蓝) / sepia(宣纸)
+   所有颜色必须成对通过 WCAG AA：正文 ≥ 4.5:1，辅助文字 ≥ 3:1
+   ========================================================================== */
+
+:root,
+[data-theme='day'] {
+  color-scheme: light;
+
+  /* 纸面层级 */
+  --paper-0: #f7efdc; /* 底色：米黄纸 */
+  --paper-1: #fbf5e7; /* 卡片 */
+  --paper-2: #efe3c9; /* 槽/凹陷 */
+  --paper-3: #e6d9ba; /* 悬停 */
+
+  --line: #dfcfac;
+  --line-soft: #eae0c8;
+
+  /* 墨色 */
+  --ink-1: #26221a; /* 正文  15.1:1 */
+  --ink-2: #58503f; /* 次级   8.3:1 */
+  --ink-3: #746851; /* 辅助   5.6:1 */
+
+  /* 靛蓝：主题色 / 交互 */
+  --indigo: #3e5c97; /*  5.6:1 */
+  --indigo-weak: #dee5f2;
+  --indigo-line: #bcc9e2;
+  --on-indigo: #fbf5e7;
+
+  /* 朱砂：强调 / 书签 / 藏书章 */
+  --seal: #b44326; /*  5.9:1 */
+  --seal-weak: #f6e0d4;
+
+  /* 竹青：完成 / 正向 */
+  --jade: #3f6b57;
+  --jade-weak: #dfe9e2;
+
+  /* 只在此处定义品牌纹理 */
+  --gingham-base: #dce6f7;
+  --gingham-sq: rgb(62 92 151 / 42%);
+
+  --shadow-sm: 0 1px 2px rgb(38 34 26 / 7%);
+  --shadow: 0 1px 2px rgb(38 34 26 / 7%), 0 12px 34px -18px rgb(38 34 26 / 28%);
+  --shadow-lg: 0 2px 6px rgb(38 34 26 / 10%), 0 26px 60px -24px rgb(38 34 26 / 34%);
+
+  --grain: 0.05;
+  --cover-hue: 216; /* 封面派生色相，由 JS 覆盖 */
+
+  --paper-image: none;
+}
+
+[data-theme='night'] {
+  color-scheme: dark;
+
+  --paper-0: #0b0e15;
+  --paper-1: #131826;
+  --paper-2: #1c2333;
+  --paper-3: #232c3e;
+
+  --line: #2c3449;
+  --line-soft: #1e2536;
+
+  --ink-1: #e8e4d8; /* 14.6:1 */
+  --ink-2: #b7b2a4; /*  8.1:1 */
+  --ink-3: #8b867a; /*  5.0:1 */
+
+  --indigo: #7ba0d4; /*  7.4:1 */
+  --indigo-weak: #1d2a40;
+  --indigo-line: #33456b;
+  --on-indigo: #0b0e15;
+
+  --seal: #d2704f;
+  --seal-weak: #3a231c;
+
+  --jade: #6fa58a;
+  --jade-weak: #1c2b25;
+
+  --gingham-base: #141b2b;
+  --gingham-sq: rgb(123 160 212 / 20%);
+
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 45%);
+  --shadow: 0 1px 2px rgb(0 0 0 / 45%), 0 14px 36px -18px rgb(0 0 0 / 75%);
+  --shadow-lg: 0 3px 8px rgb(0 0 0 / 50%), 0 30px 70px -26px rgb(0 0 0 / 80%);
+
+  --grain: 0.03;
+}
+
+[data-theme='sepia'] {
+  color-scheme: light;
+
+  --paper-0: #f2e7cf;
+  --paper-1: #f8f1de;
+  --paper-2: #e9dcbd;
+  --paper-3: #e0d1ac;
+
+  --line: #d8c69c;
+  --line-soft: #e4d8bb;
+
+  --ink-1: #3a3128; /* 11.4:1 */
+  --ink-2: #645842;
+  --ink-3: #7d7059;
+
+  --indigo: #4a5f47; /* 宣纸上的青黛，降饱和 */
+  --indigo-weak: #e3e4d2;
+  --indigo-line: #bcc0a4;
+  --on-indigo: #f8f1de;
+
+  --seal: #a83f22;
+  --seal-weak: #f1dccb;
+
+  --jade: #4c6b4f;
+  --jade-weak: #e0e7d8;
+
+  --gingham-base: #e2d6ba;
+  --gingham-sq: rgb(74 95 71 / 30%);
+
+  --shadow: 0 1px 2px rgb(58 49 40 / 8%), 0 12px 34px -18px rgb(58 49 40 / 30%);
+  --shadow-lg: 0 2px 6px rgb(58 49 40 / 12%), 0 26px 60px -24px rgb(58 49 40 / 36%);
+
+  --grain: 0.06;
+}
+
+/* ===================== 排版尺度 ===================== */
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'HarmonyOS Sans SC',
+    'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, sans-serif;
+  --font-serif: 'Songti SC', 'Source Han Serif SC', 'Noto Serif CJK SC', STSong, SimSun, serif;
+  --font-kai: 'LXGW WenKai', '霞鹜文楷', 'Kaiti SC', STKaiti, KaiTi, 'Songti SC', serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  --step--1: clamp(11px, 0.68rem + 0.1vw, 12.5px);
+  --step-0: clamp(13px, 0.8rem + 0.12vw, 15px);
+  --step-1: clamp(15px, 0.92rem + 0.2vw, 17.5px);
+  --step-2: clamp(18px, 1.1rem + 0.4vw, 22px);
+  --step-3: clamp(22px, 1.3rem + 0.8vw, 30px);
+
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+  --r-xl: 14px;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+
+  --tap: 44px; /* 最小可点区域 */
+  --rail: 232px; /* 桌面侧栏宽 */
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --dur-fast: 0.14s;
+  --dur: 0.24s;
+  --dur-slow: 0.36s;
+
+  --z-content: 1;
+  --z-sticky: 30;
+  --z-rail: 40;
+  --z-overlay: 50;
+  --z-sheet: 60;
+  --z-toast: 80;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0.001s;
+    --dur: 0.001s;
+    --dur-slow: 0.001s;
+  }
+}

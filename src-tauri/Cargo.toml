@@ -1,0 +1,33 @@
+[package]
+name = "qingyue"
+version = "1.0.0"
+description = "轻阅 QINGYUE · 本地优先的纯离线 txt 阅读器"
+authors = ["CRAFTDEMAND"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "qingyue_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 注意：桌面/移动端的离线能力不依赖任何 Tauri 插件，
+# 数据全部存在 WebView 的 IndexedDB 中，因此依赖树保持最小。
+
+[features]
+default = []
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"
+strip = true
+incremental = false

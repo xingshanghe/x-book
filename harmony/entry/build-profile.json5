@@ -1,0 +1,13 @@
+{
+  "module": {
+    "name": "entry",
+    "type": "entry",
+    "srcPath": "./src/main/ets"
+  },
+  "buildOption": {},
+  "targets": [
+    {
+      "name": "default"
+    }
+  ]
+}

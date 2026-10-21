@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- 轻阅 App 图标：米黄纸底 + 靛蓝书签 + 朱红折角 + 格纹页眉 -->
+  <rect width="512" height="512" rx="112" fill="#F7EFDC"/>
+  <g>
+    <rect x="0" y="0" width="512" height="56" fill="#DCE6F7"/>
+    <g fill="#3E5C97" opacity="0.42">
+      <rect x="0" y="0" width="28" height="28"/><rect x="56" y="0" width="28" height="28"/><rect x="112" y="0" width="28" height="28"/><rect x="168" y="0" width="28" height="28"/><rect x="224" y="0" width="28" height="28"/><rect x="280" y="0" width="28" height="28"/><rect x="336" y="0" width="28" height="28"/><rect x="392" y="0" width="28" height="28"/><rect x="448" y="0" width="28" height="28"/>
+      <rect x="28" y="28" width="28" height="28"/><rect x="84" y="28" width="28" height="28"/><rect x="140" y="28" width="28" height="28"/><rect x="196" y="28" width="28" height="28"/><rect x="252" y="28" width="28" height="28"/><rect x="308" y="28" width="28" height="28"/><rect x="364" y="28" width="28" height="28"/><rect x="420" y="28" width="28" height="28"/><rect x="476" y="28" width="28" height="28"/>
+    </g>
+  </g>
+  <path d="M148 116h216v300l-108-62-108 62z" fill="#3E5C97"/>
+  <path d="M268 328h96v88z" fill="#B44326"/>
+  <text x="256" y="205" text-anchor="middle" font-family="Kaiti SC, STKaiti, serif" font-size="86" letter-spacing="10" fill="#FBF5E7">轻阅</text>
+</svg>

@@ -1,0 +1,134 @@
+/* ==========================================================================
+   设置页
+   ========================================================================== */
+
+.settings {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.settings-top {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px clamp(14px, 4vw, 44px);
+  padding-top: calc(10px + var(--safe-t));
+  background: color-mix(in srgb, var(--paper-0) 90%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line-soft);
+}
+.settings-top h1 {
+  font-family: var(--font-kai);
+  font-size: var(--step-2);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.settings-body {
+  width: 100%;
+  max-width: 720px;
+  padding: 22px 20px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-nav {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: none;
+}
+
+.settings-section {
+  background: var(--paper-1);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-xl);
+  padding: 18px 20px;
+  scroll-margin-top: 80px;
+}
+.settings-section > h2 {
+  font-family: var(--font-kai);
+  font-size: var(--step-1);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-section > .desc {
+  color: var(--ink-3);
+  font-size: var(--step--1);
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.rule-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--line-soft);
+  font-size: var(--step--1);
+}
+.rule-item:last-child {
+  border-bottom: none;
+}
+.rule-item code {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rule-item input[type='text'] {
+  flex: 1;
+  background: var(--paper-0);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  outline: none;
+}
+.rule-item input[type='text']:focus {
+  border-color: var(--indigo-line);
+}
+
+.stat-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+}
+.stat-row .stat {
+  flex: 1;
+  min-width: 140px;
+}
+.stat-row .stat b {
+  display: block;
+  font-size: var(--step-1);
+  font-variant-numeric: tabular-nums;
+}
+.stat-row .stat span {
+  color: var(--ink-3);
+  font-size: 12px;
+}

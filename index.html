@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="day">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+    <meta name="theme-color" content="#F7EFDC" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="轻阅 QINGYUE · 本地优先、完全离线的 txt 阅读器" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="轻阅" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="apple-touch-icon" href="./icons/pwa-192.png" />
+    <title>轻阅 · QINGYUE</title>
+    <script>
+      // 主题内联脚本：避免夜间模式用户在首帧看到白/米黄闪屏。
+      // 失败时保持默认日间，不影响任何功能。
+      (function () {
+        try {
+          var s = localStorage.getItem('qingyue.settings.v1');
+          var mode = s ? (JSON.parse(s) || {}).themeMode : 'system';
+          if (!mode) mode = 'system';
+          var dark =
+            mode === 'night' ||
+            (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.dataset.theme = dark ? 'night' : 'day';
+        } catch (_) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>轻阅需要启用 JavaScript 才能运行。</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

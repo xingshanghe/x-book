@@ -1,0 +1,14 @@
+/hvigor/
+/.hvigor/
+/.cxx/
+/oh_modules/
+/node_modules/
+/.clangd
+/.clang-format
+/.clang-tidy
+/.idea/
+**/build/
+/.preview/
+/local.properties
+**/.test/
+/entry/src/main/resources/rawfile/qy/

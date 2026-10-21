@@ -1,0 +1,82 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "轻阅",
+  "version": "1.0.0",
+  "identifier": "net.xingshanghe.qingyue",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "轻阅",
+        "width": 1180,
+        "height": 780,
+        "minWidth": 360,
+        "minHeight": 560,
+        "resizable": true,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": false,
+        "theme": null
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; font-src 'self' data: blob:; connect-src 'self' blob: data: ipc: http://ipc.localhost; worker-src 'self' blob:"
+    },
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg", "nsis", "deb", "appimage"],
+    "publisher": "CRAFTDEMAND",
+    "copyright": "Copyright © 2026 CRAFTDEMAND",
+    "category": "Productivity",
+    "shortDescription": "本地优先的纯离线 txt 阅读器",
+    "longDescription": "轻阅 QINGYUE：流式分块解析，百万字大书秒开；导入、书架、阅读、排版、书签、进度全部离线可用，一套代码覆盖桌面与移动端。",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "frameworks": [],
+      "exceptionDomain": "",
+      "entitlements": null
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": true
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": []
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    },
+    "iOS": {
+      "developmentTeam": null
+    },
+    "android": {
+      "minSdkVersion": 26
+    }
+  },
+  "plugins": {}
+}

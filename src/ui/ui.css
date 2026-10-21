@@ -1,0 +1,420 @@
+/* ==========================================================================
+   设计系统样式 —— 只描述控件本身，不含业务文案与布局
+   ========================================================================== */
+
+/* ---------- Button ---------- */
+.qy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: var(--r-md);
+  font-size: var(--step-0);
+  font-weight: 500;
+  min-height: var(--tap);
+  padding: 0 18px;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  user-select: none;
+}
+.qy-btn:active {
+  transform: scale(0.97);
+}
+.qy-btn:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.qy-btn-sm {
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: var(--step--1);
+}
+.qy-btn-lg {
+  min-height: 50px;
+  padding: 0 26px;
+  font-size: var(--step-1);
+}
+.qy-btn-block {
+  width: 100%;
+  justify-content: center;
+}
+
+.qy-btn-primary {
+  background: var(--indigo);
+  color: var(--on-indigo);
+  box-shadow: var(--shadow-sm);
+}
+.qy-btn-primary:hover {
+  filter: brightness(1.06);
+}
+.qy-btn-soft {
+  background: var(--paper-2);
+  color: var(--ink-1);
+}
+.qy-btn-soft:hover {
+  background: var(--paper-3);
+}
+.qy-btn-ghost {
+  color: var(--ink-2);
+  padding: 0 10px;
+}
+.qy-btn-ghost:hover {
+  color: var(--ink-1);
+  background: var(--paper-2);
+}
+.qy-btn-danger {
+  color: var(--seal);
+  background: var(--seal-weak);
+}
+.qy-btn-danger:hover {
+  filter: brightness(0.98);
+}
+
+.qy-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: 50%;
+  color: var(--ink-2);
+  transition: background-color var(--dur-fast), color var(--dur-fast);
+}
+.qy-icon-btn:hover {
+  background: var(--paper-2);
+  color: var(--ink-1);
+}
+
+/* ---------- Segmented ---------- */
+.qy-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--paper-2);
+  border-radius: 8px;
+}
+.qy-seg-item {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: var(--step--1);
+  color: var(--ink-2);
+  transition: all var(--dur-fast) var(--ease);
+  white-space: nowrap;
+}
+.qy-seg-sm .qy-seg-item {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.qy-seg-item[aria-selected='true'] {
+  background: var(--paper-0);
+  color: var(--ink-1);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------- Rows ---------- */
+.qy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line-soft);
+  min-height: var(--tap);
+}
+.qy-row:last-child {
+  border-bottom: none;
+}
+.qy-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.qy-row-label {
+  font-size: var(--step-0);
+  color: var(--ink-1);
+}
+.qy-row-hint {
+  font-size: var(--step--1);
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+
+/* ---------- Slider ---------- */
+.qy-slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  max-width: 62%;
+  justify-content: flex-end;
+}
+.qy-slider input[type='range'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  max-width: 220px;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--indigo) 0 var(--pct, 50%),
+    var(--paper-2) var(--pct, 50%) 100%
+  );
+  outline: none;
+}
+.qy-slider input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--paper-0);
+  border: 2px solid var(--indigo);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.qy-slider input[type='range']::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--paper-0);
+  border: 2px solid var(--indigo);
+  cursor: pointer;
+}
+.qy-slider output {
+  min-width: 52px;
+  text-align: right;
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+
+/* ---------- Switch ---------- */
+.qy-switch {
+  flex-shrink: 0;
+  width: 46px;
+  height: 27px;
+  border-radius: 14px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  position: relative;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.qy-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: var(--paper-0);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--dur) var(--ease);
+}
+.qy-switch.on {
+  background: var(--indigo);
+  border-color: var(--indigo);
+}
+.qy-switch.on .qy-switch-knob {
+  transform: translateX(19px);
+  background: var(--on-indigo);
+}
+
+/* ---------- Overlay / Sheet / Drawer ---------- */
+.qy-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  background: rgb(0 0 0 / 32%);
+  backdrop-filter: blur(2px);
+  display: flex;
+  animation: qy-fade-in var(--dur-fast) var(--ease);
+}
+.qy-sheet {
+  background: var(--paper-1);
+  color: var(--ink-1);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  max-width: 100%;
+}
+.qy-sheet-bottom {
+  margin-top: auto;
+  width: 100%;
+  border-radius: 18px 18px 0 0;
+  padding-bottom: var(--safe-b);
+  animation: qy-slide-down var(--dur) var(--ease);
+  max-height: 86vh;
+}
+.qy-sheet-left {
+  margin-right: auto;
+  height: 100%;
+  width: min(86vw, 340px);
+  animation: qy-fade-in var(--dur) var(--ease);
+}
+.qy-sheet-right {
+  margin-left: auto;
+  height: 100%;
+  width: min(86vw, 400px);
+  animation: qy-fade-in var(--dur) var(--ease);
+}
+.qy-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.qy-sheet-head h3 {
+  font-size: var(--step-1);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.qy-sheet-body {
+  padding: 10px 18px 18px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------- Progress ---------- */
+.qy-progress {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--paper-2);
+  overflow: hidden;
+  position: relative;
+}
+.qy-progress.thin {
+  height: 3px;
+}
+.qy-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--indigo);
+  border-radius: 3px;
+  transition: width var(--dur) var(--ease);
+}
+.qy-progress-indeterminate {
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  background: var(--indigo);
+  animation: qy-indeterminate 1.4s var(--ease) infinite;
+}
+
+/* ---------- EmptyState ---------- */
+.qy-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 72px 24px;
+  text-align: center;
+}
+.qy-empty-art {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-bottom: 10px;
+}
+.qy-empty-art span {
+  width: 34px;
+  border-radius: 3px 5px 5px 3px;
+  background: var(--indigo);
+  opacity: 0.75;
+}
+.qy-empty-art span:nth-child(1) {
+  height: 52px;
+  transform: rotate(-6deg);
+}
+.qy-empty-art span:nth-child(2) {
+  height: 64px;
+}
+.qy-empty-art span:nth-child(3) {
+  height: 46px;
+  transform: rotate(5deg);
+  background: var(--seal);
+  opacity: 0.6;
+}
+.qy-empty h3 {
+  font-size: var(--step-1);
+  font-family: var(--font-kai);
+}
+.qy-empty p {
+  color: var(--ink-3);
+  font-size: var(--step--1);
+  max-width: 42ch;
+  line-height: 1.7;
+}
+
+/* ---------- Toast ---------- */
+.qy-toasts {
+  position: fixed;
+  left: 50%;
+  bottom: calc(28px + var(--safe-b));
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+.qy-toast {
+  background: var(--ink-1);
+  color: var(--paper-0);
+  padding: 9px 18px;
+  border-radius: 999px;
+  font-size: var(--step--1);
+  box-shadow: var(--shadow-lg);
+  animation: qy-rise var(--dur) var(--ease);
+  max-width: min(86vw, 480px);
+  text-align: center;
+}
+.qy-toast-warn {
+  background: var(--seal);
+  color: #fff;
+}
+.qy-toast-ok {
+  background: var(--jade);
+  color: #fff;
+}
+
+/* ---------- Menu ---------- */
+.qy-menu {
+  position: relative;
+  display: inline-flex;
+}
+.qy-menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: var(--z-overlay);
+  min-width: 168px;
+  background: var(--paper-1);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 5px;
+  animation: qy-slide-down var(--dur-fast) var(--ease);
+}
+.qy-menu-list.end {
+  left: auto;
+  right: 0;
+}
+.qy-menu-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  font-size: var(--step--1);
+  color: var(--ink-1);
+  transition: background-color var(--dur-fast);
+}
+.qy-menu-list button:hover {
+  background: var(--paper-2);
+}
+.qy-menu-list button.danger {
+  color: var(--seal);
+}

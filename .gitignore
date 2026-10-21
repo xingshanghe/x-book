@@ -1,0 +1,54 @@
+node_modules/
+dist/
+dist-ssr/
+.cargo-home/
+.cargo-target/
+.pnpm-state/
+*.local
+.DS_Store
+
+# Vite / TS
+*.tsbuildinfo
+vite.config.ts.timestamp-*
+
+# PWA 生成物（构建时产出）
+public/sw.js
+public/workbox-*.js
+public/manifest.webmanifest
+public/registerSW.js
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/schemas/
+src-tauri/gen/android/.gradle/
+src-tauri/gen/android/app/build/
+src-tauri/gen/android/.idea/
+src-tauri/gen/apple/build/
+src-tauri/gen/apple/*.xcworkspace/
+src-tauri/gen/apple/Pods/
+
+# HarmonyOS
+harmony/.hvigor/
+harmony/.cxx/
+harmony/oh_modules/
+harmony/node_modules/
+harmony/*/build/
+harmony/.clangd
+harmony/.clang-format
+harmony/.clang-tidy
+harmony/entry/src/main/resources/rawfile/qy/
+
+# 测试大文件
+tests/fixtures/large-*.txt
+
+# 编辑器
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# 本地会话记忆（非源码）
+.workbuddy/
+
+# 本机打包产物
+release/
+.dmg-staging/

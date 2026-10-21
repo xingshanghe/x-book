@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- maskable：安全区内仅 80% 内容，背景铺满 -->
+  <rect width="512" height="512" fill="#3E5C97"/>
+  <path d="M168 136h176v240l-88-50-88 50z" fill="#F7EFDC"/>
+  <path d="M262 300h82v76z" fill="#B44326"/>
+</svg>

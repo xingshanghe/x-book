@@ -1,0 +1,1352 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="day">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>轻阅 QINGYUE · 品牌与界面规范 v2.0</title>
+<style>
+/* ============ 0. Tokens ============ */
+:root, .m-day{
+  --paper-0:#F7EFDC; --paper-1:#FBF5E7; --paper-2:#EFE3C9;
+  --line:#DFCFAC; --line-soft:#EAE0C8;
+  --ink-1:#26221A; --ink-2:#58503F; --ink-3:#746851;
+  --indigo:#3E5C97; --indigo-weak:#DEE5F2; --indigo-line:#BCC9E2;
+  --seal:#B44326; --seal-weak:#F6E0D4;
+  --on-indigo:#FBF5E7;
+  --gingham-base:#DCE6F7; --gingham-sq:rgba(62,92,151,.42);
+  --shadow:0 1px 2px rgba(38,34,26,.07), 0 12px 34px -18px rgba(38,34,26,.28);
+  --grain:.05;
+}
+[data-theme="night"], .m-night{
+  --paper-0:#0B0E15; --paper-1:#131826; --paper-2:#1C2333;
+  --line:#2C3449; --line-soft:#1E2536;
+  --ink-1:#E8E4D8; --ink-2:#B7B2A4; --ink-3:#8B867A;
+  --indigo:#7BA0D4; --indigo-weak:#1D2A40; --indigo-line:#33456B;
+  --seal:#D2704F; --seal-weak:#3A231C;
+  --on-indigo:#0B0E15;
+  --gingham-base:#141B2B; --gingham-sq:rgba(123,160,212,.20);
+  --shadow:0 1px 2px rgba(0,0,0,.45), 0 14px 36px -18px rgba(0,0,0,.75);
+  --grain:.03;
+}
+
+*{ box-sizing:border-box; }
+html{ -webkit-text-size-adjust:100%; scroll-behavior:smooth; }
+body{
+  margin:0; background:var(--paper-0); color:var(--ink-1);
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",system-ui,sans-serif;
+  font-size:15px; line-height:1.75; letter-spacing:.01em;
+  transition:background-color .28s ease, color .28s ease;
+}
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+  opacity:var(--grain);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.kai{ font-family:"LXGW WenKai","Kaiti SC","STKaiti",KaiTi,"Songti SC",serif; }
+.mono{ font-family:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace; font-variant-numeric:tabular-nums; }
+
+.gingham{
+  background-color:var(--gingham-base);
+  background-image:
+    repeating-linear-gradient(0deg, var(--gingham-sq) 0 7px, transparent 7px 14px),
+    repeating-linear-gradient(90deg, var(--gingham-sq) 0 7px, transparent 7px 14px);
+}
+
+/* ============ 1. Chrome ============ */
+.topbar{
+  position:sticky; top:0; z-index:30;
+  display:flex; align-items:center; gap:16px;
+  padding:12px clamp(16px,4vw,40px) 18px;
+  background:color-mix(in srgb, var(--paper-0) 88%, transparent);
+  -webkit-backdrop-filter:saturate(150%) blur(14px);
+  backdrop-filter:saturate(150%) blur(14px);
+  border-bottom:1px solid var(--line-soft);
+}
+.topbar::after{
+  content:""; position:absolute; left:0; right:0; bottom:0; height:6px;
+  background-color:var(--gingham-base);
+  background-image:
+    repeating-linear-gradient(0deg, var(--gingham-sq) 0 3px, transparent 3px 6px),
+    repeating-linear-gradient(90deg, var(--gingham-sq) 0 3px, transparent 3px 6px);
+  opacity:.9;
+}
+.topbar .brand{ display:flex; align-items:center; gap:9px; font-weight:600; letter-spacing:.06em; font-family:"Kaiti SC","STKaiti",KaiTi,serif; font-size:17px; }
+.topbar .brand svg{ width:15px; height:20px; }
+.topbar .divider{ width:1px; height:16px; background:var(--line); }
+.topbar .doc-title{ color:var(--ink-3); font-size:12.5px; letter-spacing:.04em; }
+.spacer{ flex:1; }
+.seg{ display:inline-flex; padding:2px; gap:2px; background:var(--paper-2); border-radius:8px; }
+.seg button{
+  appearance:none; border:0; background:transparent; cursor:pointer;
+  font:inherit; font-size:12px; color:var(--ink-2);
+  padding:5px 11px; border-radius:6px; transition:.16s;
+}
+.seg button[aria-pressed="true"]{ background:var(--paper-0); color:var(--ink-1); box-shadow:0 1px 2px rgba(0,0,0,.08); }
+
+/* ============ 2. Shell ============ */
+.wrap{ position:relative; z-index:1; max-width:1180px; margin:0 auto; padding:0 clamp(16px,4vw,40px) 96px; }
+.shell{ display:grid; grid-template-columns:196px minmax(0,1fr); gap:52px; align-items:start; }
+.toc{ position:sticky; top:92px; padding-top:52px; font-size:13px; }
+.toc-h{ font-size:10.5px; letter-spacing:.16em; color:var(--ink-3); text-transform:uppercase; margin-bottom:12px; }
+.toc a{ display:flex; gap:10px; padding:5px 0; color:var(--ink-3); text-decoration:none; transition:.16s; }
+.toc a span:first-child{ font-family:ui-monospace,monospace; font-size:11px; color:var(--indigo); opacity:.8; padding-top:2px; }
+.toc a:hover{ color:var(--ink-1); }
+.doc{ min-width:0; padding-top:52px; max-width:980px; }
+
+/* ============ 3. Typography ============ */
+h1,h2,h3,h4{ font-family:"LXGW WenKai","Kaiti SC","STKaiti",KaiTi,"Songti SC",serif; font-weight:600; letter-spacing:.02em; margin:0; }
+p{ margin:0 0 14px; }
+.lead{ font-size:17px; line-height:1.9; color:var(--ink-2); }
+.small{ font-size:13px; color:var(--ink-3); line-height:1.8; }
+section{ padding-top:76px; scroll-margin-top:84px; }
+.sec-head{ display:flex; align-items:flex-end; gap:16px; margin-bottom:14px; }
+.sec-num{ font-family:ui-monospace,monospace; font-size:11px; letter-spacing:.14em; color:var(--indigo); padding-bottom:9px; }
+.sec-head h2{ font-size:31px; line-height:1.25; }
+.sec-en{ margin-left:auto; font-size:10.5px; letter-spacing:.18em; color:var(--ink-3); text-transform:uppercase; padding-bottom:10px; }
+.sec-sub{ font-size:14px; color:var(--ink-2); margin:0 0 30px; max-width:64ch; }
+h3.block{ font-size:19px; margin:40px 0 12px; display:flex; align-items:baseline; gap:10px; }
+h3.block::before{ content:""; width:14px; height:2px; background:var(--indigo); transform:translateY(-5px); }
+h4.mini{ font-size:14px; margin:22px 0 8px; letter-spacing:.02em; }
+
+/* ============ 4. Cover ============ */
+.cover{ position:relative; padding:64px 0 46px; }
+.ribbon{
+  position:absolute; top:0; right:clamp(0px,6vw,72px); width:30px; height:196px;
+  background:var(--seal); opacity:.95;
+  clip-path:polygon(0 0,100% 0,100% 100%,50% 86%,0 100%);
+}
+.cover .kicker{ font-size:11px; letter-spacing:.32em; color:var(--ink-3); text-transform:uppercase; margin-bottom:26px; }
+.cover h1{ font-size:clamp(60px,11vw,100px); line-height:1; letter-spacing:.06em; }
+.cover .en{ margin-top:16px; font-size:12px; letter-spacing:.52em; color:var(--ink-3); }
+.cover .slogan{ margin-top:26px; font-size:21px; color:var(--ink-2); font-family:"Kaiti SC",serif; letter-spacing:.1em; }
+.cover .rule{ width:64px; height:3px; background:var(--seal); margin:30px 0 26px; }
+.meta{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:18px 28px; max-width:760px; }
+.meta div{ border-top:1px solid var(--line); padding-top:9px; }
+.meta dt{ font-size:10px; letter-spacing:.14em; color:var(--ink-3); text-transform:uppercase; margin-bottom:3px; }
+.meta dd{ margin:0; font-size:13.5px; color:var(--ink-2); }
+
+/* ============ 5. Blocks ============ */
+.grid2{ display:grid; grid-template-columns:1fr 1fr; gap:22px 30px; }
+.grid3{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; }
+.card{ background:var(--paper-1); border:1px solid var(--line-soft); border-radius:8px; padding:20px 22px; }
+.card h4{ margin:0 0 6px; font-size:15px; }
+.card p{ font-size:13px; color:var(--ink-2); margin:0; line-height:1.8; }
+.num-card{ position:relative; padding-left:38px; }
+.num-card .n{ position:absolute; left:0; top:2px; font-family:ui-monospace,monospace; font-size:11px; color:var(--indigo); }
+.callout{ border-left:3px solid var(--indigo); background:var(--paper-1); padding:14px 18px; border-radius:0 6px 6px 0; font-size:13.5px; color:var(--ink-2); }
+.callout b{ color:var(--ink-1); }
+.callout.seal{ border-left-color:var(--seal); }
+
+table{ width:100%; border-collapse:collapse; font-size:13px; }
+th{ text-align:left; font-weight:500; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); padding:0 10px 8px 0; border-bottom:1px solid var(--line); }
+td{ padding:10px 10px 10px 0; border-bottom:1px solid var(--line-soft); color:var(--ink-2); vertical-align:top; line-height:1.7; }
+td strong{ color:var(--ink-1); font-weight:600; }
+td.num{ font-family:ui-monospace,monospace; font-size:12px; white-space:nowrap; }
+.tbl-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.tag-mini{ display:inline-block; font-size:9.5px; line-height:1.5; padding:1px 6px; border-radius:3px; border:1px solid var(--line); color:var(--ink-3); margin-right:4px; white-space:nowrap; }
+.tag-mini.keep{ border-color:var(--indigo-line); color:var(--indigo); background:var(--indigo-weak); }
+.tag-mini.fix{ border-color:var(--seal); color:var(--seal); background:var(--seal-weak); }
+
+/* ============ 6. Logo ============ */
+.logo-stage{ display:grid; grid-template-columns:1.15fr .85fr; gap:1px; background:var(--line-soft); border:1px solid var(--line-soft); border-radius:8px; overflow:hidden; }
+.logo-cell{ background:var(--paper-0); padding:38px 30px; min-height:220px; display:flex; flex-direction:column; justify-content:center; }
+.logo-cell.night{ background:#0F1420; }
+.logo-cell .cap{ font-size:10.5px; letter-spacing:.14em; color:var(--ink-3); text-transform:uppercase; margin-top:22px; }
+.logo-cell.night .cap{ color:#7C7264; }
+.lockup{ display:flex; align-items:center; gap:18px; }
+.lockup .word{ font-family:"Kaiti SC","STKaiti",KaiTi,serif; font-size:46px; letter-spacing:.1em; line-height:1; }
+.lockup .word small{ display:block; font-size:9px; letter-spacing:.4em; color:var(--ink-3); margin-top:9px; font-family:-apple-system,sans-serif; }
+.night .lockup .word{ color:#E8E4D8; }
+.size-test{ display:flex; align-items:flex-end; gap:22px; padding:22px; background:var(--paper-1); border-radius:6px; flex-wrap:wrap; }
+.size-test figure{ margin:0; text-align:center; }
+.size-test figcaption{ font-size:9.5px; color:var(--ink-3); margin-top:8px; font-family:ui-monospace,monospace; }
+.ratio-box{ border:1px dashed var(--indigo-line); background:
+    linear-gradient(var(--indigo-line) 1px, transparent 1px) 0 0/100% 25%,
+    linear-gradient(90deg, var(--indigo-line) 1px, transparent 1px) 0 0/25% 100%;
+  padding:34px; display:flex; justify-content:center; border-radius:6px; }
+.dont{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; }
+.dont div{ font-size:12.5px; color:var(--ink-2); padding-left:20px; position:relative; }
+.dont div::before{ content:"✕"; position:absolute; left:0; top:0; color:var(--seal); font-size:11px; }
+
+/* ============ 7. Color ============ */
+.swatches{ display:grid; grid-template-columns:repeat(auto-fill,minmax(158px,1fr)); gap:14px; }
+.sw{ border:1px solid var(--line-soft); border-radius:8px; overflow:hidden; background:var(--paper-1); }
+.sw .chip{ height:74px; position:relative; }
+.sw .chip .tag{ position:absolute; left:8px; bottom:8px; font-size:9px; letter-spacing:.08em; padding:2px 6px; border-radius:3px; background:rgba(255,255,255,.76); color:#26221A; }
+.sw .meta2{ padding:9px 10px 11px; }
+.sw .name{ font-size:11.5px; font-weight:600; letter-spacing:.02em; }
+.sw .hex{ font-family:ui-monospace,monospace; font-size:10.5px; color:var(--ink-3); margin-top:1px; }
+.sw .use{ font-size:10.5px; color:var(--ink-2); margin-top:5px; line-height:1.55; }
+.ratio-bar{ display:flex; height:34px; border-radius:5px; overflow:hidden; margin:10px 0 8px; font-size:9.5px; }
+.ratio-bar span{ display:flex; align-items:center; justify-content:center; letter-spacing:.08em; }
+
+/* ============ 8. Type ============ */
+.type-row{ display:grid; grid-template-columns:104px 1fr 150px; gap:18px; align-items:baseline; padding:13px 0; border-bottom:1px solid var(--line-soft); }
+.type-row .lab{ font-size:10.5px; letter-spacing:.1em; color:var(--ink-3); text-transform:uppercase; }
+.type-row .spec{ font-family:ui-monospace,monospace; font-size:11px; color:var(--ink-3); text-align:right; }
+.reader-sample{ background:var(--paper-1); border-radius:8px; padding:34px clamp(20px,5vw,54px); border:1px solid var(--line-soft); }
+.reader-sample .bd{ max-width:32em; margin:0 auto; font-family:"Kaiti SC","STKaiti",KaiTi,serif; font-size:18px; line-height:1.95; color:var(--ink-1); }
+.reader-sample .bd p{ text-indent:2em; margin:0 0 .5em; }
+.reader-sample .bd h5{ font-family:"Kaiti SC",serif; font-size:22px; margin:0 0 1.1em; text-align:center; letter-spacing:.1em; color:var(--indigo); }
+
+/* ============ 9. Mockups ============ */
+.stage{ background:var(--paper-2); border:1px solid var(--line-soft); border-radius:10px; padding:clamp(14px,2.6vw,26px); display:flex; justify-content:center; overflow:hidden; }
+.stage.tall{ padding-block:clamp(18px,3.4vw,34px); }
+.stage .stack{ display:flex; gap:clamp(16px,3vw,34px); align-items:flex-start; flex-wrap:wrap; justify-content:center; }
+.device{ background:var(--paper-0); border-radius:4px; box-shadow:var(--shadow); overflow:hidden; width:100%; color:var(--ink-1); padding:10px; border:1px solid var(--line); }
+.device.gingham{
+  background-color:var(--gingham-base);
+  background-image:
+    repeating-linear-gradient(0deg, var(--gingham-sq) 0 5px, transparent 5px 10px),
+    repeating-linear-gradient(90deg, var(--gingham-sq) 0 5px, transparent 5px 10px);
+}
+.win-bar{ display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--line-soft); }
+.win-bar i{ width:8px; height:8px; border-radius:50%; background:var(--line); display:block; }
+.win-bar .t{ margin-left:8px; font-size:10.5px; color:var(--ink-3); letter-spacing:.06em; }
+.win-bar .url{ margin-left:auto; font-size:9.5px; color:var(--ink-3); font-family:ui-monospace,monospace; }
+
+/* shelf (易笺式：全屏网格 + 顶部虚线拖放区) */
+.shelf{ padding:0 0 10px; min-width:0; }
+.drop{ margin:14px 18px 20px; border:1.5px dashed var(--indigo-line); border-radius:6px; padding:18px 14px; text-align:center; background:color-mix(in srgb, var(--indigo-weak) 40%, transparent); }
+.drop .ic{ width:36px; height:36px; margin:0 auto 6px; border:1.5px dashed var(--ink-3); border-radius:5px; display:flex; align-items:center; justify-content:center; color:var(--ink-2); font-size:16px; }
+.drop .t{ font-family:"Kaiti SC",serif; font-size:15px; color:var(--ink-2); letter-spacing:.14em; }
+.drop .s{ font-size:9.5px; color:var(--ink-3); margin-top:4px; }
+.shelf-grid{ padding:0 18px; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:16px 14px; }
+.bk{ min-width:0; }
+.bk .cover-img{ aspect-ratio:3/4.1; border-radius:2px; position:relative; overflow:hidden;
+  background:linear-gradient(158deg,#54719F,#3B5480 62%,#33486E);
+  box-shadow:0 3px 8px rgba(24,20,14,.22), inset 0 0 0 1px rgba(255,255,255,.08); }
+.bk .cover-img::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:6px; background:rgba(0,0,0,.18); }
+.bk .cover-img::after{ content:""; position:absolute; inset:0; background:linear-gradient(112deg, rgba(255,255,255,.12), transparent 46%); }
+.bk .cv-t{ position:absolute; top:12px; right:10px; writing-mode:vertical-rl; font-family:"Kaiti SC",serif;
+  font-size:12px; letter-spacing:.2em; color:rgba(255,255,255,.95); line-height:1.3; }
+.bk .cv-a{ position:absolute; left:0; right:0; bottom:0; padding:5px 8px; text-align:center;
+  font-family:"Kaiti SC",serif; font-size:8.5px; letter-spacing:.08em; color:rgba(255,255,255,.82); background:rgba(20,28,44,.34); }
+.bk .flag{ position:absolute; top:0; left:8px; width:9px; height:20px; background:var(--seal); clip-path:polygon(0 0,100% 0,100% 100%,50% 76%,0 100%); }
+.bk .prog{ position:absolute; left:0; right:0; bottom:19px; height:2px; background:rgba(255,255,255,.16); }
+.bk .prog i{ display:block; height:100%; background:var(--seal); }
+.bmeta{ display:flex; align-items:center; gap:6px; margin-top:6px; min-height:14px; }
+.bmeta .pct{ font-family:ui-monospace,monospace; font-size:9px; color:var(--ink-3); }
+.bmeta .pill{ font-size:8.5px; padding:1px 6px; border-radius:2px; background:var(--indigo); color:var(--on-indigo); letter-spacing:.06em; }
+.bmeta .pill.done{ background:transparent; color:var(--ink-3); border:1px solid var(--line); }
+.bmeta .dots{ margin-left:auto; color:var(--ink-3); font-size:11px; letter-spacing:1px; }
+.bk .nm{ font-size:10px; color:var(--ink-1); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.shelf-foot{ display:flex; align-items:center; padding:14px 18px 4px; font-size:9.5px; color:var(--ink-3); gap:10px; }
+.shelf-foot .r{ margin-left:auto; display:flex; gap:12px; font-size:12px; }
+
+/* reader */
+.reader-dev{ display:flex; flex-direction:column; min-height:440px; background:var(--paper-0); }
+.r-top{ display:flex; align-items:center; gap:10px; padding:9px 18px; border-bottom:1px solid var(--line-soft); font-size:10.5px; color:var(--ink-3); }
+.r-top .ttl{ font-family:"Kaiti SC",serif; font-size:11.5px; color:var(--ink-2); letter-spacing:.06em; }
+.r-top .ico{ margin-left:auto; display:flex; gap:12px; font-size:10px; }
+.r-main{ flex:1; display:grid; grid-template-columns:154px minmax(0,1fr); }
+.toc-rail{ border-right:1px solid var(--line-soft); padding:26px 10px 10px 16px; font-size:9px; color:var(--ink-3); }
+.toc-rail .row{ display:flex; align-items:center; gap:7px; padding:6px 0; }
+.toc-rail .row i{ width:13px; height:1.5px; background:var(--line); display:block; flex:0 0 13px; }
+.toc-rail .row.cur{ color:var(--indigo); }
+.toc-rail .row.cur i{ background:var(--indigo); }
+.toc-rail .row.cur span{ font-family:"Kaiti SC",serif; font-size:9px; line-height:1.4; }
+.toc-rail .meta{ margin-top:auto; padding-top:40px; font-size:8px; color:var(--ink-3); line-height:1.6; }
+.r-page{ padding:30px clamp(20px,4vw,44px) 10px; }
+.r-text{ max-width:30em; margin:0 auto; font-family:"Kaiti SC","STKaiti",KaiTi,serif; font-size:15px; line-height:2.05; color:var(--ink-1); }
+.r-text h6{ margin:0 0 1.5em; text-align:center; font-size:16.5px; letter-spacing:.09em; font-weight:600; color:var(--indigo); }
+.r-text h6 small{ display:block; font-family:"Kaiti SC",serif; font-size:9px; letter-spacing:.24em; color:var(--ink-3); margin-top:7px; font-weight:400; }
+.r-text p{ text-indent:2em; margin:0 0 .45em; }
+.r-pager{ border-top:1px solid var(--line-soft); padding:9px 18px 6px; display:flex; align-items:center; gap:10px; font-size:9px; color:var(--ink-3); font-family:ui-monospace,monospace; }
+.pager{ display:flex; align-items:center; gap:6px; margin:0 auto; }
+.pager span{ min-width:14px; height:16px; line-height:16px; text-align:center; padding:0 3px; border-radius:3px; }
+.pager span.on{ background:var(--indigo); color:var(--on-indigo); }
+.r-pager .right{ margin-left:auto; display:flex; gap:9px; font-size:11px; }
+
+/* 扉页 */
+.titlepage{ flex:1; display:flex; flex-direction:column; align-items:center; padding:26px 30px 16px; }
+.titlepage .t{ font-family:"Kaiti SC",serif; font-size:26px; letter-spacing:.22em; color:var(--indigo); }
+.titlepage .a{ font-family:"Kaiti SC",serif; font-size:12px; letter-spacing:.3em; color:var(--ink-3); margin-top:10px; }
+.seal-stamp{ width:74px; height:74px; margin:26px 0 22px; background:var(--seal); border-radius:2px; padding:6px;
+  display:grid; grid-template-columns:1fr 1fr; gap:2px; opacity:.94; box-shadow:0 1px 0 rgba(0,0,0,.12); }
+.seal-stamp span{ display:flex; align-items:center; justify-content:center; color:#FBF5E7; font-family:"Kaiti SC",serif; font-size:19px; line-height:1; }
+.titlepage .intro{ width:100%; max-width:30em; margin-top:2px; }
+.titlepage .intro h6{ font-family:"Kaiti SC",serif; font-size:11px; letter-spacing:.22em; color:var(--indigo); text-align:center; margin:0 0 10px; }
+.titlepage .intro p{ font-family:"Kaiti SC",serif; font-size:11.5px; line-height:1.95; color:var(--ink-2); text-indent:2em; margin:0; }
+
+/* phone */
+.phone{ width:296px; flex:0 0 296px; border-radius:32px; padding:7px; background:#1A1F2B; box-shadow:0 18px 40px -18px rgba(0,0,0,.5), 0 0 0 1px rgba(0,0,0,.3); }
+.phone .scr{ background:var(--paper-0); border-radius:26px; overflow:hidden; position:relative; display:flex; flex-direction:column; min-height:530px; }
+.notch{ height:20px; display:flex; align-items:center; justify-content:center; }
+.notch i{ width:56px; height:5px; border-radius:3px; background:#39404F; display:block; }
+.ph-top{ display:flex; align-items:center; gap:8px; padding:6px 16px 10px; font-size:11px; }
+.ph-top .big{ font-family:"Kaiti SC",serif; font-size:17px; letter-spacing:.12em; font-weight:600; }
+.ph-top .r{ margin-left:auto; color:var(--ink-3); font-size:12px; }
+.ph-body{ flex:1; padding:2px 14px 12px; }
+.tabbar{ display:flex; border-top:1px solid var(--line-soft); padding:7px 0 9px; background:var(--paper-1); }
+.tabbar div{ flex:1; text-align:center; font-size:8.5px; color:var(--ink-3); letter-spacing:.06em; }
+.tabbar div .g{ display:block; width:14px; height:14px; margin:0 auto 3px; border-radius:2px; border:1.2px solid var(--ink-3); }
+.tabbar div.on{ color:var(--indigo); }
+.tabbar div.on .g{ border-color:var(--indigo); background:var(--indigo-weak); }
+
+.sheet{ position:absolute; left:0; right:0; bottom:0; background:var(--paper-1); border:1px solid var(--line);
+  border-radius:14px 14px 0 0; padding:10px 16px 16px; box-shadow:0 -12px 30px -18px rgba(0,0,0,.45); }
+.sheet .grab{ width:32px; height:3px; border-radius:2px; background:var(--line); margin:0 auto 12px; }
+.sheet .hd{ font-size:10px; letter-spacing:.14em; color:var(--ink-3); text-transform:uppercase; margin-bottom:9px; }
+.opt-row{ display:flex; align-items:center; gap:8px; margin-bottom:11px; }
+.opt-row .k{ font-size:9.5px; color:var(--ink-3); width:38px; flex:0 0 38px; }
+.chips{ display:inline-flex; background:var(--paper-2); border-radius:5px; padding:2px; gap:2px; }
+.chips span{ font-size:9px; padding:3px 8px; border-radius:3px; color:var(--ink-2); }
+.chips span.on{ background:var(--indigo); color:var(--on-indigo); }
+.slider{ flex:1; height:2px; background:var(--paper-2); border-radius:2px; position:relative; }
+.slider i{ position:absolute; left:0; top:0; bottom:0; width:46%; background:var(--indigo); border-radius:2px; }
+.slider b{ position:absolute; left:46%; top:50%; width:10px; height:10px; margin:-5px 0 0 -5px; border-radius:50%; background:var(--paper-0); border:1.5px solid var(--indigo); }
+.themes{ display:flex; gap:7px; }
+.themes i{ width:16px; height:16px; border-radius:2px; display:block; border:1px solid rgba(0,0,0,.12); }
+.themes i.on{ box-shadow:0 0 0 2px var(--paper-1), 0 0 0 3.5px var(--indigo); }
+
+/* settings */
+.set-card{ margin:16px 18px 12px; background:var(--paper-1); border:1px solid var(--line-soft); border-radius:8px; padding:18px 20px 20px; }
+.set-card .hd{ font-family:"Kaiti SC",serif; font-size:15px; letter-spacing:.12em; margin-bottom:14px; color:var(--ink-1); }
+.set-grp{ display:flex; align-items:center; gap:14px; padding:9px 0; border-top:1px solid var(--line-soft); }
+.set-grp:first-of-type{ border-top:0; }
+.set-grp .k{ font-size:10.5px; color:var(--ink-1); }
+.set-grp .d{ font-size:9px; color:var(--ink-3); margin-top:2px; }
+.set-grp .v{ margin-left:auto; display:flex; align-items:center; gap:7px; font-size:9.5px; color:var(--ink-3); }
+.colorbar{ width:104px; height:9px; border-radius:4px; }
+.ghost-btn{ display:inline-flex; align-items:center; font-size:10px; padding:5px 12px; border-radius:4px; background:var(--indigo); color:var(--on-indigo); }
+
+/* ia */
+.ia{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px; background:var(--line-soft); border:1px solid var(--line-soft); border-radius:8px; overflow:hidden; }
+.ia > div{ background:var(--paper-0); padding:18px 18px 20px; }
+.ia h5{ margin:0 0 10px; font-size:13px; letter-spacing:.08em; }
+.ia .root{ font-size:9.5px; letter-spacing:.14em; color:var(--indigo); text-transform:uppercase; margin-bottom:5px; font-family:ui-monospace,monospace; }
+.ia ul{ margin:0; padding:0; list-style:none; font-size:11.5px; color:var(--ink-2); line-height:1.95; }
+.ia ul li::before{ content:"·"; color:var(--ink-3); margin-right:6px; }
+
+/* components */
+.comps{ display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px; }
+.comp{ border:1px solid var(--line-soft); border-radius:7px; padding:16px; background:var(--paper-1); }
+.comp .cap{ font-size:9.5px; letter-spacing:.12em; color:var(--ink-3); text-transform:uppercase; margin-top:12px; }
+.ui-btn{ display:inline-flex; align-items:center; gap:6px; font-size:11px; padding:7px 13px; border-radius:4px; }
+.ui-btn.pri{ background:var(--indigo); color:var(--on-indigo); }
+.ui-btn.gho{ border:1px solid var(--line); color:var(--ink-1); }
+.ui-btn.dan{ border:1px solid var(--seal); color:var(--seal); }
+.empty{ text-align:center; padding:14px 0 4px; }
+.empty .il{ width:44px; height:56px; margin:0 auto 10px; border:1.2px dashed var(--line); border-radius:2px; }
+.empty .t{ font-family:"Kaiti SC",serif; font-size:11.5px; color:var(--ink-2); }
+.empty .s{ font-size:9px; color:var(--ink-3); margin-top:3px; }
+
+.foot-note{ margin-top:88px; padding-top:26px; border-top:1px solid var(--line); display:flex; gap:20px; flex-wrap:wrap; font-size:11px; color:var(--ink-3); }
+.to-top{ margin-left:auto; text-decoration:none; color:var(--ink-3); }
+
+@media (max-width:1080px){
+  .shell{ grid-template-columns:1fr; gap:0; }
+  .toc{ display:none; }
+  .doc{ max-width:none; }
+}
+@media (max-width:820px){
+  .grid2, .grid3, .ia{ grid-template-columns:1fr; }
+  .logo-stage{ grid-template-columns:1fr; }
+  .r-main{ grid-template-columns:1fr; }
+  .toc-rail{ display:none; }
+  .shelf-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .type-row{ grid-template-columns:1fr; gap:4px; }
+  .type-row .spec{ text-align:left; }
+  section{ padding-top:56px; }
+  .cover{ padding-top:40px; }
+  .ribbon{ height:124px; width:22px; }
+  .doc{ padding-top:28px; }
+}
+@media (max-width:520px){
+  .shelf-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .phone{ width:100%; flex:1 1 100%; }
+  .r-page{ padding:22px 16px 8px; }
+  .r-text{ font-size:14px; }
+  .topbar .doc-title{ display:none; }
+  .cover h1{ letter-spacing:.02em; }
+}
+@media (prefers-reduced-motion:reduce){ *{ transition:none!important; scroll-behavior:auto!important; } }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 80 104" aria-hidden="true"><path d="M16 4H48L70 26V94a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/><path d="M48 4l22 22H48Z" fill="var(--seal)"/></svg>
+    轻阅
+  </div>
+  <div class="divider"></div>
+  <div class="doc-title">品牌与界面规范 v2.0</div>
+  <div class="spacer"></div>
+  <div class="seg" role="group" aria-label="主题切换">
+    <button id="btn-day" aria-pressed="true">日间</button>
+    <button id="btn-night" aria-pressed="false">夜间</button>
+  </div>
+</div>
+
+<div class="wrap">
+<div class="shell">
+
+  <nav class="toc" aria-label="目录">
+    <div class="toc-h">Contents</div>
+    <a href="#cover"><span>00</span><span>封面</span></a>
+    <a href="#position"><span>01</span><span>品牌定位</span></a>
+    <a href="#learn"><span>02</span><span>向易笺学什么</span></a>
+    <a href="#logo"><span>03</span><span>标志与图标</span></a>
+    <a href="#color"><span>04</span><span>色彩体系</span></a>
+    <a href="#type"><span>05</span><span>字体规范</span></a>
+    <a href="#layout"><span>06</span><span>排版规则</span></a>
+    <a href="#theme"><span>07</span><span>日夜模式</span></a>
+    <a href="#ia"><span>08</span><span>界面结构</span></a>
+    <a href="#ui"><span>09</span><span>视觉稿</span></a>
+    <a href="#comp"><span>10</span><span>组件</span></a>
+    <a href="#motion"><span>11</span><span>动效与可达</span></a>
+    <a href="#next"><span>12</span><span>下一步</span></a>
+  </nav>
+
+  <main class="doc">
+
+    <!-- ===== Cover ===== -->
+    <section id="cover" class="cover" style="padding-top:0">
+      <div class="ribbon" aria-hidden="true"></div>
+      <div class="kicker">Brand &amp; Interface Guideline · v2.0</div>
+      <h1>轻阅</h1>
+      <div class="en">Q I N G Y U E</div>
+      <div class="slogan">开卷即读，不问网络。</div>
+      <div class="rule"></div>
+      <p class="lead" style="max-width:52ch">一款本地优先的 txt 阅读器。承易笺的书卷气与手感，把「联网才好看」的那部分全部搬回本地——断网、飞行模式、服务下线，功能一个不少。</p>
+      <div class="meta" style="margin-top:34px">
+        <div><dt>版本</dt><dd>v2.0 / 视觉改版</dd></div>
+        <div><dt>日期</dt><dd>2026-10-21</dd></div>
+        <div><dt>形态</dt><dd>Web · PWA · 桌面 · 平板 · 手机</dd></div>
+        <div><dt>气质</dt><dd>纸黄 · 靛蓝 · 格纹 · 藏书章</dd></div>
+      </div>
+    </section>
+
+    <!-- ===== 01 定位 ===== -->
+    <section id="position">
+      <div class="sec-head">
+        <div class="sec-num">01</div>
+        <h2>品牌定位与调性</h2>
+        <div class="sec-en">Positioning</div>
+      </div>
+      <p class="sec-sub">名字从「轻书」改为「轻阅」：书是物，阅是动作。产品卖的不是文件管理器，而是「翻开就读」的那一下。</p>
+
+      <h3 class="block">一句话定位</h3>
+      <p class="lead" style="font-size:19px; color:var(--ink-1)">把 txt 读成一本书——有扉页、有藏书章、有页码，且不联网。</p>
+
+      <div class="grid3" style="margin-top:26px">
+        <div class="card">
+          <h4>为谁而做</h4>
+          <p>攒了几百兆 txt 的读者：不想整理元数据，不想注册账号，只想接着上次那行继续读。</p>
+        </div>
+        <div class="card">
+          <h4>承自易笺</h4>
+          <p>纸黄底、靛蓝字、格纹窗框、统一封面配朱红丝带、自动扉页与藏书章——纯文本也能有装帧感。</p>
+        </div>
+        <div class="card">
+          <h4>不同于易笺</h4>
+          <p>没有 CDN 字体、没有官网依赖、没有 128 MB 上限、没有「服务不可用」。离线是默认，不是兜底。</p>
+        </div>
+      </div>
+
+      <h3 class="block">三条设计原则</h3>
+      <div class="grid3">
+        <div class="card num-card"><span class="n">01</span><h4>正文永远优先</h4><p>界面可以退场：阅读时只剩文字、页码和一条细进度。控件是召之即来的，不是常驻的。</p></div>
+        <div class="card num-card"><span class="n">02</span><h4>离线是默认</h4><p>每个功能先验收断网状态。任何「要联网才好看」的设计，都要给出本地替代。</p></div>
+        <div class="card num-card"><span class="n">03</span><h4>装帧感来自细节</h4><p>扉页、藏书章、丝带、格纹、页码——不是装饰，而是让纯文本被当作一本书对待。</p></div>
+      </div>
+
+      <h3 class="block">调性</h3>
+      <div class="grid2">
+        <div>
+          <h4 class="mini">是</h4>
+          <p class="small">纸黄（暖、旧、不刺眼）、靛蓝（墨迹般的沉）、朱砂（印章与丝带）、楷体（书卷气）、格纹（布面精装的窗框）。整体像一本 80 年代排印良好的平装书。</p>
+        </div>
+        <div>
+          <h4 class="mini">不是</h4>
+          <p class="small">不是极简白、不是毛玻璃、不是大圆角糖果色、不是渐变霓虹。易笺的「好看」来自印刷品的秩序感，我们沿用这套秩序，而不是另造一套。</p>
+        </div>
+      </div>
+
+      <h3 class="block">品牌声音</h3>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th style="width:32%">场景</th><th style="width:32%">不说</th><th>说</th></tr></thead>
+          <tbody>
+            <tr><td>导入完成</td><td>书书到手啦～</td><td>已导入 3 本，识别出《聊斋志异》等 2 个书名</td></tr>
+            <tr><td>编码识别</td><td>正在智能解析中…</td><td>检测到 GB18030，已按此编码打开</td></tr>
+            <tr><td>同步未配置</td><td>同步失败，请检查网络</td><td>当前为单机模式，阅读不受影响</td></tr>
+            <tr><td>章节识别</td><td>智能分析完成</td><td>识别 128 章；有 2 处疑似标题，可手动标记</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout" style="margin-top:22px"><b>文案原则：</b>说人话、报事实、给下一步。绝不承诺「永久保存」——只说「已保存到本机」。</div>
+    </section>
+
+    <!-- ===== 02 向易笺学什么 ===== -->
+    <section id="learn">
+      <div class="sec-head">
+        <div class="sec-num">02</div>
+        <h2>向易笺学什么</h2>
+        <div class="sec-en">What We Learned</div>
+      </div>
+      <p class="sec-sub">把易笺（SimpleTextReader v1.6.9.4）的功能、做法与用户口碑逐条拆开，分成「照搬」「改造」「补上」「不做」四类。这是本方案最重要的输入。</p>
+
+      <h3 class="block">一、它的十二条亮点</h3>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th style="width:20%">能力</th><th style="width:44%">易笺的做法</th><th>为什么是亮点</th></tr></thead>
+          <tbody>
+            <tr><td><strong>百兆秒开</strong></td><td>本地解析 + 首次处理后缓存，二次打开直接读缓存；自动识别编码</td><td>把「打开一个文件」的成本压到接近零，这是品类的入场券</td></tr>
+            <tr><td><strong>书名/作者识别</strong></td><td>支持《书名》作者：xx.txt、书名.[作者].txt、Bookname by author.txt 三种命名</td><td>导入后不用手填元数据，书架立刻像样</td></tr>
+            <tr><td><strong>章节正则</strong></td><td>中英文标题正则；v1.6.4 起可从文档自身学习标题规律；支持行首 <span class="mono">[::]</span> 手动标记标题</td><td>承认正则不可能完美，并且给了人工兜底——这是成熟设计</td></tr>
+            <tr><td><strong>脚注抓取</strong></td><td>正文用 ①–㊿ 引用，行首同符号开头的行作为注释，每段可重新编号</td><td>把 txt 里约定俗成的「伪脚注」变成真注释，古籍与网文通吃</td></tr>
+            <tr><td><strong>广告清洗</strong></td><td>针对塞班、知轩藏书等来源的规则化清洗</td><td>直接提升正文纯净度，且默认无感</td></tr>
+            <tr><td><strong>自动扉页</strong></td><td>标题 + 作者 + 一枚朱红藏书章（中英不同），可在设置中关掉</td><td>纯文本第一次「像一本书」，情绪价值极高</td></tr>
+            <tr><td><strong>自动封面</strong></td><td>统一靛蓝封面 + 书名 + 作者条 + 朱红丝带，颜色随主题变化</td><td>零素材也能得到整齐的书架，比抓封面图可靠得多</td></tr>
+            <tr><td><strong>逐行进度</strong></td><td>精确到行的阅读进度，配合文件缓存</td><td>「关掉再开就在原处」，是阅读器最被低估的体验</td></tr>
+            <tr><td><strong>目录简化</strong></td><td>收起时只显示章名主干（去掉「正文/第X卷」前缀），悬停或展开时给全名</td><td>长章名不挤压版面，同时不丢信息</td></tr>
+            <tr><td><strong>字体分离</strong></td><td>标题字体与正文字体分开；可拖入 3 个自定义 TTF/OTF；内置多款可商用字体</td><td>尊重「读者想用自己的字」这件事</td></tr>
+            <tr><td><strong>键盘与开关</strong></td><td>←→ 翻页、PgUp/PgDn 跳章、Esc 回书架；Alt/Option+点封面强制重处理；URL 参数可关书架/设置/秒开</td><td>给重度用户一条快车道，也给调试留后门</td></tr>
+            <tr><td><strong>多入口</strong></td><td>网页、PWA、Chrome/Edge/Firefox 扩展（含无界面版）、Docker</td><td>把「打开」这件事做得足够短</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="block">二、吸收决策</h3>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th style="width:14%">决策</th><th style="width:24%">项目</th><th>轻阅怎么做</th></tr></thead>
+          <tbody>
+            <tr><td><span class="tag-mini keep">照搬</span></td><td>自动扉页 + 藏书章</td><td>保留，作为每本书的第一屏；可在设置里关闭；印章文字用本书首字与「藏书」组合</td></tr>
+            <tr><td><span class="tag-mini keep">照搬</span></td><td>统一封面 + 丝带 + 书架三种排序</td><td>在读书按最近阅读、未读按书名、读完按完成时间；封面颜色由主题色决定</td></tr>
+            <tr><td><span class="tag-mini keep">照搬</span></td><td>目录简化名 / 悬停展开</td><td>直接采用，见视觉稿左侧章节栏</td></tr>
+            <tr><td><span class="tag-mini keep">照搬</span></td><td>PgUp/PgDn 跳章、Esc 回书架、Alt+点击重处理</td><td>全部保留，并支持自定义与冲突检测</td></tr>
+            <tr><td><span class="tag-mini fix">改造</span></td><td>网络字体 / 12 款在线字体</td><td>改为「本地字体 + 自带子集 + 用户拖入字体」；字体文件存 IndexedDB，用 FontFace 注册，永不请求外网</td></tr>
+            <tr><td><span class="tag-mini fix">改造</span></td><td>广告清洗（仅两家来源）</td><td>规则可编辑、可关闭；导入后给一份「清洗报告」（移除 N 行、命中哪条规则），不做黑箱</td></tr>
+            <tr><td><span class="tag-mini fix">改造</span></td><td>脚注（行首符号配对）</td><td>保留语法，交互升级为「点数字看浮层」，并汇总到书末注释页；无脚注时零打扰</td></tr>
+            <tr><td><span class="tag-mini fix">改造</span></td><td>逐行进度</td><td>升级为「块 + 行 + 字符偏移」三重锚点：换字号、换设备都不漂</td></tr>
+            <tr><td><span class="tag-mini fix">改造</span></td><td>按章节分页 / 无限滚动</td><td>分页为主路径；滚动模式用块级虚拟化；无章节时退化为按块分页，仍可百分比跳转</td></tr>
+            <tr><td><span class="tag-mini fix">改造</span></td><td>界面语言随书切换</td><td>沿用（中/英），但仅影响界面文案，不改排版规则；预留 i18n 字典</td></tr>
+            <tr><td><span class="tag-mini fix">改造</span></td><td>URL 参数开关</td><td>改为设置项 + 一组只读诊断参数，不在正式入口暴露</td></tr>
+            <tr><td><span class="tag-mini fix">补上</span></td><td>书签与摘录</td><td>易笺只有进度。轻阅补书签（可加备注）、摘录（选中即存）、书签列表侧栏</td></tr>
+            <tr><td><span class="tag-mini fix">补上</span></td><td>全书搜索</td><td>基于块索引做增量扫描，命中结果带上下文与章节定位，全程本地</td></tr>
+            <tr><td><span class="tag-mini fix">补上</span></td><td>排版参数</td><td>在行高/字号/主题色之外，补行宽、段距、首行缩进、对齐、标点禁则</td></tr>
+            <tr><td><span class="tag-mini fix">补上</span></td><td>移动端</td><td>易笺以桌面为主。轻阅做手势分区、底部抽屉、底部 Tab，触控目标 ≥ 44px</td></tr>
+            <tr><td><span class="tag-mini fix">补上</span></td><td>可选同步</td><td>默认单机；同步是适配层，失败静默降级，绝不影响本地功能</td></tr>
+            <tr><td><span class="tag-mini">不做</span></td><td>账号、社区、书评、推荐、云书架</td><td>不是阅读的一部分，会把「打开就读」变慢</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="block">三、它的限制，就是我们的需求清单</h3>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th style="width:30%">易笺的限制</th><th>轻阅的对策</th></tr></thead>
+          <tbody>
+            <tr><td>单本上限 128 MB</td><td>无上限：流式扫描 + 16 KB 块索引，边索引边可读，不整书入内存</td></tr>
+            <tr><td>网络字体需联网，离线失效</td><td>字体全部本地：内置三套子集 + 用户拖入字体，FontFace 从 IndexedDB 读取</td></tr>
+            <tr><td>官网 / 服务不可用就打不开（其官网现已 404）</td><td>PWA 预缓存应用外壳，断网冷启动可用；没有服务端也能是完整产品</td></tr>
+            <tr><td>隐私模式下书架被禁用</td><td>隐私模式下退化为「临时书架」（内存态），本次会话仍可读，只提示不持久化</td></tr>
+            <tr><td>仅中英双语界面</td><td>中文优先，文案走 i18n 字典；阅读正文不受语言限制</td></tr>
+            <tr><td>广告规则只覆盖两家来源</td><td>规则可增删、可预览命中；支持用户自定义正则并本地保存</td></tr>
+            <tr><td>没有书签、摘录、搜索</td><td>三个都补上，且全部离线可用</td></tr>
+            <tr><td>以桌面为主，移动端体验弱</td><td>移动优先设计点击分区与抽屉，再用同一套代码放大到桌面</td></tr>
+            <tr><td>阅读进度只在本地浏览器</td><td>本地为唯一真相；同步为可选，冲突按时间取新、书签并集合并</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="block">四、值得抄进细节里的五件小事</h3>
+      <div class="grid2">
+        <div class="card"><h4>「快读完」提示</h4><p>进度 &gt; 90% 时，在底部显示「还剩约 8 分钟」，而不是继续显示百分比。</p></div>
+        <div class="card"><h4>章节名主干提取</h4><p>把「正文 第一卷 原上草 第一章 秦少爷初临宝地」压成「秦少爷初临宝地」，只在目录里压，不改原文。</p></div>
+        <div class="card"><h4>重处理的快捷键</h4><p>Alt/Option + 点击封面强制重建索引——识别错了不用删书重导。</p></div>
+        <div class="card"><h4>目录与正文可拖分隔条</h4><p>宽度记忆到本地，窄屏自动折叠为抽屉。</p></div>
+        <div class="card"><h4>缓存即加速</h4><p>解析结果落库，二次打开不再扫描；同时保留原始文件，随时可重建。</p></div>
+        <div class="card"><h4>快捷键可关</h4><p>很多人用输入法，全局快捷键会抢键。开关放在设置里，默认仅阅读页生效。</p></div>
+      </div>
+    </section>
+
+    <!-- ===== 03 Logo ===== -->
+    <section id="logo">
+      <div class="sec-head">
+        <div class="sec-num">03</div>
+        <h2>标志与图标</h2>
+        <div class="sec-en">Mark</div>
+      </div>
+      <p class="sec-sub">符号仍是「一页纸的折角」——折角既是纸的痕迹，也是书签与进度；折角用朱砂，呼应易笺封面上的那条丝带与藏书章。</p>
+
+      <div class="logo-stage">
+        <div class="logo-cell">
+          <div class="lockup">
+            <svg width="66" height="86" viewBox="0 0 80 104" aria-label="轻阅标志">
+              <path d="M16 4H48L70 26V94a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linejoin="round"/>
+              <path d="M48 4l22 22H48Z" fill="var(--seal)"/>
+              <path d="M30 42h20M30 56h20M30 70h12" stroke="currentColor" stroke-width="4" stroke-linecap="round" opacity=".26"/>
+            </svg>
+            <div class="word">轻阅<small>QINGYUE</small></div>
+          </div>
+          <div class="cap">Primary lockup · 横向主标</div>
+        </div>
+        <div class="logo-cell night">
+          <div class="lockup">
+            <svg width="60" height="78" viewBox="0 0 80 104" aria-label="轻阅标志反白">
+              <path d="M16 4H48L70 26V94a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z" fill="none" stroke="#E8E4D8" stroke-width="4.5" stroke-linejoin="round"/>
+              <path d="M48 4l22 22H48Z" fill="#D2704F"/>
+              <path d="M30 42h20M30 56h20M30 70h12" stroke="#E8E4D8" stroke-width="4" stroke-linecap="round" opacity=".24"/>
+            </svg>
+            <div class="word" style="font-size:38px">轻阅<small style="color:#7C7264">QINGYUE</small></div>
+          </div>
+          <div class="cap">Reverse · 夜间 / 深底反白</div>
+        </div>
+      </div>
+
+      <h3 class="block">构造</h3>
+      <div class="grid2">
+        <div class="ratio-box">
+          <svg width="176" height="229" viewBox="0 0 80 104" aria-label="标志构造网格">
+            <path d="M16 4H48L70 26V94a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z" fill="none" stroke="currentColor" stroke-width="2.4"/>
+            <path d="M48 4l22 22H48Z" fill="var(--seal)" opacity=".92"/>
+            <g stroke="var(--seal)" stroke-width=".5" stroke-dasharray="2 2" opacity=".8"><path d="M48 4v22h22"/><path d="M48 4L70 26"/></g>
+          </svg>
+        </div>
+        <div>
+          <p class="small" style="margin-bottom:10px"><b style="color:var(--ink-1)">画布</b>　80 × 104，页身 60 × 96，左右留白 10。</p>
+          <p class="small" style="margin-bottom:10px"><b style="color:var(--ink-1)">折角</b>　边长 22（页宽 36.7%），严格 45°，右侧与顶部齐平，填朱砂。</p>
+          <p class="small" style="margin-bottom:10px"><b style="color:var(--ink-1)">圆角</b>　页角 6，折角处 0——折痕必须是尖的。</p>
+          <p class="small" style="margin-bottom:10px"><b style="color:var(--ink-1)">描边</b>　4.5（随尺寸等比），线端圆角，拐角斜接。</p>
+          <p class="small"><b style="color:var(--ink-1)">字标</b>　楷体骨架，「轻」末笔上扬 4° 与折角同向；字距 +10%，不用描边。</p>
+        </div>
+      </div>
+
+      <h3 class="block">小尺寸与图标</h3>
+      <p class="small" style="margin-bottom:16px">16px 以下不用描边版：改为实心页身 + 折角负形，保证 favicon 与任务栏上仍是「一页纸」。</p>
+      <div class="stage" style="padding:22px">
+        <div class="size-test" style="width:100%; justify-content:space-around">
+          <figure><svg width="16" height="21" viewBox="0 0 80 104"><path d="M14 2h34l30 30v70a2 2 0 0 1-2 2H14a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" fill="currentColor"/><path d="M48 2l30 30H48Z" fill="var(--paper-1)"/></svg><figcaption>16</figcaption></figure>
+          <figure><svg width="24" height="31" viewBox="0 0 80 104"><path d="M14 2h34l30 30v70a2 2 0 0 1-2 2H14a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z" fill="currentColor"/><path d="M48 2l30 30H48Z" fill="var(--paper-1)"/></svg><figcaption>24</figcaption></figure>
+          <figure><svg width="32" height="42" viewBox="0 0 80 104"><path d="M16 4H48L70 26V94a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z" fill="none" stroke="currentColor" stroke-width="6" stroke-linejoin="round"/><path d="M48 4l22 22H48Z" fill="var(--seal)"/></svg><figcaption>32</figcaption></figure>
+          <figure><svg width="48" height="62" viewBox="0 0 80 104"><path d="M16 4H48L70 26V94a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/><path d="M48 4l22 22H48Z" fill="var(--seal)"/></svg><figcaption>48</figcaption></figure>
+          <figure>
+            <div style="width:66px;height:66px;border-radius:14px;background:var(--paper-1);border:1px solid var(--line);display:flex;align-items:center;justify-content:center">
+              <svg width="30" height="39" viewBox="0 0 80 104"><path d="M16 4H48L70 26V94a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/><path d="M48 4l22 22H48Z" fill="var(--seal)"/></svg>
+            </div>
+            <figcaption>app icon</figcaption>
+          </figure>
+          <figure>
+            <div style="width:66px;height:66px;border-radius:14px;background:#0F1420;display:flex;align-items:center;justify-content:center">
+              <svg width="30" height="39" viewBox="0 0 80 104"><path d="M16 4H48L70 26V94a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z" fill="none" stroke="#E8E4D8" stroke-width="5" stroke-linejoin="round"/><path d="M48 4l22 22H48Z" fill="#D2704F"/></svg>
+            </div>
+            <figcaption>icon / night</figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <h3 class="block">使用禁忌</h3>
+      <div class="dont">
+        <div>不描边渐变、不加内阴影与外发光</div>
+        <div>不旋转折角，不把折角改为圆角</div>
+        <div>不把折角换成星星、云、流苏</div>
+        <div>不在彩色照片或封面上直接压标志</div>
+        <div>字标不改字重，不加描边</div>
+        <div>图形与字标间距不小于图形宽度的 1/2</div>
+      </div>
+      <div class="callout" style="margin-top:20px"><b>安全区：</b>四周留白 ≥ 图形高度 25%。App 图标内页身占画布 62%，四周留裁切余量（Android adaptive icon 前景层安全区 66%）。</div>
+    </section>
+
+    <!-- ===== 04 色彩 ===== -->
+    <section id="color">
+      <div class="sec-head">
+        <div class="sec-num">04</div>
+        <h2>色彩体系</h2>
+        <div class="sec-en">Color</div>
+      </div>
+      <p class="sec-sub">底是纸黄，字是墨，主题是靛蓝，强调是朱砂。靛蓝负责「可交互 / 进度 / 章节名」，朱砂只负责「书签 / 印章 / 当前页」。格纹是第五种材料，只出现在窗框上。</p>
+
+      <h3 class="block">日间 · 纸黄</h3>
+      <div class="swatches">
+        <div class="sw"><div class="chip" style="background:#F7EFDC"><span class="tag">base</span></div><div class="meta2"><div class="name">paper-0</div><div class="hex">#F7EFDC</div><div class="use">页面底色（易笺同款米黄）</div></div></div>
+        <div class="sw"><div class="chip" style="background:#FBF5E7"><span class="tag">surface</span></div><div class="meta2"><div class="name">paper-1</div><div class="hex">#FBF5E7</div><div class="use">卡片 / 设置浮层</div></div></div>
+        <div class="sw"><div class="chip" style="background:#EFE3C9"><span class="tag">sunken</span></div><div class="meta2"><div class="name">paper-2</div><div class="hex">#EFE3C9</div><div class="use">滑轨 / 悬停 / 舞台底</div></div></div>
+        <div class="sw"><div class="chip" style="background:#DFCFAC"><span class="tag">line</span></div><div class="meta2"><div class="name">line</div><div class="hex">#DFCFAC</div><div class="use">分隔线 / 描边</div></div></div>
+        <div class="sw"><div class="chip" style="background:#26221A"><span class="tag" style="background:rgba(247,239,220,.9)">13.8:1</span></div><div class="meta2"><div class="name">ink-1</div><div class="hex">#26221A</div><div class="use">正文 / 章节正文</div></div></div>
+        <div class="sw"><div class="chip" style="background:#58503F"><span class="tag" style="background:rgba(247,239,220,.9)">7.0:1</span></div><div class="meta2"><div class="name">ink-2</div><div class="hex">#58503F</div><div class="use">次要文字</div></div></div>
+        <div class="sw"><div class="chip" style="background:#746851"><span class="tag" style="background:rgba(247,239,220,.9)">4.8:1</span></div><div class="meta2"><div class="name">ink-3</div><div class="hex">#746851</div><div class="use">辅助 / 元信息</div></div></div>
+        <div class="sw"><div class="chip" style="background:#3E5C97"><span class="tag" style="background:rgba(247,239,220,.9)">5.8:1</span></div><div class="meta2"><div class="name">indigo</div><div class="hex">#3E5C97</div><div class="use">主色：章节名 / 进度 / 选中</div></div></div>
+        <div class="sw"><div class="chip" style="background:#DEE5F2"><span class="tag">弱底</span></div><div class="meta2"><div class="name">indigo-weak</div><div class="hex">#DEE5F2</div><div class="use">标签底 / 拖放区</div></div></div>
+        <div class="sw"><div class="chip" style="background:#B44326"><span class="tag" style="background:rgba(247,239,220,.9)">4.9:1</span></div><div class="meta2"><div class="name">seal</div><div class="hex">#B44326</div><div class="use">丝带 / 印章 / 当前页</div></div></div>
+        <div class="sw"><div class="chip" style="background:#DCE6F7"><span class="tag">gingham</span></div><div class="meta2"><div class="name">gingham</div><div class="hex">#DCE6F7</div><div class="use">格纹窗框（配 42% 靛蓝条）</div></div></div>
+      </div>
+
+      <h3 class="block">夜间 · 黛蓝</h3>
+      <div class="swatches">
+        <div class="sw"><div class="chip" style="background:#0B0E15"><span class="tag">base</span></div><div class="meta2"><div class="name">night-0</div><div class="hex">#0B0E15</div><div class="use">页面底色（带蓝的墨）</div></div></div>
+        <div class="sw"><div class="chip" style="background:#131826"><span class="tag">surface</span></div><div class="meta2"><div class="name">night-1</div><div class="hex">#131826</div><div class="use">卡片 / 抽屉</div></div></div>
+        <div class="sw"><div class="chip" style="background:#1C2333"><span class="tag">sunken</span></div><div class="meta2"><div class="name">night-2</div><div class="hex">#1C2333</div><div class="use">滑轨 / 悬停</div></div></div>
+        <div class="sw"><div class="chip" style="background:#E8E4D8"><span class="tag">15.2:1</span></div><div class="meta2"><div class="name">text-1</div><div class="hex">#E8E4D8</div><div class="use">正文（暖白，不发蓝）</div></div></div>
+        <div class="sw"><div class="chip" style="background:#B7B2A4"><span class="tag">9.1:1</span></div><div class="meta2"><div class="name">text-2</div><div class="hex">#B7B2A4</div><div class="use">次要文字</div></div></div>
+        <div class="sw"><div class="chip" style="background:#8B867A"><span class="tag">5.3:1</span></div><div class="meta2"><div class="name">text-3</div><div class="hex">#8B867A</div><div class="use">辅助信息</div></div></div>
+        <div class="sw"><div class="chip" style="background:#7BA0D4"><span class="tag">7.2:1</span></div><div class="meta2"><div class="name">indigo</div><div class="hex">#7BA0D4</div><div class="use">章节名 / 可交互</div></div></div>
+        <div class="sw"><div class="chip" style="background:#D2704F"><span class="tag">5.7:1</span></div><div class="meta2"><div class="name">seal</div><div class="hex">#D2704F</div><div class="use">丝带 / 印章</div></div></div>
+      </div>
+
+      <h3 class="block">配比与规则</h3>
+      <div class="ratio-bar">
+        <span style="flex:88; background:#FBF5E7; color:#58503F">纸黄 88%</span>
+        <span style="flex:9; background:#3E5C97; color:#FBF5E7">靛蓝 9%</span>
+        <span style="flex:3; background:#B44326; color:#FBF5E7">3%</span>
+      </div>
+      <p class="small">靛蓝只出现在「章节名、进度、可点击、选中」四处；朱砂只出现在「丝带、印章、当前页」。封面是唯一的例外——整块靛蓝，因为书本来就该有颜色。</p>
+
+      <div class="grid2" style="margin-top:22px">
+        <div class="card">
+          <h4>语义</h4>
+          <p style="line-height:1.9">靛蓝＝可交互 / 进度 / 章节<br />朱砂＝书签 / 印章 / 当前位置<br />ink-3＝元信息，不承载关键操作<br />错误态复用朱砂，不新增红色</p>
+        </div>
+        <div class="card">
+          <h4>禁止</h4>
+          <p style="line-height:1.9">不用纯黑 #000 与纯白 #FFF<br />不用饱和色铺大面积背景（封面除外）<br />不用颜色单独表达状态，须配图标或文字<br />不在正文上叠加半透明遮罩</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 05 字体 ===== -->
+    <section id="type">
+      <div class="sec-head">
+        <div class="sec-num">05</div>
+        <h2>字体规范</h2>
+        <div class="sec-en">Typography</div>
+      </div>
+      <p class="sec-sub">易笺的字体策略值得学：标题与正文分开、允许读者带自己的字。我们只改一件事——全部本地化，不请求任何 CDN。</p>
+
+      <h3 class="block">字体家族</h3>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th style="width:20%">用途</th><th style="width:38%">字体栈</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><strong>界面</strong></td><td class="num">-apple-system, "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei"</td><td>跟随系统，零加载成本</td></tr>
+            <tr><td><strong>正文 · 楷（默认）</strong></td><td class="num">"QingYue Kai" → "LXGW WenKai" → "Kaiti SC"</td><td>霞鹜文楷子集 1.9 MB，OFL，懒加载</td></tr>
+            <tr><td><strong>正文 · 宋</strong></td><td class="num">"QingYue Serif" → "Songti SC"</td><td>思源宋体子集 1.6 MB，适合长篇</td></tr>
+            <tr><td><strong>正文 · 黑</strong></td><td class="num">"QingYue Sans" → "PingFang SC"</td><td>思源黑体子集 1.1 MB，适合看文档</td></tr>
+            <tr><td><strong>标题（章节名）</strong></td><td class="num">同正文族 · 600 · 1.1em 字距</td><td>标题与正文可分别设置，沿用易笺的做法</td></tr>
+            <tr><td><strong>自备字体</strong></td><td class="num">TTF / OTF / WOFF2 → FontFace</td><td>拖入即装，存 IndexedDB，最多 12 个，可删除</td></tr>
+            <tr><td><strong>数字 / 等宽</strong></td><td class="num">ui-monospace, "SF Mono"</td><td>页码、字数、编码等技术信息</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="block">界面字阶</h3>
+      <div style="border-top:1px solid var(--line); margin-top:6px">
+        <div class="type-row"><div class="lab">Display</div><div class="kai" style="font-size:34px; line-height:1.2">轻阅 · 开卷即读</div><div class="spec">34 / 40 · 600</div></div>
+        <div class="type-row"><div class="lab">H1</div><div class="kai" style="font-size:26px">书架</div><div class="spec">26 / 34 · 600</div></div>
+        <div class="type-row"><div class="lab">H2</div><div class="kai" style="font-size:20px">继续阅读</div><div class="spec">20 / 28 · 600</div></div>
+        <div class="type-row"><div class="lab">Body</div><div style="font-size:15px">导入一本书，或把它拖到这里。所有内容只保存在本机。</div><div class="spec">15 / 24 · 400</div></div>
+        <div class="type-row"><div class="lab">Small</div><div style="font-size:13px; color:var(--ink-2)">共 24 本 · 占用 128 MB</div><div class="spec">13 / 20 · 400</div></div>
+        <div class="type-row"><div class="lab">Micro</div><div style="font-size:11px; letter-spacing:.08em; color:var(--ink-3)">本机 · 单机模式</div><div class="spec">11 / 16 · 500 · +8%</div></div>
+      </div>
+
+      <h3 class="block">正文排版样例（楷体 18 / 1.95）</h3>
+      <div class="reader-sample">
+        <div class="bd">
+          <h5>桃花源记</h5>
+          <p>晋太元中，武陵人捕鱼为业。缘溪行，忘路之远近。忽逢桃花林，夹岸数百步，中无杂树，芳草鲜美，落英缤纷。渔人甚异之，复前行，欲穷其林。</p>
+          <p>林尽水源，便得一山，山有小口，仿佛若有光。便舍船，从口入。初极狭，才通人。复行数十步，豁然开朗。</p>
+        </div>
+      </div>
+      <p class="small" style="margin-top:12px">楷体负责「味道」，宋体负责「长读」。默认给楷体，是因为易笺的读者已经用脚投票：纯文本最像书的那一刻，是楷书。</p>
+    </section>
+
+    <!-- ===== 06 排版 ===== -->
+    <section id="layout">
+      <div class="sec-head">
+        <div class="sec-num">06</div>
+        <h2>排版规则</h2>
+        <div class="sec-en">Reading Rhythm</div>
+      </div>
+      <p class="sec-sub">参数不是设置项，是手感。默认值必须一打开就舒服；可调项只是给不同眼睛留余地。</p>
+
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th style="width:20%">参数</th><th style="width:18%">默认</th><th style="width:26%">可选范围</th><th>理由</th></tr></thead>
+          <tbody>
+            <tr><td><strong>字号</strong></td><td class="num">19 px</td><td class="num">16 – 30，步进 1</td><td>手机上约 14 字/行宽，不挤</td></tr>
+            <tr><td><strong>行高</strong></td><td class="num">1.95</td><td class="num">1.5 / 1.7 / 1.85 / 1.95 / 2.2</td><td>楷体笔画外扩，比宋体更需要行距</td></tr>
+            <tr><td><strong>行长</strong></td><td class="num">32 字</td><td class="num">28 / 32 / 36</td><td>超过 36 字，眼球回扫开始丢行</td></tr>
+            <tr><td><strong>段距</strong></td><td class="num">0.45 em</td><td class="num">0 / .3 / .45 / .9 / 1.2</td><td>配合缩进，不靠空行分段</td></tr>
+            <tr><td><strong>首行缩进</strong></td><td class="num">2 em</td><td class="num">0 / 2 em</td><td>关闭时自动把段距提到 1.2em</td></tr>
+            <tr><td><strong>页边距</strong></td><td class="num">32 px</td><td class="num">窄 20 / 中 32 / 宽 56</td><td>桌面 ×1.8；超宽屏只加留白不加行长</td></tr>
+            <tr><td><strong>对齐</strong></td><td class="num">左对齐</td><td class="num">左 / 两端</td><td>中文两端对齐易出现字距撕裂，默认关闭</td></tr>
+            <tr><td><strong>分页</strong></td><td class="num">按章分页</td><td class="num">按章 / 按屏 / 无限滚动</td><td>延续易笺「按章节分页」的默认，符合章节体阅读</td></tr>
+            <tr><td><strong>章节标题</strong></td><td class="num">居中 · 靛蓝</td><td class="num">居中 / 左</td><td>字号 1.1×，上留白 2em，下留白 1.5em</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="block">规则细节</h3>
+      <div class="grid2">
+        <div class="card"><h4>行长与留白</h4><p>屏宽超过 900px 时不再放大行长，只增加左右留白并居中。宁可留白，不要长行——这是易笺被用户提得最多的意见。</p></div>
+        <div class="card"><h4>空行归一</h4><p>连续空行最多折算为 1 个段距；段首全角空格移除后由缩进接管，避免双重缩进。</p></div>
+        <div class="card"><h4>标点</h4><p>全角标点；行首禁则（，。、；：？！）」』】等不出现在行首）；省略号与破折号不折行。</p></div>
+        <div class="card"><h4>章节识别</h4><p>「第 N 章 / 回 / 卷 / 节」「序 / 楔子 / 番外」「Chapter N」；支持行首 <span class="mono">[::]</span> 手动标记，以及「从本书学习标题规律」。</p></div>
+        <div class="card"><h4>脚注排版</h4><p>正文 ①–㊿ 上标为靛蓝可点；注释行字号 0.86×、缩进 0、左侧 2px 竖线，与正文视觉分层。</p></div>
+        <div class="card"><h4>中西混排</h4><p>中文与拉丁、数字之间自动插入 1/4 空隙；数字用等宽数字，翻页时不跳动。</p></div>
+      </div>
+    </section>
+
+    <!-- ===== 07 日夜 ===== -->
+    <section id="theme">
+      <div class="sec-head">
+        <div class="sec-num">07</div>
+        <h2>日间 / 夜间模式</h2>
+        <div class="sec-en">Day &amp; Night</div>
+      </div>
+      <p class="sec-sub">三档：纸黄（日）、黛蓝（夜）、宣纸（护眼）。默认跟随系统；手动选择后以手动为准并永久记忆。易笺还允许改主题色，我们保留「换主题色」但给出三组预设，避免读者调出低对比度组合。</p>
+
+      <div class="grid3">
+        <div class="card" style="background:#F7EFDC; border-color:#DFCFAC">
+          <h4 style="color:#26221A">纸黄 · 日间</h4>
+          <p style="color:#58503F">#F7EFDC / #26221A<br />白天、室内、强光</p>
+        </div>
+        <div class="card" style="background:#0B0E15; border-color:#2C3449">
+          <h4 style="color:#E8E4D8">黛蓝 · 夜间</h4>
+          <p style="color:#B7B2A4">#0B0E15 / #E8E4D8<br />暗光、睡前；底色带蓝，不纯黑</p>
+        </div>
+        <div class="card" style="background:#F2E7CF; border-color:#DCCDA8">
+          <h4 style="color:#3A3128">宣纸 · 护眼</h4>
+          <p style="color:#6B5C46">#F2E7CF / #3A3128<br />长时间阅读，压低蓝光</p>
+        </div>
+      </div>
+
+      <div class="tbl-wrap" style="margin-top:22px">
+        <table>
+          <thead><tr><th style="width:26%">行为</th><th>规则</th></tr></thead>
+          <tbody>
+            <tr><td><strong>首次启动</strong></td><td>读系统主题并跟随变化，除非用户手动改过</td></tr>
+            <tr><td><strong>手动切换</strong></td><td>写入本地偏好，停止跟随；设置页提供「跟随系统」复位</td></tr>
+            <tr><td><strong>主题色</strong></td><td>预设三组：靛蓝（默认）/ 松烟 / 赭石；自定义色必须通过对比度校验才能保存</td></tr>
+            <tr><td><strong>切换动效</strong></td><td>颜色 280ms ease 过渡；不做整屏翻转；保留阅读位置与滚动锚点</td></tr>
+            <tr><td><strong>阅读器独立</strong></td><td>阅读器可单独设定主题，与界面不同（例如界面日间、正文夜间）</td></tr>
+            <tr><td><strong>封面</strong></td><td>夜间封面亮度降至 88%，不反色——反色会让书看起来「坏掉了」</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout" style="margin-top:22px"><b>夜间的对比度比日间低一档（15:1 vs 13.8:1 的观感）：</b>暗光下过高对比会产生光晕，这也是易笺夜间用暖白而非纯白的原因。</div>
+    </section>
+
+    <!-- ===== 08 IA ===== -->
+    <section id="ia">
+      <div class="sec-head">
+        <div class="sec-num">08</div>
+        <h2>界面结构</h2>
+        <div class="sec-en">Architecture</div>
+      </div>
+      <p class="sec-sub">易笺的结构极其克制：书架 → 扉页 → 正文，左侧章节栏，底部页码。轻阅在这条主线上只加了三个抽屉：目录、书签、排版。</p>
+
+      <div class="ia">
+        <div>
+          <div class="root">/ shelf</div>
+          <h5>书架</h5>
+          <ul>
+            <li>顶部虚线导入区（拖拽 / 点击 / 批量）</li>
+            <li>在读（按最近阅读）</li>
+            <li>未读（按书名）</li>
+            <li>读完（按完成时间）</li>
+            <li>搜索：书名 / 作者 / 正文</li>
+            <li>书籍操作：重命名、改封面色、重处理、删除</li>
+            <li>存储用量与「本机模式」状态</li>
+          </ul>
+        </div>
+        <div>
+          <div class="root">/ read/:id</div>
+          <h5>阅读</h5>
+          <ul>
+            <li>扉页（书名 + 作者 + 藏书章 + 简介）</li>
+            <li>正文（按章分页 / 滚动）</li>
+            <li>左侧章节栏（简化名，hover 全名）</li>
+            <li>底部页码条 + 剩余时间</li>
+            <li>抽屉：目录 / 书签与摘录 / 排版</li>
+            <li>脚注浮层、选中菜单</li>
+            <li>快捷键：←→ PgUp/PgDn Esc</li>
+          </ul>
+        </div>
+        <div>
+          <div class="root">/ settings</div>
+          <h5>设置</h5>
+          <ul>
+            <li>外观：主题、主题色、界面字号</li>
+            <li>阅读：字体、字号、行高、行宽、段距、缩进、对齐</li>
+            <li>识别：章节规则、<span class="mono">[::]</span> 说明、清洗规则</li>
+            <li>字体：内置三套 + 导入自备字体</li>
+            <li>数据：缓存、导出备份、清空</li>
+            <li>同步（可选）：未配置即「单机模式」</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3 class="block">响应式断点</h3>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th style="width:18%">断点</th><th style="width:22%">书架</th><th style="width:28%">阅读器</th><th>导航</th></tr></thead>
+          <tbody>
+            <tr><td class="num">≥ 1280</td><td>网格 5–6 列</td><td>左侧章节栏 154px + 居中正文</td><td>无侧边栏，图标浮于右下</td></tr>
+            <tr><td class="num">960–1279</td><td>网格 4 列</td><td>章节栏 132px</td><td>同上</td></tr>
+            <tr><td class="num">720–959</td><td>网格 3 列</td><td>章节栏折叠为抽屉</td><td>顶部图标栏</td></tr>
+            <tr><td class="num">&lt; 720</td><td>网格 2–3 列</td><td>全屏正文 + 底部页码</td><td>底部 Tab + 底部抽屉</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid2" style="margin-top:22px">
+        <div class="card"><h4>控件出现与退场</h4><p>点击正文中部 → 顶栏与页码淡入 180ms；再次点击或开始滚动 → 240ms 淡出。滚动时立即隐藏，不跟随。</p></div>
+        <div class="card"><h4>点击分区（移动端）</h4><p>左 30% 上一页、右 30% 下一页、中 40% 呼出控件；长按选中文字出摘录菜单。</p></div>
+      </div>
+    </section>
+
+    <!-- ===== 09 视觉稿 ===== -->
+    <section id="ui">
+      <div class="sec-head">
+        <div class="sec-num">09</div>
+        <h2>关键页面视觉稿</h2>
+        <div class="sec-en">Screens</div>
+      </div>
+      <p class="sec-sub">纯 HTML/CSS 渲染，可直接对照实现。格纹窗框、靛蓝封面、朱红丝带、扉页藏书章、左侧章节栏、底部页码条——易笺的六个视觉签名，全部落到稿子里。</p>
+
+      <h3 class="block">书架 · 桌面（日间）</h3>
+      <div class="stage">
+        <div class="device gingham m-day">
+          <div class="win-bar"><i></i><i></i><i></i><span class="t">轻阅 · 书架</span><span class="url">localhost · 本机模式</span></div>
+          <div class="shelf">
+            <div class="drop">
+              <div class="ic">↓</div>
+              <div class="t">txt</div>
+              <div class="s">拖入文件即可阅读 · 也可一次拖入多本 · 全部留在本机</div>
+            </div>
+            <div class="shelf-grid">
+              <div class="bk">
+                <div class="cover-img"><div class="cv-t">桃花源记</div><div class="cv-a">陶渊明</div><div class="prog"><i style="width:100%"></i></div></div>
+                <div class="bmeta"><span class="pill done">✓ 读完</span><span class="dots">···</span></div>
+                <div class="nm">桃花源记</div>
+              </div>
+              <div class="bk">
+                <div class="cover-img"><div class="cv-t">世说新语</div><div class="cv-a">刘义庆</div><div class="prog"><i style="width:34%"></i></div></div>
+                <div class="bmeta"><span class="pct">34%</span><span class="dots">···</span></div>
+                <div class="nm">世说新语</div>
+              </div>
+              <div class="bk">
+                <div class="cover-img"><div class="flag"></div><div class="cv-t">聊斋志异</div><div class="cv-a">蒲松龄</div><div class="prog"><i style="width:62%"></i></div></div>
+                <div class="bmeta"><span class="pct">62%</span><span class="dots">···</span></div>
+                <div class="nm">聊斋志异 · 卷三</div>
+              </div>
+              <div class="bk">
+                <div class="cover-img"><div class="cv-t">徐霞客游记</div><div class="cv-a">徐弘祖</div><div class="prog"><i style="width:8%"></i></div></div>
+                <div class="bmeta"><span class="pct">8%</span><span class="dots">···</span></div>
+                <div class="nm">徐霞客游记</div>
+              </div>
+              <div class="bk">
+                <div class="cover-img"><div class="flag"></div><div class="cv-t">东京梦华录</div><div class="cv-a">孟元老</div><div class="prog"><i style="width:0%"></i></div></div>
+                <div class="bmeta"><span class="pill">未读</span><span class="dots">···</span></div>
+                <div class="nm">东京梦华录</div>
+              </div>
+            </div>
+            <div class="shelf-foot">
+              <span>共 24 本 · 128.4 MB · 全部保存在本机</span>
+              <span class="r"><span>☀</span><span>⚙</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="block">书架 · 手机（日间）</h3>
+      <div class="stage tall">
+        <div class="phone m-day">
+          <div class="scr">
+            <div class="notch"><i></i></div>
+            <div class="ph-top"><span class="big">书架</span><span class="r">⌕</span><span class="r">＋</span></div>
+            <div class="ph-body">
+              <div class="drop" style="margin:0 0 14px; padding:12px 10px">
+                <div class="ic" style="width:30px;height:30px;font-size:13px">↓</div>
+                <div class="t" style="font-size:13px">txt</div>
+                <div class="s">拖入或点击导入</div>
+              </div>
+              <div class="shelf-grid" style="grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 10px; padding:0">
+                <div class="bk">
+                  <div class="cover-img"><div class="cv-t" style="font-size:10px">桃花源记</div><div class="prog"><i style="width:100%"></i></div></div>
+                  <div class="bmeta"><span class="pct" style="font-size:8px">100%</span></div>
+                </div>
+                <div class="bk">
+                  <div class="cover-img"><div class="cv-t" style="font-size:10px">世说新语</div><div class="prog"><i style="width:34%"></i></div></div>
+                  <div class="bmeta"><span class="pct" style="font-size:8px">34%</span></div>
+                </div>
+                <div class="bk">
+                  <div class="cover-img"><div class="flag"></div><div class="cv-t" style="font-size:10px">聊斋志异</div><div class="prog"><i style="width:62%"></i></div></div>
+                  <div class="bmeta"><span class="pct" style="font-size:8px">62%</span></div>
+                </div>
+                <div class="bk">
+                  <div class="cover-img"><div class="cv-t" style="font-size:10px">徐霞客游记</div><div class="prog"><i style="width:8%"></i></div></div>
+                  <div class="bmeta"><span class="pct" style="font-size:8px">8%</span></div>
+                </div>
+                <div class="bk">
+                  <div class="cover-img"><div class="cv-t" style="font-size:10px">东京梦华录</div><div class="prog"><i style="width:0%"></i></div></div>
+                  <div class="bmeta"><span class="pill" style="font-size:7.5px">未读</span></div>
+                </div>
+                <div class="bk">
+                  <div class="cover-img" style="background:var(--paper-1); border:1px dashed var(--indigo-line); box-shadow:none; display:flex; align-items:center; justify-content:center; color:var(--indigo); font-size:16px">＋</div>
+                  <div class="bmeta"><span class="pct" style="font-size:8px">导入</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="tabbar">
+              <div class="on"><span class="g"></span>书架</div>
+              <div><span class="g"></span>在读</div>
+              <div><span class="g"></span>书签</div>
+              <div><span class="g"></span>设置</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="block">阅读 · 桌面（日间，按章分页）</h3>
+      <div class="stage">
+        <div class="device gingham m-day">
+          <div class="reader-dev">
+            <div class="r-top">
+              <span>←</span><span class="ttl">桃花源记 · 陶渊明</span>
+              <span class="ico"><span>目录</span><span>书签</span><span>排版</span><span>☀</span></span>
+            </div>
+            <div class="r-main">
+              <aside class="toc-rail">
+                <div class="row"><i></i></div>
+                <div class="row"><i></i></div>
+                <div class="row cur"><i></i><span>桃花源记</span></div>
+                <div class="row"><i></i></div>
+                <div class="row"><i></i></div>
+                <div class="row"><i></i></div>
+                <div class="row"><i></i></div>
+                <div class="row"><i></i></div>
+                <div class="meta">桃花源记<br />阅读进度 38.2%</div>
+              </aside>
+              <div class="r-page">
+                <div class="r-text">
+                  <h6>桃花源记<small>陶渊明 · 卷一</small></h6>
+                  <p>晋太元中，武陵人捕鱼为业。缘溪行，忘路之远近。忽逢桃花林，夹岸数百步，中无杂树，芳草鲜美，落英缤纷。渔人甚异之，复前行，欲穷其林。</p>
+                  <p>林尽水源，便得一山，山有小口，仿佛若有光。便舍船，从口入。初极狭，才通人。复行数十步，豁然开朗。土地平旷，屋舍俨然，有良田美池桑竹之属。</p>
+                  <p>阡陌交通，鸡犬相闻。其中往来种作，男女衣着，悉如外人。黄发垂髫，并怡然自乐。</p>
+                </div>
+              </div>
+            </div>
+            <div class="r-pager">
+              <span>38%</span>
+              <div class="pager"><span>‹</span><span>1</span><span>2</span><span class="on">3</span><span>…</span><span>12</span><span>›</span></div>
+              <span class="right"><span>◐</span><span>⚙</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="small" style="margin-top:10px">左侧竖线是章节栏的「收起态」：只有当前章显名，其余只留一道短线——这是易笺最克制也最聪明的设计，不抢正文一个像素。</p>
+
+      <h3 class="block">阅读 · 夜间扉页（藏书章）</h3>
+      <div class="stage">
+        <div class="device gingham m-night">
+          <div class="reader-dev">
+            <div class="r-top" style="border-color:var(--line-soft)">
+              <span>←</span><span class="ttl">桃花源记 · 陶渊明</span>
+              <span class="ico"><span>目录</span><span>排版</span><span>☾</span></span>
+            </div>
+            <div class="titlepage">
+              <div class="t">桃 花 源 记</div>
+              <div class="a">陶 渊 明</div>
+              <div class="seal-stamp" aria-label="藏书章"><span>轻</span><span>阅</span><span>藏</span><span>书</span></div>
+              <div class="intro">
+                <h6>作 品 简 介</h6>
+                <p>《桃花源记》是陶渊明《桃花源诗》的序言，借武陵渔人误入桃源的故事，写一个没有战乱、没有赋税的所在。文末「后遂无问津者」，把理想国重新关回山中。</p>
+              </div>
+            </div>
+            <div class="r-pager" style="border-color:var(--line-soft)">
+              <span>0%</span>
+              <div class="pager"><span class="on">1</span><span>2</span><span>3</span><span>…</span><span>12</span><span>›</span></div>
+              <span class="right"><span>◑</span><span>⚙</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="block">阅读 · 手机（夜间，排版抽屉）</h3>
+      <div class="stage tall">
+        <div class="phone m-night">
+          <div class="scr">
+            <div class="notch"><i></i></div>
+            <div class="ph-top">
+              <span style="color:var(--ink-3)">←</span>
+              <span class="kai" style="font-size:11px; color:var(--ink-2)">桃花源记</span>
+              <span class="r">目录</span>
+            </div>
+            <div class="ph-body" style="padding:8px 18px 0">
+              <div class="r-text" style="font-size:12.5px; line-height:2.0; max-width:none">
+                <h6 style="font-size:14px; margin-bottom:1em">桃花源记<small>陶渊明</small></h6>
+                <p>晋太元中，武陵人捕鱼为业。缘溪行，忘路之远近。忽逢桃花林，夹岸数百步，中无杂树，芳草鲜美，落英缤纷。渔人甚异之。</p>
+                <p>林尽水源，便得一山，山有小口，仿佛若有光。便舍船，从口入。初极狭，才通人。复行数十步，豁然开朗。</p>
+              </div>
+            </div>
+            <div class="sheet">
+              <div class="grab"></div>
+              <div class="hd">排版</div>
+              <div class="opt-row"><span class="k">字体</span>
+                <span class="chips"><span class="on">楷</span><span>宋</span><span>黑</span></span>
+                <span style="margin-left:auto; font-size:8.5px; color:var(--indigo)">＋自备</span>
+              </div>
+              <div class="opt-row"><span class="k">字号</span>
+                <span style="font-size:9px; color:var(--ink-3)">A</span>
+                <span class="slider"><i></i><b></b></span>
+                <span style="font-size:12px; color:var(--ink-3)">A</span>
+                <span class="mono" style="font-size:9px; color:var(--ink-3)">19</span>
+              </div>
+              <div class="opt-row"><span class="k">行距</span>
+                <span class="chips"><span>1.5</span><span>1.7</span><span class="on">1.95</span><span>2.2</span></span>
+              </div>
+              <div class="opt-row"><span class="k">边距</span>
+                <span class="chips"><span>窄</span><span class="on">中</span><span>宽</span></span>
+                <span style="margin-left:auto; font-size:9px; color:var(--ink-3)">对齐</span>
+                <span class="chips"><span class="on">左</span><span>两端</span></span>
+              </div>
+              <div class="opt-row" style="margin-bottom:2px"><span class="k">主题</span>
+                <span class="themes"><i style="background:#F7EFDC"></i><i style="background:#F2E7CF"></i><i class="on" style="background:#0B0E15"></i></span>
+                <span style="margin-left:auto; font-size:9px; color:var(--indigo)">跟随系统</span>
+              </div>
+              <div class="opt-row" style="margin-bottom:0"><span class="k">分页</span>
+                <span class="chips"><span class="on">按章</span><span>按屏</span><span>滚动</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="block">设置 · 桌面（日间，浮层）</h3>
+      <div class="stage">
+        <div class="device gingham m-day">
+          <div class="win-bar"><i></i><i></i><i></i><span class="t">轻阅 · 设置</span><span class="url">全部设置保存在本机</span></div>
+          <div class="set-card">
+            <div class="hd">阅读与排版</div>
+            <div class="set-grp">
+              <div><div class="k">行高</div><div class="d">1.5 – 2.2</div></div>
+              <div class="v"><span class="slider" style="width:118px"><i style="width:62%"></i><b style="left:62%"></b></span><span class="mono">1.95em</span></div>
+            </div>
+            <div class="set-grp">
+              <div><div class="k">字号</div><div class="d">16 – 30 px</div></div>
+              <div class="v"><span class="slider" style="width:118px"><i style="width:46%"></i><b style="left:46%"></b></span><span class="mono">19</span></div>
+            </div>
+            <div class="set-grp">
+              <div><div class="k">正文字体</div><div class="d">标题字体可单独设置</div></div>
+              <div class="v"><span class="chips"><span class="on">楷</span><span>宋</span><span>黑</span><span>＋</span></span></div>
+            </div>
+            <div class="set-grp">
+              <div><div class="k">日间主题色</div><div class="d">封面颜色随之变化</div></div>
+              <div class="v"><span class="colorbar" style="background:#3E5C97"></span><span class="mono">#3E5C97</span></div>
+            </div>
+            <div class="set-grp">
+              <div><div class="k">夜间主题色</div><div class="d">暗光下自动提亮</div></div>
+              <div class="v"><span class="colorbar" style="background:#7BA0D4"></span><span class="mono">#7BA0D4</span></div>
+            </div>
+            <div class="set-grp">
+              <div><div class="k">分页方式</div><div class="d">无章节时自动按屏分页</div></div>
+              <div class="v"><span class="chips"><span class="on">按章</span><span>按屏</span><span>滚动</span></span></div>
+            </div>
+            <div class="set-grp">
+              <div><div class="k">清洗广告</div><div class="d">规则可预览，导入后报告命中条数</div></div>
+              <div class="v"><span class="chips"><span class="on">开</span><span>关</span></span><span style="color:var(--indigo)">规则</span></div>
+            </div>
+            <div class="set-grp">
+              <div><div class="k">扉页与藏书章</div><div class="d">每本书的第一屏</div></div>
+              <div class="v"><span class="chips"><span class="on">开</span><span>关</span></span></div>
+            </div>
+            <div class="set-grp" style="border-top:1px solid var(--line-soft); padding-top:14px">
+              <span class="ghost-btn">重置为默认</span>
+              <span style="margin-left:auto; font-size:9px; color:var(--ink-3)">本机 · 单机模式</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="block">两种状态：单机模式 / 同步不可用</h3>
+      <div class="grid2">
+        <div class="card">
+          <h4>未配置同步</h4>
+          <p style="margin-bottom:10px">一个空状态，说清「同步可选，不配置不影响任何功能」。</p>
+          <div style="border:1px dashed var(--indigo-line); border-radius:6px; padding:14px; text-align:center; background:var(--paper-0)">
+            <div class="empty">
+              <div class="il"></div>
+              <div class="t">当前为单机模式</div>
+              <div class="s">书库与进度只保存在这台设备</div>
+            </div>
+            <span class="ui-btn gho" style="margin-top:4px">配置同步（可选）</span>
+          </div>
+        </div>
+        <div class="card">
+          <h4>服务端不可用</h4>
+          <p style="margin-bottom:10px">不弹错误、不阻塞、不降功能；只在设置页留一行状态，恢复后自动重试。</p>
+          <div style="display:flex; align-items:center; gap:8px; font-size:12px; padding:11px 12px; border:1px solid var(--line); border-radius:6px; background:var(--paper-0)">
+            <span style="width:5px;height:5px;border-radius:50%;background:var(--ink-3);display:inline-block"></span>
+            <span style="color:var(--ink-2)">同步暂不可用，已切换为本地模式</span>
+            <span style="margin-left:auto; font-size:10px; color:var(--indigo)">重试</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 10 组件 ===== -->
+    <section id="comp">
+      <div class="sec-head">
+        <div class="sec-num">10</div>
+        <h2>基础组件</h2>
+        <div class="sec-en">Components</div>
+      </div>
+      <p class="sec-sub">组件少而硬。没有阴影堆叠、没有悬浮按钮、没有未读红点——一切以「不打断阅读」为准。</p>
+
+      <div class="comps">
+        <div class="comp">
+          <span class="ui-btn pri">导入书籍</span>
+          <div class="cap">Primary</div>
+          <p class="small" style="margin-top:6px">靛蓝实底。全屏只允许一个。</p>
+        </div>
+        <div class="comp">
+          <span class="ui-btn gho">取消</span>
+          <div class="cap">Ghost</div>
+          <p class="small" style="margin-top:6px">1px 描边，无底色。</p>
+        </div>
+        <div class="comp">
+          <span class="ui-btn dan">删除这本书</span>
+          <div class="cap">Destructive</div>
+          <p class="small" style="margin-top:6px">朱砂描边，不用实底红。</p>
+        </div>
+        <div class="comp">
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+            <span class="chips"><span class="on">楷</span><span>宋</span><span>黑</span></span>
+            <span class="bmeta" style="margin:0"><span class="pill">在读</span></span>
+          </div>
+          <div class="cap">Segmented · Pill</div>
+          <p class="small" style="margin-top:6px">分段控件 2–5 项；Pill 表示阅读状态。</p>
+        </div>
+        <div class="comp">
+          <div style="font-family:ui-monospace;font-size:10px;color:var(--ink-3);margin-bottom:6px">建立索引 42%</div>
+          <div style="height:3px;background:var(--paper-2);border-radius:2px;overflow:hidden"><i style="display:block;height:100%;width:42%;background:var(--indigo)"></i></div>
+          <div class="cap">Progress</div>
+          <p class="small" style="margin-top:6px">3px 细条。索引进度与阅读进度共用。</p>
+        </div>
+        <div class="comp">
+          <div style="font-size:11px; padding:8px 10px; border-left:3px solid var(--seal); background:var(--paper-0); color:var(--ink-2)">已添加书签 · 卷一</div>
+          <div class="cap">Toast</div>
+          <p class="small" style="margin-top:6px">底部 24px 上浮，2.4s 消失，不遮正文。</p>
+        </div>
+        <div class="comp">
+          <div style="font-family:'Kaiti SC',serif; font-size:12px; line-height:1.9; color:var(--ink-2)">北冥<span style="color:var(--indigo);font-size:9px;vertical-align:super">①</span>有鱼，其名为鲲<span style="color:var(--indigo);font-size:9px;vertical-align:super">②</span>。</div>
+          <div class="cap">Footnote</div>
+          <p class="small" style="margin-top:6px">上标靛蓝可点，浮层显示注释，脚注汇总到书末。</p>
+        </div>
+      </div>
+
+      <h3 class="block">空态</h3>
+      <div class="stage">
+        <div class="stack" style="flex-wrap:nowrap">
+          <div style="flex:1; max-width:280px; padding:22px 16px; border:1px dashed var(--line); border-radius:6px">
+            <div class="empty"><div class="il"></div><div class="t">书架还是空的</div><div class="s">拖入 .txt 文件，或点击选择</div><div style="margin-top:12px"><span class="ui-btn pri" style="font-size:10px">选择文件</span></div></div>
+          </div>
+          <div style="flex:1; max-width:280px; padding:22px 16px; border:1px dashed var(--line); border-radius:6px">
+            <div class="empty"><div class="il" style="border-style:solid; border-color:var(--line); background:var(--paper-2)"></div><div class="t">还没有书签</div><div class="s">阅读时按 B 或点书签图标</div></div>
+          </div>
+          <div style="flex:1; max-width:280px; padding:22px 16px; border:1px dashed var(--line); border-radius:6px">
+            <div class="empty"><div class="il" style="border-color:var(--indigo-line); display:flex; align-items:center; justify-content:center; color:var(--indigo); font-size:15px">⌕</div><div class="t">没有匹配的书</div><div class="s">试试书名、作者，或正文关键词</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 11 动效 ===== -->
+    <section id="motion">
+      <div class="sec-head">
+        <div class="sec-num">11</div>
+        <h2>动效与可达性</h2>
+        <div class="sec-en">Motion &amp; A11y</div>
+      </div>
+      <p class="sec-sub">动效只解释「什么变了」，不表演。所有阅读器动效均可被 prefers-reduced-motion 一键关闭。</p>
+
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th style="width:24%">场景</th><th style="width:16%">时长</th><th style="width:24%">曲线</th><th>描述</th></tr></thead>
+          <tbody>
+            <tr><td><strong>控件淡入</strong></td><td class="num">180ms</td><td class="num">cubic(.2,.7,.3,1)</td><td>透明度 0→1 + 位移 4px</td></tr>
+            <tr><td><strong>控件退场</strong></td><td class="num">240ms</td><td class="num">ease-out</td><td>先隐后收，不拖影</td></tr>
+            <tr><td><strong>抽屉上浮</strong></td><td class="num">240ms</td><td class="num">cubic(.22,1,.36,1)</td><td>translateY(100%)→0</td></tr>
+            <tr><td><strong>主题切换</strong></td><td class="num">280ms</td><td class="num">ease</td><td>仅颜色过渡，不做遮罩扩散</td></tr>
+            <tr><td><strong>翻页</strong></td><td class="num">180ms</td><td class="num">ease-out</td><td>横向 12% 位移 + 淡入，不做仿真翻书</td></tr>
+            <tr><td><strong>目录跳转</strong></td><td class="num">0ms</td><td class="num">—</td><td>立即定位，不做平滑滚动（长文会卡）</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="block">键盘（沿用易笺，可开关）</h3>
+      <div class="grid3">
+        <div class="card"><h4>翻页</h4><p>← / → 或 PgUp / PgDn<br />Space 下一页 · Shift+Space 上一页</p></div>
+        <div class="card"><h4>跳转</h4><p>PgUp / PgDn 跳章（易笺同款）<br />T 目录 · B 书签 · G 百分比</p></div>
+        <div class="card"><h4>其它</h4><p>Esc 回书架<br />Alt/Option + 点封面：重建索引<br />F 全屏 · +/− 字号</p></div>
+      </div>
+
+      <h3 class="block">可达性清单</h3>
+      <div class="grid2">
+        <div class="card"><h4>必须满足</h4><p style="line-height:1.9">正文对比度 ≥ 7:1（AAA）<br />辅助文字 ≥ 4.5:1<br />触控目标 ≥ 44 × 44px<br />图标均有 aria-label<br />焦点态 2px 靛蓝外框，不写 outline:none</p></div>
+        <div class="card"><h4>阅读器专项</h4><p style="line-height:1.9">翻页后 aria-live 播报「第 3 章，38%」<br />字号放大 200% 不出现横向滚动<br />系统字体缩放（rem 基准）<br />章节可被屏幕阅读器按标题导航</p></div>
+      </div>
+    </section>
+
+    <!-- ===== 12 下一步 ===== -->
+    <section id="next">
+      <div class="sec-head">
+        <div class="sec-num">12</div>
+        <h2>交付与下一步</h2>
+        <div class="sec-en">Next</div>
+      </div>
+      <p class="sec-sub">方案确认后进入实现。技术选型、数据模型、流式解析方案见同目录 <span class="mono">tech-design.md</span>。</p>
+
+      <div class="grid2">
+        <div class="card">
+          <h4>v2.0 已定</h4>
+          <p style="line-height:1.95">更名「轻阅」· 纸黄/靛蓝/朱砂配色 · 格纹窗框 · 楷体优先 · 扉页与藏书章 · 统一封面配丝带 · 左侧章节栏 · 底部页码条 · 11 个设计令牌 · 9 项排版默认值 · 三端断点 · 六张页面稿 · 组件与空态 · 动效与可达性</p>
+        </div>
+        <div class="card">
+          <h4>实现顺序</h4>
+          <p style="line-height:1.95">M1 骨架与令牌 → M2 流式解析与索引 → M3 书架与导入（含扉页/封面生成）→ M4 阅读器与排版 → M5 书签/摘录/搜索 → M6 进度持久化 → M7 PWA 离线 → M8 可选同步</p>
+        </div>
+      </div>
+
+      <div class="callout seal" style="margin-top:22px">
+        <b>验收基线（每一版跑一遍）：</b>断网 + 清空缓存后重开，书架、扉页、阅读、排版、书签、搜索、进度必须全部可用；100 MB txt 首屏可读 &lt; 1.5s。
+      </div>
+    </section>
+
+    <div class="foot-note">
+      <span>轻阅 QINGYUE · 品牌与界面规范 v2.0</span>
+      <span>2026-10-21</span>
+      <a class="to-top" href="#cover">回到封面 ↑</a>
+    </div>
+
+  </main>
+</div>
+</div>
+
+<script>
+(function(){
+  var root = document.documentElement;
+  var bd = document.getElementById('btn-day');
+  var bn = document.getElementById('btn-night');
+  function set(mode){
+    root.setAttribute('data-theme', mode);
+    bd.setAttribute('aria-pressed', String(mode==='day'));
+    bn.setAttribute('aria-pressed', String(mode==='night'));
+    try{ localStorage.setItem('qy-doc-theme', mode); }catch(e){}
+  }
+  bd.addEventListener('click', function(){ set('day'); });
+  bn.addEventListener('click', function(){ set('night'); });
+  var saved = null;
+  try{ saved = localStorage.getItem('qy-doc-theme'); }catch(e){}
+  if(!saved && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) set('night');
+  else if(saved) set(saved);
+})();
+</script>
+</body>
+</html>
