@@ -95,9 +95,9 @@ rust-init: ## 拉取 Rust 依赖（国内建议先配 ~/.cargo/config.toml 镜�
 	cargo fetch --manifest-path src-tauri/Cargo.toml
 
 # ── macOS ─────────────────────────────────────────────────
-# 说明：不用 tauri build --bundles dmg —— 它内部要先 mount 到 /Volumes，
-#       普通用户会撞上「hdiutil: create failed - 操作不被允许」。
-#       这里改成先出 .app，再用 hdiutil -srcfolder 直接生成镜像。
+# 说明：不用 tauri build --bundles dmg —— 它会挂载镜像到 /Volumes 做校验，
+#       在那一步容易撞上「hdiutil: create failed - 操作不被允许」。
+#       这里改成先出 .app，再用 hdiutil -srcfolder 直接生成镜像，全程不碰 /Volumes。
 pack-macos: rust-init pack-macos-app pack-macos-dmg ## macOS 全套：.app + .zip + .dmg
 
 pack-macos-app: ## 只构建 .app（内含 Rust release 编译）
@@ -112,16 +112,18 @@ pack-macos-dmg: ## 由已产出的 .app 生成 .zip，并尽量生成 .dmg
 	@rm -rf .dmg-staging && mkdir -p .dmg-staging
 	cp -R "$(BUNDLE_MACOS)/$(APP_NAME).app" .dmg-staging/
 	ln -sfn /Applications .dmg-staging/Applications
-	@if touch /Volumes/.qingyue_probe 2>/dev/null; then \
-		rm -f /Volumes/.qingyue_probe; \
-		hdiutil create -volname "$(APP_NAME)" -srcfolder "$(CURDIR)/.dmg-staging" \
-			-ov -format UDZO "$(CURDIR)/$(RELEASE_DIR)/qingyue-$(VERSION)-macos-$(ARCH_LABEL).dmg" \
-			&& echo "✓ $(RELEASE_DIR)/qingyue-$(VERSION)-macos-$(ARCH_LABEL).dmg" \
-			|| echo "⚠ dmg 生成失败，已保留 .app 压缩包"; \
+	@# 注意：不要再拿 /Volumes 可写当探测器。/Volumes 是 root:wheel 755，
+	@#       普通用户永远写不进去（加「完全磁盘访问权限」也没用，TCC 不绕过 POSIX 位），
+	@#       而 hdiutil create -srcfolder 只在当前目录产出镜像、不挂载，压根不需要它。
+	@if hdiutil create -volname "$(APP_NAME)" -srcfolder "$(CURDIR)/.dmg-staging" \
+			-ov -format UDZO "$(CURDIR)/$(RELEASE_DIR)/qingyue-$(VERSION)-macos-$(ARCH_LABEL).dmg"; then \
+		echo "✓ $(RELEASE_DIR)/qingyue-$(VERSION)-macos-$(ARCH_LABEL).dmg"; \
+	elif diskutil image create from "$(CURDIR)/.dmg-staging" \
+			"$(CURDIR)/$(RELEASE_DIR)/qingyue-$(VERSION)-macos-$(ARCH_LABEL).dmg" \
+			--format UDZO --volumeName "$(APP_NAME)"; then \
+		echo "✓ $(RELEASE_DIR)/qingyue-$(VERSION)-macos-$(ARCH_LABEL).dmg"; \
 	else \
-		echo "⚠ 当前终端没有 /Volumes 写权限，跳过 dmg"; \
-		echo "  macOS 上把 .app 解压后拖进 Applications 即为安装，功能完全一致；"; \
-		echo "  想要标准 dmg：给终端「完全磁盘访问权限」后重跑，或 make release-tag 让 CI 出。"; \
+		echo "⚠ dmg 生成失败，已保留 .app 压缩包（.app 解压拖进 Applications 即可安装）"; \
 	fi
 	@rm -rf .dmg-staging
 
