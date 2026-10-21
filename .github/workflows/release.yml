@@ -2,10 +2,14 @@ name: release
 
 # 触发方式：
 #   1) 推送 tag（推荐）： git tag v1.0.0 && git push origin v1.0.0
-#   2) 手动： Actions → release → Run workflow（可选是否发布到 Release）
+#   2) 手动： Actions → release → Run workflow（可选是否发布 Release、是否构建 HarmonyOS）
 #
-# 产物：macOS(dmg/app) · Windows(nsis/msi) · Linux(deb/appimage) · Android(apk/aab) · iOS(ipa/app)
-# 全部产物会自动上传到同一个 Release；未配置签名密钥时退化为可安装的调试包。
+# 产物：macOS(dmg/app) · Windows(nsis/msi) · Linux(deb/appimage) · Android(apk/aab) · iOS(ipa/app) · Web(zip)
+# 全部资产会上传到同一个 Release；未配置签名密钥时退化为可安装的调试包。
+#
+# 结构说明：prepare 作业先建「草稿 Release」，后续作业只做「上传资产」，
+# 避免多个作业并发争抢创建 Release 导致的 422 Release already exists；
+# 最后 finalize 把草稿转正。
 
 on:
   push:
@@ -16,6 +20,13 @@ on:
         description: '是否发布到 GitHub Release'
         type: boolean
         default: true
+      build_harmony:
+        description: '是否在 CI 上尝试 HarmonyOS 作业（需 DevEco SDK，通常跳过）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -23,30 +34,105 @@ concurrency:
 
 env:
   NODE_VERSION: 22
-  PNPM_VERSION: 10
+  # 必须与 package.json 的 packageManager / pnpm-lock.yaml 的 lockfileVersion 保持一致
+  PNPM_VERSION: 8.15.9
   RUST_TOOLCHAIN: stable
+  TAG: ${{ github.ref_name }}
 
 jobs:
+  # ───────────────────────── 草稿 Release（唯一创建者） ─────────────────────────
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create.outputs.release_id }}
+      upload_url: ${{ steps.create.outputs.upload_url }}
+    steps:
+      - name: 创建草稿 Release
+        id: create
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = process.env.TAG;
+            const publish = '${{ github.event_name }}' !== 'workflow_dispatch' || '${{ inputs.publish }}' !== 'false';
+            core.setOutput('publish', String(publish));
+
+            // workflow_dispatch 且选择「不发布」时，跳过后续所有资产上传
+            if (!publish) {
+              core.setOutput('release_id', '');
+              core.setOutput('upload_url', '');
+              core.info('本次为手动构建，不发布 Release');
+              return;
+            }
+
+            // tag push 触发时 tag 一定存在；workflow_dispatch 时可能尚未创建
+            let release;
+            try {
+              release = await github.rest.repos.getReleaseByTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag
+              });
+              core.info(`已存在 Release #${release.data.id}`);
+            } catch {
+              release = await github.rest.repos.createRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_name: tag,
+                name: `轻阅 ${tag}`,
+                body: [
+                  '## 轻阅 QINGYUE',
+                  '',
+                  '本地优先的纯离线 txt 阅读器：流式分块解析，百万字大书秒开；',
+                  '导入、书架、阅读、排版、书签、进度全部离线可用。',
+                  '',
+                  '## 下载对应你平台的安装包',
+                  '',
+                  '| 平台 | 推荐产物 | 说明 |',
+                  '| --- | --- | --- |',
+                  '| macOS | `qingyue-<tag>-macos-universal.dmg` | Intel / Apple Silicon 通用 |',
+                  '| Windows | `qingyue-<tag>-windows-x86_64-setup.exe` | NSIS 安装器 |',
+                  '| Linux | `qingyue-<tag>-linux-x86_64.AppImage` | 免安装，chmod +x 后直接运行 |',
+                  '| Android | `qingyue-<tag>-android-universal.apk` | 未签名时可先装 debug 版本 |',
+                  '| iOS | `qingyue-<tag>-ios-unsigned.zip` | 未签名 .app，需自签或走 TestFlight |',
+                  '| 任意浏览器 | `qingyue-web-<tag>.zip` | 解压后用静态服务器打开即可离线运行 |',
+                  '| HarmonyOS | `qingyue-<tag>-harmony-unsigned.app` | 需本地 DevEco Studio 产出 |',
+                  '',
+                  '> HarmonyOS 官方 runner 无 SDK；请在本地 DevEco Studio 打开 `harmony/` → ',
+                  '> Build > Build APP(s)，再用 `gh release upload <tag>` 挂载产物。'
+                ].join('\n'),
+                draft: true,
+                prerelease: false
+              });
+              core.info(`已创建草稿 Release #${release.data.id}`);
+            }
+            core.setOutput('release_id', String(release.data.id));
+            core.setOutput('upload_url', release.data.upload_url);
+
   # ───────────────────────── 桌面三端 ─────────────────────────
   desktop:
+    needs: prepare
+    if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.publish) }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-latest
             label: macOS
+            slug: macos-universal
             target: universal-apple-darwin
-            bundles: --bundles dmg,app
+            bundles: dmg,app
             rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
           - os: windows-latest
             label: Windows
+            slug: windows-x86_64
             target: x86_64-pc-windows-msvc
-            bundles: --bundles nsis,msi
+            bundles: nsis,msi
             rust_targets: x86_64-pc-windows-msvc
           - os: ubuntu-22.04
             label: Linux
+            slug: linux-x86_64
             target: x86_64-unknown-linux-gnu
-            bundles: --bundles deb,appimage
+            bundles: deb,appimage
             rust_targets: x86_64-unknown-linux-gnu
 
     runs-on: ${{ matrix.os }}
@@ -59,14 +145,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+
+      # 不使用 pnpm/action-setup：避免其自带的 pnpm 版本与 packageManager / lockfileVersion 冲突
+      - name: 安装 pnpm ${{ env.PNPM_VERSION }}
+        run: |
+          npm install -g pnpm@$PNPM_VERSION
+          pnpm --version
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -80,58 +167,53 @@ jobs:
       - name: 安装前端依赖
         run: pnpm install --no-frozen-lockfile
 
-      - name: macOS 代码签名（可选）
-        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
-          security create-keychain -p actions temp-app.keychain
-          security set-keychain-settings -lut 21600 temp-app.keychain
-          security unlock-keychain -p actions temp-app.keychain
-          security import certificate.p12 -k temp-app.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions temp-app.keychain
-          security list-keychain -d user -s temp-app.keychain
-
       - name: 构建 ${{ matrix.label }} 安装包
-        uses: tauri-apps/tauri-action@v0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm exec tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      # .app / AppImage 这类「目录型」或需保留权限的产物统一打成 zip；单文件安装包直接上传
+      - name: 整理产物
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          BUNDLE="src-tauri/target/${{ matrix.target }}/release/bundle"
+          ls -R "$BUNDLE" || true
+          # 单文件：dmg / exe / msi / deb / AppImage
+          find "$BUNDLE" -maxdepth 2 -type f \
+            \( -name '*.dmg' -o -name '*.exe' -o -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' \) \
+            -exec cp {} artifacts/ \; 2>/dev/null || true
+          # 目录型：*.app
+          for app in $(find "$BUNDLE/macos" -maxdepth 1 -name '*.app' -type d 2>/dev/null); do
+            (cd "$BUNDLE/macos" && zip -r -y -q "$GITHUB_WORKSPACE/artifacts/qingyue-${TAG}-${{ matrix.slug }}-app.zip" "$(basename "$app")")
+          done
+          ls -la artifacts
+
+      - name: 上传 ${{ matrix.label }} 资产
+        uses: softprops/action-gh-release@v2
         with:
-          projectPath: ./
-          tagName: ${{ github.ref_name }}
-          releaseName: 轻阅 ${{ github.ref_name }}
-          releaseDraft: false
-          prerelease: false
-          # 手动触发且选择不发布时，只构建不上传
-          uploadAssets: ${{ github.event_name != 'workflow_dispatch' || inputs.publish }}
-          # 本项目未引入 tauri-plugin-updater，更新器是「可选增强」，不产 updater 清单
-          includeUpdaterJson: false
-          args: --target ${{ matrix.target }} ${{ matrix.bundles }}
+          tag_name: ${{ env.TAG }}
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ───────────────────────── Android ─────────────────────────
   android:
-    # tauri-action 已经在 desktop 作业里创建了 Release，softprops 需要它先存在
-    needs: desktop
+    needs: prepare
+    if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.publish) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+
+      - name: 安装 pnpm ${{ env.PNPM_VERSION }}
+        run: |
+          npm install -g pnpm@$PNPM_VERSION
+          pnpm --version
 
       - uses: actions/setup-java@v4
         with:
@@ -145,6 +227,9 @@ jobs:
           sdkmanager --install "ndk;26.3.11579264" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
           rustup target add armv7-linux-androideabi aarch64-linux-android i686-linux-android x86_64-linux-android
 
+      - name: 安装前端依赖
+        run: pnpm install --no-frozen-lockfile
+
       - name: 初始化 Android 工程
         run: pnpm exec tauri android init
 
@@ -154,57 +239,71 @@ jobs:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           echo "$KEYSTORE" | base64 --decode > $RUNNER_TEMP/upload-keystore.jks
-          echo "KEYSTORE_FILE=$RUNNER_TEMP/upload-keystore.jks" >> $GITHUB_ENV
-          echo "KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
-          echo "KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> $GITHUB_ENV
-          echo "KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> $GITHUB_ENV
-          echo "SIGNING_CONFIGURED=true" >> $GITHUB_ENV
+          {
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/upload-keystore.jks"
+            echo "KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+            echo "KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}"
+            echo "KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}"
+            echo "SIGNING_CONFIGURED=true"
+          } >> $GITHUB_ENV
 
       - name: 构建 APK / AAB
         run: |
           if [ "$SIGNING_CONFIGURED" = "true" ]; then
             pnpm exec tauri android build --apk --aab --split-per-abi
           else
-            # 无签名密钥：产出调试签名 APK（可直接安装），用于自测分发
             pnpm exec tauri android build --apk --split-per-abi --debug
           fi
 
-      - name: 上传 Android 产物
+      - name: 整理产物
+        run: |
+          mkdir -p artifacts
+          find src-tauri/gen/android/app/build/outputs -type f \( -name '*.apk' -o -name '*.aab' \) \
+            -exec cp {} artifacts/ \; 2>/dev/null || true
+          # 重命名为带版本的可识别文件名
+          for f in artifacts/*; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f")
+            mv "$f" "artifacts/qingyue-${TAG}-android-${base}" 2>/dev/null || true
+          done
+          ls -la artifacts
+
+      - name: 上传 Android 资产
         uses: softprops/action-gh-release@v2
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish }}
         with:
-          tag_name: ${{ github.ref_name }}
-          files: |
-            src-tauri/gen/android/app/build/outputs/apk/**/*.apk
-            src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
+          tag_name: ${{ env.TAG }}
+          files: artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ───────────────────────── iOS ─────────────────────────
   ios:
-    needs: desktop
+    needs: prepare
+    if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.publish) }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+
+      - name: 安装 pnpm ${{ env.PNPM_VERSION }}
+        run: |
+          npm install -g pnpm@$PNPM_VERSION
+          pnpm --version
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
 
+      - name: 安装前端依赖
+        run: pnpm install --no-frozen-lockfile
+
       - name: 初始化 iOS 工程
         run: pnpm exec tauri ios init
 
       - name: 构建 iOS
-        # 配置了证书与描述文件时导出 ipa；否则退化为未签名的 .app（仅模拟器/越狱安装）
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
@@ -217,32 +316,44 @@ jobs:
             pnpm exec tauri ios build --ci --debug
           fi
 
-      - name: 上传 iOS 产物
+      - name: 整理产物
+        run: |
+          mkdir -p artifacts
+          if compgen -G "src-tauri/gen/apple/build/**/*.ipa" > /dev/null; then
+            find src-tauri/gen/apple/build -name '*.ipa' -type f -exec cp {} artifacts/qingyue-${TAG}-ios.ipa \; 2>/dev/null || true
+          fi
+          APP_DIR=$(find src-tauri/gen/apple/build -maxdepth 6 -type d -name '*.app' | head -n 1)
+          if [ -n "$APP_DIR" ]; then
+            (cd "$(dirname "$APP_DIR")" && zip -r -y -q "$GITHUB_WORKSPACE/artifacts/qingyue-${TAG}-ios-unsigned.zip" "$(basename "$APP_DIR")")
+          else
+            echo "::warning::未找到 iOS .app 产物"
+          fi
+          ls -la artifacts
+
+      - name: 上传 iOS 资产
         uses: softprops/action-gh-release@v2
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish }}
         with:
-          tag_name: ${{ github.ref_name }}
-          files: |
-            src-tauri/gen/apple/build/**/*.ipa
-            src-tauri/gen/apple/build/**/*.app/**
+          tag_name: ${{ env.TAG }}
+          files: artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ───────────────────────── Web(离线 PWA) 压缩包 ─────────────────────────
+  # ───────────────────────── Web(离线 PWA) ─────────────────────────
   web:
-    needs: desktop
+    needs: prepare
+    if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.publish) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+
+      - name: 安装 pnpm ${{ env.PNPM_VERSION }}
+        run: |
+          npm install -g pnpm@$PNPM_VERSION
+          pnpm --version
 
       - name: 安装依赖并构建
         run: |
@@ -250,33 +361,47 @@ jobs:
           pnpm build
 
       - name: 打包 dist
-        run: cd dist && zip -r ../qingyue-web-${{ github.ref_name }}.zip .
+        run: cd dist && zip -r "../qingyue-web-${TAG}.zip" .
 
-      - name: 上传 Web 产物
+      - name: 上传 Web 资产
         uses: softprops/action-gh-release@v2
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish }}
         with:
-          tag_name: ${{ github.ref_name }}
-          files: qingyue-web-${{ github.ref_name }}.zip
+          tag_name: ${{ env.TAG }}
+          files: qingyue-web-${{ env.TAG }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ───────────────────────── HarmonyOS ─────────────────────────
-  # GitHub 官方 runner 没有 HarmonyOS SDK，ArkTS 必须在装了 DevEco Studio
-  # 的机器上编译。默认不跑；本地构建出 .app 后用下面这步把它挂到 Release：
-  #   1) DevEco Studio 打开 harmony/ → Build > Build Hap(s)/APP(s) > Build APP(s)
-  #   2) gh release upload v1.0.0 harmony/entry/build/default/outputs/**/*.app
+  # GitHub 官方 runner 没有 HarmonyOS SDK，ArkTS 必须在装了 DevEco Studio 的机器上编译。
+  # 默认不跑；本地构建出 .app 后用下面命令挂到 Release：
+  #   gh release upload <tag> harmony/entry/build/default/outputs/default/*.app
   harmony:
-    needs: desktop
-    if: github.event_name == 'workflow_dispatch' && inputs.build_harmony
+    needs: prepare
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.build_harmony }}
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-
       - name: 提示
         run: |
           echo "::warning::HarmonyOS 需要 DevEco Studio / HarmonyOS SDK，无法在 GitHub runner 上编译。"
           echo "请在本地执行："
-          echo "  pnpm build && node scripts/build-harmony-assets.mjs"
+          echo "  pnpm build && pnpm sync:harmony"
           echo "  # DevEco Studio 打开 harmony/ 目录 → Build APP(s)"
-          echo "  gh release upload ${{ github.ref_name }} harmony/entry/build/default/outputs/default/*.app"
+          echo "  gh release upload ${TAG} harmony/entry/build/default/outputs/default/*.app"
+
+  # ───────────────────────── 草稿转正 ─────────────────────────
+  finalize:
+    needs: [prepare, desktop, android, ios, web]
+    if: ${{ always() && needs.prepare.outputs.release_id != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 发布 Release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: Number(${{ needs.prepare.outputs.release_id }}),
+              draft: false
+            });
+            core.info('Release 已发布：https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/releases/tag/' + process.env.TAG);
