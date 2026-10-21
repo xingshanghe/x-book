@@ -3,6 +3,9 @@
 > 一句话原则：**先有 Web，再有壳。** dist/ 本身就是一个可安装的 PWA，
 > 所有原生壳只是把它装进不同系统的窗口里，因此任何一端都可以单独放弃而不影响其他端。
 
+> 所有命令都已写进仓库根目录的 `Makefile`，先跑 `make help` 看全貌。
+> 本文是「为什么」，Makefile 是「怎么跑」。
+
 ---
 
 ## 0. 前置
@@ -139,11 +142,13 @@ pnpm sync:harmony                 # 同步 dist 到 harmony/.../rawfile/qy
 
 ## 7. 发布到 GitHub Release
 
+不想手工敲多条命令时：
+
 ```bash
-git add -A && git commit -m "release: v1.0.0"
-git tag -a v1.0.0 -m "轻阅 v1.0.0"
-git push origin main --tags
+make publish V=1.0.0     # = git push main + 打/推 tag + gh release create + 上传 release/*
 ```
+
+脚本在 `scripts/publish-release.sh`，先 `gh auth login` 一次即可。
 
 Actions 会自动：
 

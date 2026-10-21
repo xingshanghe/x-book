@@ -28,6 +28,43 @@ pnpm dev         # 浏览器开发： http://localhost:5173
 
 ## 二、快速开始
 
+### 日常开发
+
+```bash
+make help              # 看全部命令
+make setup             # 装依赖
+make dev               # 开发：http://localhost:5173
+make check             # 类型检查 + 单测
+make build             # 产出 dist/
+```
+
+### 打包（五端一条命令）
+
+```bash
+make pack-web          # Web / PWA zip
+make pack-macos        # macOS：.app + .zip + .dmg（当前架构）
+make pack-windows      # Windows：exe + msi（本机需 MSVC 工具链）
+make pack-linux        # Linux：deb + AppImage
+make pack-android      # Android：apk + aab
+make pack-ios          # iOS
+make sync-harmony      # 鸿蒙：同步 dist，再用 DevEco Studio 打包
+make publish V=1.0.0   # 推代码 + 打 tag + 建 Release + 上传本地产物
+```
+
+不想在本机折腾工具链时，推 tag 交给 GitHub Actions 跑五端：
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0     # 或 make release-tag V=1.0.0
+```
+
+> macOS 上若终端没有 `/Volumes` 写权限（常见于受限终端/沙箱），
+> `make pack-macos` 会跳过 dmg、只出 `.app` 压缩包 —— 解压后拖进「应用程序」即可，功能完全一致。
+> 标准 dmg 由 CI 产出。
+
+不用 make 也可以直接跑底层命令：
+
+<details><summary>等价的原始命令</summary>
+
 ```bash
 pnpm dev                 # 开发
 pnpm build               # 产出 dist/（可直接静态托管或离线运行）
@@ -41,12 +78,10 @@ pnpm tauri:ios           # iOS
 pnpm sync:harmony        # 同步 dist 到鸿蒙工程，再用 DevEco 打包
 ```
 
+</details>
+
 Windows / Linux / Android / iOS 的正式包由 GitHub Actions 产出：
 推送 tag 即自动构建五端并上传到 Release。
-
-```bash
-git tag v1.0.0 && git push origin v1.0.0
-```
 
 ---
 
@@ -104,16 +139,17 @@ git tag v1.0.0 && git push origin v1.0.0
 
 ## 六、多端打包
 
-| 平台 | 产物 | 本地命令 | 产出方式 |
+| 平台 | 产物 | Make 命令 | 产出方式 |
 |---|---|---|---|
-| Web / PWA | 静态站点 | `pnpm build` | 任意静态托管 |
-| macOS | `.app` / `.dmg` | `pnpm tauri build` | 本机或 CI（macOS runner） |
-| Windows | `.exe` (NSIS) / `.msi` | — | CI（windows-latest） |
-| Linux | `.deb` / `.AppImage` | — | CI（ubuntu-22.04） |
-| Android | `.apk` / `.aab` | `pnpm tauri android build` | CI（需 JDK17 + NDK26） |
-| iOS | `.ipa` / `.app` | `pnpm tauri ios build` | CI（macOS runner + 签名密钥） |
-| HarmonyOS | `.hap` / `.app` | `pnpm sync:harmony` 后用 DevEco 打包 | DevEco Studio 本地构建 |
+| Web / PWA | 静态站点 / zip | `make pack-web` | 任意静态托管 |
+| macOS | `.app` / `.zip` / `.dmg` | `make pack-macos` | 本机，或 CI（macos-latest） |
+| Windows | `.exe` (NSIS) / `.msi` | `make pack-windows` | 本机（需 MSVC），或 CI |
+| Linux | `.deb` / `.AppImage` | `make pack-linux` | 本机（需 webkit2gtk），或 CI |
+| Android | `.apk` / `.aab` | `make pack-android` | 本机（JDK17+NDK26），或 CI |
+| iOS | `.ipa` / `.app` | `make pack-ios` | 本机（Xcode+证书），或 CI |
+| HarmonyOS | `.hap` / `.app` | `make sync-harmony` | DevEco Studio 本地构建 |
 
+所有产物统一输出到 `release/`，`make release-upload V=1.0.0` 可一次性挂到 Release。
 签名相关的 Secrets 未配置时，CI 会自动退化为可安装的调试包，流程不会中断。
 逐步流程见 [`docs/build.md`](./docs/build.md)。
 

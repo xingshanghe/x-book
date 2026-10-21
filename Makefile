@@ -42,9 +42,10 @@ endif
 APP_NAME     := 轻阅
 BUNDLE_MACOS := $(CARGO_TARGET)/release/bundle/macos
 
-.PHONY: help setup check typecheck test lint dev build preview clean pack-web \
-        rust-init pack-macos pack-macos-universal pack-windows pack-linux \
-        pack-android pack-ios sync-harmony release-tag release-upload apk-perms
+.PHONY: help setup check typecheck test lint dev build preview clean distclean pack-web \
+        rust-init pack-macos pack-macos-app pack-macos-dmg pack-macos-universal \
+        pack-windows pack-linux pack-android pack-ios sync-harmony \
+        release-tag release-upload publish
 
 help: ## 显示帮助
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) \
@@ -180,6 +181,10 @@ sync-harmony: build ## 同步 dist 到鸿蒙工程的 rawfile
 	@echo "  3) gh release upload v$(VERSION) harmony/entry/build/default/outputs/default/*.app"
 
 # ── 发布 ──────────────────────────────────────────────────
+publish: ## 全流程发布：推 main + 打 tag + 建 Release + 上传 release/
+	@test -n "$(V)" || { echo "用法：make publish V=1.0.0"; exit 1; }
+	./scripts/publish-release.sh $(V)
+
 release-tag: ## 打 tag 并推送，触发 GitHub Actions 五端构建 + Release
 	@test -n "$(V)" || { echo "用法：make release-tag V=1.0.0"; exit 1; }
 	git tag -a "v$(V)" -m "轻阅 v$(V)"
