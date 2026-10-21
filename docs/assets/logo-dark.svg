@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 268 140" width="268" height="140" role="img" aria-label="轻阅 QINGYUE">
+  <title>轻阅 QINGYUE · Reverse lockup（夜间 / 深底反白）</title>
+
+  <g transform="translate(20,18)">
+    <path d="M16 4H48L70 26V94a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z"
+          fill="none" stroke="#E8E4D8" stroke-width="4.5" stroke-linejoin="round"/>
+    <path d="M48 4l22 22H48Z" fill="#D2704F"/>
+    <path d="M30 42h20M30 56h20M30 70h12" stroke="#E8E4D8" stroke-width="4"
+          stroke-linecap="round" opacity=".24"/>
+  </g>
+
+  <g font-family="Kaiti SC, STKaiti, KaiTi, Songti SC, SimSun, serif">
+    <text x="118" y="76" font-size="46" letter-spacing="4.6" fill="#E8E4D8">轻阅</text>
+  </g>
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif">
+    <text x="118" y="94" font-size="9" letter-spacing="3.6" fill="#7C7264">QINGYUE</text>
+  </g>
+</svg>
