@@ -1,22 +1,44 @@
 /**
  * 分页阅读视图（单页 / 双页自适应）。
  *
- * 为什么用 CSS 多列而不是自己算行：
- *   txt 的折行涉及中文标点挤压、英文单词不断行、字距等，自己算必然出错；
- *   交给 `column-fill: auto` + 固定列高，浏览器按真实排版断列，
- *   翻页只需要横向 scrollLeft，天然一页一屏，不会出现半行被切。
+ * 断行交给浏览器（中文标点、英文单词不能自己算）。
+ * 分页按测到的行盒：一栏只放底部还在栏高里的整行，下一栏从下一行开始。
+ * 翻一屏就走完这一屏的栏，所以不会缺行，也不会让同一行出现两次。
  *
- * 代价是不能再用块级虚拟占位，所以内容按「段」限制：
- *   有章节取一章、无章节取 300 块，翻到段边界再换段。
+ * 内容按段装载：有章节取一章，无章节取 300 块，翻到段边界再换段。
  */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { Chapter, Typography } from '@/types/models';
-import type { BlockIndexView } from '@/core/reader/progress';
-import type { BlockReader } from '@/core/reader/blockReader';
 import { splitByRefs } from '@/core/parser/footnotes';
-import { clamp } from '@/lib/format';
-import { readSegment, segmentOf, totalCharsOf, type FlowLine, type Segment } from './paginate';
+import type { BlockReader } from '@/core/reader/blockReader';
+import type { BlockIndexView } from '@/core/reader/progress';
+import type { Chapter, Typography } from '@/types/models';
+import {
+  clampPage,
+  columnOffsets,
+  type LinePage,
+  packLinePages,
+  pageIndexForLine,
+  pageMetrics,
+  pickFlowLine,
+  screenCount,
+  screenIndexForPage,
+} from './pageLayout';
+import { type FlowLine, readSegment, type Segment, segmentOf, totalCharsOf } from './paginate';
+
+const SKELETON_BARS = [
+  { id: 'a', width: '88%' },
+  { id: 'b', width: '79%' },
+  { id: 'c', width: '70%' },
+  { id: 'd', width: '88%' },
+  { id: 'e', width: '79%' },
+  { id: 'f', width: '70%' },
+  { id: 'g', width: '88%' },
+  { id: 'h', width: '79%' },
+  { id: 'i', width: '70%' },
+] as const;
+
+const COLUMN_KEYS = ['primary', 'secondary'] as const;
 
 export interface PagedHandle {
   turn: (dir: 1 | -1) => void;
@@ -45,7 +67,94 @@ interface Props {
   onPageInfo?: (info: { index: number; count: number }) => void;
 }
 
-const GAP = 56;
+interface PendingSeek {
+  char: number;
+  block?: number;
+  /** end：换到上一段时落在最后一屏，而不是最后一行所在段落的开头 */
+  edge: 'char' | 'end';
+}
+
+interface MeasuredLine {
+  top: number;
+  bottom: number;
+  char: number;
+}
+
+function measureLines(flow: HTMLElement): MeasuredLine[] {
+  const origin = flow.getBoundingClientRect().top;
+  const out: MeasuredLine[] = [];
+  const nodes = flow.querySelectorAll<HTMLElement>('.qy-line[data-char]');
+  for (const node of nodes) {
+    const char = Number(node.dataset.char);
+    if (!Number.isFinite(char)) continue;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    // 元素的 getClientRects 是整段一个框。Range 才会按行盒拆开。
+    const rects = [...range.getClientRects()].filter((rect) => rect.width >= 1 && rect.height >= 1);
+    range.detach();
+    const merged: { top: number; bottom: number }[] = [];
+    for (const rect of rects) {
+      const top = rect.top - origin;
+      const bottom = rect.bottom - origin;
+      const last = merged[merged.length - 1];
+      // 同一行里的注标和正文会各有一个框，合成一行
+      if (last && top < last.bottom - 1) {
+        last.top = Math.min(last.top, top);
+        last.bottom = Math.max(last.bottom, bottom);
+      } else {
+        merged.push({ top, bottom });
+      }
+    }
+    for (const line of merged) out.push({ ...line, char });
+  }
+  return out;
+}
+
+function sameOffsets(a: readonly (number | null)[], b: readonly (number | null)[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function FlowBody({
+  lines,
+  hasFootnotes,
+  onFootnote,
+}: {
+  lines: FlowLine[];
+  hasFootnotes: boolean;
+  onFootnote: (marker: string) => void;
+}) {
+  return lines.map((line) => {
+    const parts = hasFootnotes ? splitByRefs(line.text) : null;
+    const seen = new Map<string, number>();
+    return (
+      <p className="qy-line" data-char={line.char} key={line.char}>
+        {parts
+          ? parts.map((part) => {
+              const base = part.ref ? `r:${part.ref}` : `t:${part.text}`;
+              const nth = seen.get(base) ?? 0;
+              seen.set(base, nth + 1);
+              const key = nth === 0 ? base : `${base}#${nth}`;
+              return part.ref ? (
+                <button
+                  key={key}
+                  type="button"
+                  className="qy-ref"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onFootnote(part.ref as string);
+                  }}
+                >
+                  {part.ref}
+                </button>
+              ) : (
+                <span key={key}>{part.text}</span>
+              );
+            })
+          : line.text}
+      </p>
+    );
+  });
+}
 
 export function PagedView({
   idx,
@@ -66,249 +175,242 @@ export function PagedView({
   const viewRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<HTMLDivElement>(null);
 
-  const [seg, setSeg] = useState<Segment>(() =>
-    segmentOf(idx, chapters, charOffset, startBlock),
-  );
+  const [seg, setSeg] = useState<Segment>(() => segmentOf(idx, chapters, charOffset, startBlock));
   const [lines, setLines] = useState<FlowLine[] | null>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
-  const [page, setPage] = useState({ index: 0, count: 1 });
-  const pendingSeek = useRef<{ char: number; block?: number } | null>({
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
+  const [offsets, setOffsets] = useState<(number | null)[]>([0]);
+  const [seekGen, setSeekGen] = useState(0);
+
+  const pendingSeek = useRef<PendingSeek | null>({
     char: charOffset,
     block: startBlock,
+    edge: 'char',
   });
-  /** 跳转期间不要上报位置，否则会把刚跳过去的位置又写回来 */
-  const seeking = useRef(false);
+  /** 行盒还没量完时不要把页码写回进度 */
+  const seeking = useRef(true);
+  const anchorChar = useRef(charOffset);
+  const echoChar = useRef<number | null>(null);
+  const skipCharEffect = useRef(true);
+  const pageRef = useRef({ index: 0, count: 1 });
+  const pagesRef = useRef<LinePage[]>([{ line: 0, offset: 0 }]);
+  const measuredRef = useRef<MeasuredLine[]>([]);
+  pageRef.current = { index: pageIndex, count: pageCount };
 
-  // 回调放进 ref：避免父组件每次渲染换新函数导致 scroll 监听反复重绑
   const onPageInfoRef = useRef(onPageInfo);
   onPageInfoRef.current = onPageInfo;
+  const onCharChangeRef = useRef(onCharChange);
+  onCharChangeRef.current = onCharChange;
+  const onLoadingChangeRef = useRef(onLoadingChange);
+  onLoadingChangeRef.current = onLoadingChange;
+
+  const metrics = useMemo(
+    () =>
+      pageMetrics({
+        viewportW: box.w,
+        viewportH: box.h,
+        fontSize: typography.fontSize,
+        lineHeight: typography.lineHeight,
+        maxWidthCh: typography.maxWidth,
+        paragraphSpacingEm: typography.paragraphSpacing,
+      }),
+    [
+      box.w,
+      box.h,
+      typography.fontSize,
+      typography.lineHeight,
+      typography.maxWidth,
+      typography.paragraphSpacing,
+    ],
+  );
+  const colsRef = useRef(metrics.cols);
+  colsRef.current = metrics.cols;
+
+  const reportPosition = useCallback((index: number, count: number) => {
+    onPageInfoRef.current?.({ index, count });
+    const page = pagesRef.current[index * colsRef.current];
+    const line = page ? measuredRef.current[page.line] : undefined;
+    if (!line) return;
+    anchorChar.current = line.char;
+    echoChar.current = line.char;
+    onCharChangeRef.current(line.char);
+  }, []);
+
+  const showScreen = useCallback((index: number, pages: LinePage[], cols: number) => {
+    const count = screenCount(pages.length, cols);
+    const next = clampPage(index, count);
+    const nextOffsets = columnOffsets(next, pages, cols);
+    pageRef.current = { index: next, count };
+    setPageIndex(next);
+    setPageCount(count);
+    setOffsets((current) => (sameOffsets(current, nextOffsets) ? current : nextOffsets));
+  }, []);
 
   /* ---------- 段内容 ---------- */
 
   useEffect(() => {
     let alive = true;
     setLines(null);
-    onLoadingChange?.(true);
+    setPageIndex(0);
+    setOffsets([0]);
+    onLoadingChangeRef.current?.(true);
     void readSegment(reader, idx, seg)
-      .then((ls) => {
+      .then((next) => {
         if (!alive) return;
-        setLines(ls);
-        onLoadingChange?.(false);
+        setLines(next);
+        onLoadingChangeRef.current?.(false);
       })
       .catch(() => {
-        if (alive) {
-          setLines([]);
-          onLoadingChange?.(false);
-        }
+        if (!alive) return;
+        setLines([]);
+        onLoadingChangeRef.current?.(false);
       });
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seg, reader, idx]);
 
-  // 外部位置跳进别的段 → 换段
   useEffect(() => {
+    if (skipCharEffect.current) {
+      skipCharEffect.current = false;
+      return;
+    }
+    if (echoChar.current === charOffset) {
+      echoChar.current = null;
+      return;
+    }
+    anchorChar.current = charOffset;
+    pendingSeek.current = { char: charOffset, edge: 'char' };
+    seeking.current = true;
     if (charOffset < seg.startChar || charOffset >= seg.endChar) {
       setSeg(segmentOf(idx, chapters, charOffset));
-      pendingSeek.current = { char: charOffset };
+      return;
     }
+    setSeekGen((n) => n + 1);
   }, [charOffset, seg.startChar, seg.endChar, idx, chapters]);
 
-  /* ---------- 尺寸 / 单双页 ---------- */
+  /* ---------- 尺寸 ---------- */
 
   useLayoutEffect(() => {
-    // 量的是外层容器：view 自身宽度由下面算出的 pageW 决定，
-    // 观察自己会锁死在初始值上（自证循环）。
     const host = viewRef.current?.parentElement;
     if (!host) return;
     const measure = () => setBox({ w: host.clientWidth, h: host.clientHeight });
     measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(host);
-    return () => ro.disconnect();
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    return () => observer.disconnect();
   }, []);
 
-  const metrics = useMemo(() => {
-    const fs = typography.fontSize;
-    const lh = typography.lineHeight;
-    // 1ch 按一个汉字宽估算：中文正文里这比 em 更准
-    // 宽屏下按视口比例适当加宽内容列，与 reader.css 的 --w-scale 保持一致
-    const wScale = box.w >= 1600 ? 1.36 : box.w >= 1300 ? 1.24 : box.w >= 1000 ? 1.12 : 1;
-    const maxCol = Math.round(typography.maxWidth * fs * 1.02 * wScale);
-    // 左右各留 24px：双页时填满整窗会很挤，也让人误以为内容被截断
-    const avail = Math.max(240, box.w - 48);
-    const canDouble = avail >= maxCol * 2 + GAP + 24;
-    const col = canDouble ? Math.min(maxCol, Math.floor((avail - GAP) / 2)) : Math.min(avail, maxCol);
-    const pageW = canDouble ? col * 2 + GAP : col;
-    return {
-      double: canDouble,
-      col,
-      pageW,
-      step: pageW + GAP,
-      padY: Math.round(fs * 0.9),
-      linePx: fs * lh,
-    };
-  }, [box.w, typography.maxWidth, typography.fontSize, typography.lineHeight]);
+  /* ---------- 按行盒分页 ---------- */
 
-  /* ---------- 定位 ---------- */
+  const metricsKey = `${metrics.pageW}:${metrics.contentH}:${metrics.cols}:${metrics.linePx}:${metrics.colW}`;
+  const prevMetricsKey = useRef('');
 
-  const lineStepPx = metrics.step;
-
-  const seekToLine = useCallback(
-    (target: number, smooth = false, blockHint?: number) => {
-      const view = viewRef.current;
-      const flow = flowRef.current;
-      if (!view || !flow || !lines?.length) return;
-      // 字符定位更精确，但清洗过的书里行级 char 与章节 charOffset 会差出十几页；
-      // 块号由索引器直接给出、不会漂。两者差得远时以块为准，否则用字符落到具体行。
-      const byBlock = blockHint != null ? lines.find((l) => l.block >= blockHint) : undefined;
-      const byChar = lines.find((l) => l.char >= target);
-      const hit =
-        byChar && (!byBlock || Math.abs(byChar.block - byBlock.block) <= 1)
-          ? byChar
-          : (byBlock ?? byChar ?? lines[lines.length - 1]);
-      const node = flow.querySelector<HTMLElement>(`[data-char="${hit.char}"]`);
-      if (!node) return;
-      const flowLeft = flow.getBoundingClientRect().left;
-      const offset = Math.max(0, node.getBoundingClientRect().left - flowLeft);
-      const index = Math.floor(offset / lineStepPx + 0.02);
-      const left = index * lineStepPx;
-      if (smooth && flipAnimation) view.scrollTo({ left, behavior: 'smooth' });
-      else view.scrollLeft = left;
-    },
-    [lines, lineStepPx, flipAnimation],
-  );
-
-
-  // 段内容就绪后应用待定位置
-  useEffect(() => {
-    if (!lines?.length) return;
-    const target = pendingSeek.current;
-    if (target == null) return;
-    pendingSeek.current = null;
-    seeking.current = true;
-    // 等一帧，确保多列已经完成布局
-    const raf = requestAnimationFrame(() => {
-      seekToLine(target.char, false, target.block);
-      // 再等一帧：让定位引发的 scroll 事件先跑完，之后才允许上报位置。
-      // 若目标是段首（scrollLeft 本来就是 0），不会产生 scroll 事件，
-      // 这里必须手动同步一次，否则页码停在上一个位置。
-      requestAnimationFrame(() => {
-        seeking.current = false;
-        syncFromView();
-      });
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [lines, seekToLine]);
-
-  // 尺寸变化（单页↔双页）后重新对齐当前页并刷新页码
-  useEffect(() => {
-    if (!lines?.length) return;
-    let raf2 = 0;
-    const raf = requestAnimationFrame(() => {
-      seekToLine(charOffset);
-      // 多列重排要等一帧才算出新的 scrollWidth，页码在第二帧才准
-      raf2 = requestAnimationFrame(() => syncFromView());
-    });
-    // 有些 WebView 的多列重排比两帧还慢，再兜一次
-    const timer = setTimeout(syncFromView, 260);
-    return () => {
-      cancelAnimationFrame(raf);
-      cancelAnimationFrame(raf2);
-      clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metrics.pageW, metrics.double, lines == null]);
-
-  /* ---------- 页码与当前位置 ---------- */
-
-  const firstVisibleChar = useCallback((): number | null => {
-    const view = viewRef.current;
+  useLayoutEffect(() => {
     const flow = flowRef.current;
-    if (!view || !flow) return null;
-    const vr = view.getBoundingClientRect();
-    // 取每列左上角那一点，命中的段落就是该页第一篇
-    for (let c = 0; c < (metrics.double ? 2 : 1); c++) {
-      const x = vr.left + c * (metrics.col + GAP) + 8;
-      const y = vr.top + vr.height * 0.08;
-      const el = document.elementFromPoint(x, y);
-      const line = el?.closest<HTMLElement>('.qy-line[data-char]');
-      if (line) return Number(line.dataset.char);
+    void seekGen;
+    if (!flow || !lines || metrics.contentH <= 0) return;
+    if (!lines.length) {
+      seeking.current = false;
+      pagesRef.current = [{ line: 0, offset: 0 }];
+      measuredRef.current = [];
+      showScreen(0, pagesRef.current, metrics.cols);
+      return;
     }
-    return null;
-  }, [metrics.double, metrics.col]);
+    let alive = true;
+    let placed = false;
+    const resized = prevMetricsKey.current !== '' && prevMetricsKey.current !== metricsKey;
+    prevMetricsKey.current = metricsKey;
 
-  const syncFromView = useCallback(() => {
-    const view = viewRef.current;
-    if (!view || seeking.current) return;
-    const step = lineStepPx;
-    const index = Math.round(view.scrollLeft / step);
-    // step 已经按单/双页折算过（双页 = 两列宽 + 缝），
-    // 所以 scrollWidth / step 直接就是页数，不能再除一次 2
-    const count = Math.max(1, Math.round((view.scrollWidth + GAP) / step));
-    setPage({ index, count });
-    onPageInfoRef.current?.({ index, count });
-    const ch = firstVisibleChar();
-    if (ch != null) onCharChange(ch);
-  }, [lineStepPx, metrics.double, firstVisibleChar, onCharChange]);
+    const screenFor = (
+      char: number,
+      block: number | undefined,
+      pages: LinePage[],
+      measured: MeasuredLine[],
+    ) => {
+      const para = pickFlowLine(lines, char, block);
+      if (!para || !measured.length) return 0;
+      const lineIndex = measured.findIndex((item) => item.char === para.char);
+      return screenIndexForPage(
+        pageIndexForLine(lineIndex < 0 ? 0 : lineIndex, pages),
+        metrics.cols,
+      );
+    };
+
+    const settle = (force: boolean) => {
+      if (!alive) return;
+      const measured = measureLines(flow);
+      if (!measured.length && !force) return;
+      const pages = packLinePages(measured, metrics.contentH);
+      pagesRef.current = pages;
+      measuredRef.current = measured;
+      const pending = pendingSeek.current;
+      let next = pageRef.current.index;
+      if (pending) {
+        next =
+          pending.edge === 'end'
+            ? screenCount(pages.length, metrics.cols) - 1
+            : screenFor(pending.char, pending.block, pages, measured);
+        pendingSeek.current = null;
+        placed = true;
+      } else if (resized && !placed) {
+        next = screenFor(anchorChar.current, undefined, pages, measured);
+        placed = true;
+      }
+      showScreen(next, pages, metrics.cols);
+      seeking.current = false;
+      reportPosition(pageRef.current.index, pageRef.current.count);
+    };
+
+    settle(false);
+    const raf = requestAnimationFrame(() => settle(false));
+    const early = window.setTimeout(() => settle(false), 60);
+    const late = window.setTimeout(() => settle(true), 240);
+    const fonts = document.fonts?.ready.then(() => settle(true));
+    return () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+      window.clearTimeout(early);
+      window.clearTimeout(late);
+      void fonts;
+    };
+  }, [lines, metricsKey, metrics, seekGen, showScreen, reportPosition]);
 
   useEffect(() => {
-    const view = viewRef.current;
-    if (!view) return;
-    let raf = 0;
-    const onScroll = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        syncFromView();
-      });
-    };
-    view.addEventListener('scroll', onScroll, { passive: true });
-    // 内容变化后主动同步一次（首屏页码 / 段切换）
-    const t = requestAnimationFrame(() => syncFromView());
-    return () => {
-      view.removeEventListener('scroll', onScroll);
-      if (raf) cancelAnimationFrame(raf);
-      cancelAnimationFrame(t);
-    };
-  }, [syncFromView, lines]);
+    if (seeking.current || !lines?.length) return;
+    reportPosition(pageIndex, pageCount);
+  }, [pageIndex, pageCount, lines, reportPosition]);
 
   /* ---------- 翻页 ---------- */
 
+  const goToSegment = useCallback(
+    (char: number, edge: PendingSeek['edge']) => {
+      seeking.current = true;
+      pendingSeek.current = { char, edge };
+      anchorChar.current = char;
+      echoChar.current = char;
+      onCharChangeRef.current(char);
+      setSeg(segmentOf(idx, chapters, char));
+    },
+    [idx, chapters],
+  );
+
   const turn = useCallback(
     (dir: 1 | -1) => {
-      const view = viewRef.current;
-      if (!view) return;
-      const step = lineStepPx * (metrics.double ? 2 : 1);
-      const max = view.scrollWidth - view.clientWidth;
-      // 段边界：往后翻到头换下一段，往前翻到头换上一段
-      if (dir === 1 && view.scrollLeft >= max - 4) {
-        if (seg.endChar < totalCharsOf(idx)) {
-          const next = seg.endChar;
-          seeking.current = true;
-          pendingSeek.current = { char: next };
-          setSeg(segmentOf(idx, chapters, next));
-          onCharChange(next);
-        }
+      if (!lines?.length || seeking.current) return;
+      const { index, count } = pageRef.current;
+      if (dir === 1 && index >= count - 1) {
+        if (seg.endChar < totalCharsOf(idx)) goToSegment(seg.endChar, 'char');
         return;
       }
-      if (dir === -1 && view.scrollLeft <= 4) {
-        if (seg.startChar > 0) {
-          const prev = Math.max(0, seg.startChar - 1);
-          seeking.current = true;
-          pendingSeek.current = { char: prev };
-          setSeg(segmentOf(idx, chapters, prev));
-          onCharChange(prev);
-        }
+      if (dir === -1 && index <= 0) {
+        if (seg.startChar > 0) goToSegment(Math.max(0, seg.startChar - 1), 'end');
         return;
       }
-      const left = clamp(view.scrollLeft + dir * step, 0, max);
-      // 直接赋值：smooth 时连续翻页会读到动画中间值，几下点击叠成一次
-      view.scrollLeft = left;
-      setPage((p) => ({ ...p, index: Math.round(left / lineStepPx) }));
+      showScreen(index + dir, pagesRef.current, metrics.cols);
     },
-    [lineStepPx, metrics.double, seg.startChar, seg.endChar, idx, chapters, onCharChange],
+    [lines, seg.startChar, seg.endChar, idx, goToSegment, metrics.cols, showScreen],
   );
 
   useEffect(() => {
@@ -316,87 +418,103 @@ export function PagedView({
       turn,
       seek: (char: number, blockHint?: number) => {
         seeking.current = true;
-        pendingSeek.current = { char, block: blockHint };
+        pendingSeek.current = { char, block: blockHint, edge: 'char' };
+        anchorChar.current = char;
+        echoChar.current = char;
+        onCharChangeRef.current(char);
         if (char < seg.startChar || char >= seg.endChar) {
           setSeg(segmentOf(idx, chapters, char, blockHint));
-        } else {
-          requestAnimationFrame(() => {
-            pendingSeek.current = null;
-            seekToLine(char, false, blockHint);
-            requestAnimationFrame(() => {
-              seeking.current = false;
-            });
-          });
+          return;
         }
+        setSeekGen((n) => n + 1);
       },
     };
     return () => {
       handleRef.current = null;
     };
-  }, [handleRef, turn, seg.startChar, seg.endChar, idx, chapters, seekToLine]);
+  }, [handleRef, turn, seg.startChar, seg.endChar, idx, chapters]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    let locked = false;
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey) return;
+      const dominant =
+        Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+      if (Math.abs(dominant) < 8) return;
+      event.preventDefault();
+      if (locked) return;
+      locked = true;
+      turn(dominant > 0 ? 1 : -1);
+      window.setTimeout(() => {
+        locked = false;
+      }, 320);
+    };
+    view.addEventListener('wheel', onWheel, { passive: false });
+    return () => view.removeEventListener('wheel', onWheel);
+  }, [turn]);
 
   /* ---------- 渲染 ---------- */
 
   const hasFootnotes = footnotes.size > 0;
+  const flowStyle = {
+    width: metrics.colW || '100%',
+    fontFamily,
+    fontSize: typography.fontSize,
+    lineHeight: `${metrics.linePx}px`,
+    letterSpacing: `${typography.letterSpacing}em`,
+    textAlign: typography.textAlign,
+    ['--p-gap' as string]: `${metrics.paragraphGapPx}px`,
+    ['--indent' as string]: `${typography.textIndent}em`,
+  };
 
   return (
     <div
-      className={`paged-view${metrics.double ? ' double' : ''}`}
+      className={`paged-view${metrics.cols === 2 ? ' double' : ''}`}
       ref={viewRef}
-      style={{ width: metrics.pageW }}
-      data-page={page.index + 1}
+      style={{ width: metrics.pageW || undefined }}
+      data-page={pageIndex + 1}
+      data-flip={flipAnimation ? 'on' : 'off'}
     >
       <div
-        className="paged-flow"
-        ref={flowRef}
+        className="paged-cols"
         style={{
-          columnCount: metrics.double ? 2 : 1,
-          columnGap: GAP,
-          width: '100%',
-          height: '100%',
-          boxSizing: 'border-box',
-          paddingTop: metrics.padY,
-          paddingBottom: metrics.padY * 2,
-          fontFamily,
-          fontSize: typography.fontSize,
-          lineHeight: typography.lineHeight,
-          letterSpacing: `${typography.letterSpacing}em`,
-          textAlign: typography.textAlign,
-          // 段距用 em 表达，和字号一起缩放
-          ['--p-gap' as string]: `${typography.paragraphSpacing}em`,
-          ['--indent' as string]: `${typography.textIndent}em`,
+          marginTop: metrics.padTop,
+          height: metrics.contentH || '100%',
+          gap: metrics.gap,
         }}
       >
-        {lines === null && (
-          <div className="paged-skeleton" aria-hidden>
-            {Array.from({ length: 9 }, (_, i) => (
-              <span key={i} style={{ width: `${88 - (i % 3) * 9}%` }} />
-            ))}
-          </div>
-        )}
-        {lines?.map((l) => {
-          const parts = hasFootnotes ? splitByRefs(l.text) : null;
+        {COLUMN_KEYS.slice(0, metrics.cols).map((key, slot) => {
+          const offset = offsets[slot] ?? null;
           return (
-            <p className="qy-line" data-char={l.char} key={l.char}>
-              {parts
-                ? parts.map((p, pi) =>
-                    p.ref ? (
-                      <sup
-                        key={pi}
-                        className="qy-ref"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onFootnote(p.ref as string);
-                        }}
-                      >
-                        {p.ref}
-                      </sup>
-                    ) : (
-                      <span key={pi}>{p.text}</span>
-                    ),
-                  )
-                : l.text}
-            </p>
+            <div
+              key={key}
+              className="paged-col"
+              style={{ width: metrics.colW || '100%' }}
+              aria-hidden={slot > 0 ? true : undefined}
+            >
+              <div
+                className="paged-flow"
+                ref={slot === 0 ? flowRef : undefined}
+                style={{
+                  ...flowStyle,
+                  transform: offset == null ? undefined : `translateY(${-offset}px)`,
+                  visibility: offset == null ? 'hidden' : 'visible',
+                }}
+              >
+                {slot === 0 && lines === null && (
+                  <div className="paged-skeleton" aria-hidden>
+                    {SKELETON_BARS.map((bar) => (
+                      <span key={bar.id} style={{ width: bar.width }} />
+                    ))}
+                  </div>
+                )}
+                {lines && (
+                  <FlowBody lines={lines} hasFootnotes={hasFootnotes} onFootnote={onFootnote} />
+                )}
+              </div>
+            </div>
           );
         })}
       </div>

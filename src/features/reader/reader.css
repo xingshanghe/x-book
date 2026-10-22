@@ -29,13 +29,19 @@
   --w-scale: 1;
 }
 @media (min-width: 1000px) {
-  .reader-content { --w-scale: 1.12; }
+  .reader-content {
+    --w-scale: 1.12;
+  }
 }
 @media (min-width: 1300px) {
-  .reader-content { --w-scale: 1.24; }
+  .reader-content {
+    --w-scale: 1.24;
+  }
 }
 @media (min-width: 1600px) {
-  .reader-content { --w-scale: 1.36; }
+  .reader-content {
+    --w-scale: 1.36;
+  }
 }
 
 .reader-page-clip {
@@ -138,7 +144,9 @@
   background: color-mix(in srgb, var(--paper-0) 92%, transparent);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
-  transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease);
+  transition:
+    transform var(--dur) var(--ease),
+    opacity var(--dur) var(--ease);
   z-index: var(--z-rail);
 }
 .reader-bar.top {
@@ -196,14 +204,14 @@
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
-.reader-progress-row input[type='range'] {
+.reader-progress-row input[type="range"] {
   flex: 1;
   appearance: none;
   -webkit-appearance: none;
   height: 22px;
   background: transparent;
 }
-.reader-progress-row input[type='range']::-webkit-slider-runnable-track {
+.reader-progress-row input[type="range"]::-webkit-slider-runnable-track {
   height: 3px;
   border-radius: 2px;
   background: linear-gradient(
@@ -212,7 +220,7 @@
     var(--paper-2) var(--pct, 0%) 100%
   );
 }
-.reader-progress-row input[type='range']::-webkit-slider-thumb {
+.reader-progress-row input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 15px;
   height: 15px;
@@ -266,7 +274,9 @@
   border-radius: var(--r-md);
   margin-bottom: 8px;
   background: var(--paper-0);
-  transition: border-color var(--dur-fast), transform var(--dur-fast);
+  transition:
+    border-color var(--dur-fast),
+    transform var(--dur-fast);
 }
 .bm-item:hover {
   border-color: var(--indigo-line);
@@ -360,7 +370,7 @@
   background: var(--paper-0);
   color: var(--ink-1);
 }
-.font-chip[aria-pressed='true'] {
+.font-chip[aria-pressed="true"] {
   border-color: var(--indigo);
   color: var(--indigo);
   background: var(--indigo-weak);
@@ -396,30 +406,31 @@
 
 .paged-view {
   height: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
+  overflow: hidden;
   scrollbar-width: none;
 }
 .paged-view::-webkit-scrollbar {
   display: none;
 }
 
-/* 多列 + 固定列高：浏览器按真实排版断列，不会切掉半个字 */
-.paged-flow {
-  column-fill: auto;
+/* 一屏一栏或两栏。每栏裁切到整数行，正文用 translateY 对齐到该栏的第一行。
+   不用过渡：滑动会把下一栏的行从这一栏滑过去，看起来像重叠。 */
+.paged-cols {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+.paged-col {
+  overflow: hidden;
+  min-width: 0;
+  height: 100%;
+}
+.paged-view.double .paged-col + .paged-col {
+  box-shadow: -1px 0 0 var(--line-soft);
 }
 
 .paged-flow .qy-line {
   margin: 0 0 var(--p-gap, 0.6em);
-  break-inside: auto;
-  orphans: 2;
-  widows: 2;
-}
-
-/* 双页时给中缝一条淡线，两栏才看得出边界 */
-.paged-view.double .paged-flow {
-  column-rule: 1px solid var(--line-soft);
 }
 
 .paged-skeleton {
