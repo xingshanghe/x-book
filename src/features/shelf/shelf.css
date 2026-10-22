@@ -16,7 +16,9 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 12px clamp(14px, 4vw, 44px) 16px;
+  /* 顶部让出系统按钮（macOS 红绿灯），左右同理；Web 端三个值都是 0 */
+  padding: calc(12px + var(--chrome-top)) calc(clamp(14px, 4vw, 44px) + var(--chrome-right)) 16px
+    calc(clamp(14px, 4vw, 44px) + var(--chrome-left));
   background: color-mix(in srgb, var(--paper-0) 90%, transparent);
   -webkit-backdrop-filter: saturate(150%) blur(14px);
   backdrop-filter: saturate(150%) blur(14px);
@@ -33,25 +35,43 @@
     repeating-linear-gradient(90deg, var(--gingham-sq) 0 3px, transparent 3px 6px);
   opacity: 0.9;
 }
+/* 品牌主标：VI v2.0 横向 lockup —— 折角书页 + 「轻阅」（楷体）+ 下方 QINGYUE */
 .brand {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
+  color: var(--ink-1);
+  padding-right: 2px;
+  /* 不可压缩：窗口变窄时先挤搜索框，别把标志压成 0 宽 */
+  flex: 0 0 auto;
+}
+.brand svg {
+  flex: 0 0 auto;
+}
+.brand-word {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   font-family: var(--font-kai);
   font-size: 19px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  line-height: 1.02;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
 }
-.brand small {
-  color: var(--ink-3);
+.brand-word small {
   font-family: var(--font-sans);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  margin-left: 2px;
-  transform: translateY(2px);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.28em;
+  color: var(--ink-3);
+  margin-top: 3px;
+  /* 「轻阅」末字带字距，回退一格让英文与字标左沿对齐 */
+  margin-left: -1px;
 }
 .shelf-search {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   max-width: 420px;
   display: flex;
   align-items: center;
@@ -104,42 +124,122 @@
   font-size: var(--step--1);
 }
 
-/* 继续阅读卡 */
+/* 继续阅读卡：左侧装饰封面 + 右侧一列信息，书名只出现一次 */
 .continue-card {
   display: flex;
-  gap: 18px;
+  gap: 20px;
   align-items: center;
+  width: 100%;
+  padding: 18px 20px 18px 22px;
+  text-align: left;
   background: var(--paper-1);
   border: 1px solid var(--line-soft);
   border-radius: var(--r-xl);
-  padding: 16px 20px;
   box-shadow: var(--shadow);
   cursor: pointer;
-  text-align: left;
-  width: 100%;
-  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+  transition:
+    transform var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
 }
 .continue-card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-lg);
+  border-color: color-mix(in srgb, var(--indigo) 28%, var(--line-soft));
 }
 .continue-meta {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 0;
+  gap: 7px;
 }
-.continue-meta h3 {
+.continue-kicker {
+  font-family: var(--font-sans);
+  font-size: var(--step--1);
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+.continue-title {
   font-family: var(--font-kai);
   font-size: var(--step-2);
   font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink-1);
+  letter-spacing: 0.02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.continue-meta p {
-  color: var(--ink-3);
+.continue-sub {
   font-size: var(--step--1);
+  color: var(--ink-2);
+}
+.continue-progress {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 3px;
+}
+.continue-stat {
+  white-space: nowrap;
+  font-size: var(--step--1);
+  color: var(--ink-3);
+}
+/* 右侧读数：给宽阔的卡片一个落点，别让右边空着 */
+.continue-pct {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding-right: 4px;
+}
+.continue-pct b {
+  font-family: var(--font-sans);
+  font-size: var(--step-1);
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--indigo);
+  font-variant-numeric: tabular-nums;
+}
+.continue-pct i {
+  font-style: normal;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--ink-3);
+}
+.continue-cta {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: var(--ink-2);
+  background: var(--paper-0);
+  border: 1px solid var(--line-soft);
+  transition:
+    background-color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+.continue-card:hover .continue-cta {
+  background: var(--indigo);
+  border-color: var(--indigo);
+  color: var(--on-indigo);
+  transform: translateX(2px);
+}
+@media (max-width: 560px) {
+  .continue-cta {
+    display: none;
+  }
+  .continue-progress {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
 }
 
 /* 网格 */
@@ -176,9 +276,58 @@
   text-align: center;
 }
 
+/* 封面右上角的「更多」入口：桌面端悬停出现，触屏常显 */
+.cell-cover {
+  position: relative;
+  display: inline-flex;
+  align-self: flex-start;
+}
+.cell-cover > .qy-menu {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+}
+/* 菜单宽度收到封面宽度内，任何一列都不会越出窗口 */
+.cell-cover .qy-menu-list {
+  min-width: 132px;
+}
+/* 透明度只作用在按钮上：设在 .qy-menu 上会把弹出菜单一起弄成半透明 */
+.cell-more {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: rgba(251, 245, 231, 0.92);
+  background: rgba(12, 18, 28, 0.42);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  /* 常显（半透明），悬停提亮：删除入口藏起来等于没有 */
+  opacity: 0.55;
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+.shelf-cell:hover .cell-more,
+.cell-more:hover,
+.cell-cover > .qy-menu:focus-within .cell-more {
+  opacity: 1;
+}
+.cell-more:hover {
+  background: rgba(12, 18, 28, 0.62);
+}
+@media (hover: none) {
+  .cell-more {
+    opacity: 1;
+  }
+}
+
 /* ---------- 封面 ---------- */
 .qy-cover {
   position: relative;
+  display: block;
+  flex: 0 0 auto;
   border: none;
   padding: 0;
   background: none;
@@ -190,6 +339,14 @@
 .qy-cover:hover {
   transform: translateY(-4px) rotate(-0.4deg);
   box-shadow: var(--shadow-lg);
+}
+/* 静态封面（嵌在可点击的卡片里）：不跟手，也不再叠一层点击区域 */
+.qy-cover.static {
+  cursor: inherit;
+}
+.qy-cover.static:hover {
+  transform: none;
+  box-shadow: var(--shadow);
 }
 .qy-cover-cloth {
   position: absolute;
@@ -232,6 +389,25 @@
 }
 .qy-cover-title.vert i {
   font-style: normal;
+}
+/* 「继续阅读」卡里的装饰封面：不放文字，书名交给右侧正文，避免同一屏出现两遍 */
+.qy-cover.mark .qy-cover-cloth::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 7px;
+  background: linear-gradient(90deg, rgb(0 0 0 / 26%), rgb(0 0 0 / 0%));
+  pointer-events: none;
+}
+.qy-cover.mark .qy-cover-cloth::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border: 1px solid rgb(251 245 231 / 18%);
+  border-radius: 2px;
+  pointer-events: none;
 }
 .qy-cover-author {
   position: absolute;

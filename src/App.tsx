@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Route } from 'wouter';
 import { Providers } from './app/providers';
+import { ErrorBoundary } from './app/ErrorBoundary';
 import { bootstrap } from './app/bootstrap';
 import { ShelfPage } from '@/features/shelf/ShelfPage';
 import { ReaderPage } from '@/features/reader/ReaderPage';
@@ -12,10 +13,12 @@ export function App() {
   }, []);
 
   return (
-    <Providers>
-      <Route path="/" component={ShelfPage} />
-      <Route path="/read/:id" component={ReaderPage} />
-      <Route path="/settings" component={SettingsPage} />
-    </Providers>
+    <ErrorBoundary>
+      <Providers>
+        <Route path="/" component={ShelfPage} />
+        <Route path="/read/:id" component={ReaderPage} />
+        <Route path="/settings" component={SettingsPage} />
+      </Providers>
+    </ErrorBoundary>
   );
 }

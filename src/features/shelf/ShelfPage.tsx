@@ -7,8 +7,16 @@ import { listBooks, deleteBook, touchBook } from '@/storage/repositories/bookRep
 import { allProgress } from '@/storage/repositories/progressRepo';
 import type { Book, ShelfSort } from '@/types/models';
 import { Button, EmptyState, Menu, Progress, Segmented, useToast } from '@/ui';
-import { IconClose, IconGear, IconPlus, IconSearch, LogoMark } from '@/ui/icons';
-import { formatChars, formatPercent, formatRelative } from '@/lib/format';
+import {
+  IconChevronRight,
+  IconClose,
+  IconGear,
+  IconMore,
+  IconPlus,
+  IconSearch,
+  LogoMark,
+} from '@/ui/icons';
+import { formatChars, formatPercent, formatRelative, formatRemaining } from '@/lib/format';
 import { BookCover } from './BookCover';
 import { ImportTray, useDropImport } from './ImportDropzone';
 import { useImportQueue } from '@/features/import/importQueue';
@@ -65,7 +73,7 @@ export function ShelfPage() {
     let list = books;
     if (q) {
       list = books.filter(
-        (b) => b.title.toLowerCase().includes(q) || b.author?.toLowerCase().includes(q),
+        (b) => (b.title ?? '').toLowerCase().includes(q) || (b.author ?? '').toLowerCase().includes(q),
       );
     }
     return sortBooks(list, percentMap, settings.sortMode);
@@ -101,10 +109,13 @@ export function ShelfPage() {
 
   return (
     <div className="shelf" {...dropProps}>
-      <header className="shelf-top">
-        <span className="brand">
-          <LogoMark size={17} />
-          轻阅<small>QINGYUE</small>
+      <header className="shelf-top" data-tauri-drag-region="">
+        <span className="brand" data-tauri-drag-region="">
+          <LogoMark size={18} />
+          <span className="brand-word">
+            轻阅
+            <small>QINGYUE</small>
+          </span>
         </span>
         <div className="shelf-search">
           <IconSearch size={17} />
@@ -120,7 +131,7 @@ export function ShelfPage() {
             </button>
           )}
         </div>
-        <span className="spacer" />
+        <span className="spacer" data-tauri-drag-region="" />
         <Segmented
           size="sm"
           value={settings.sortMode}
@@ -155,15 +166,36 @@ export function ShelfPage() {
                   className="continue-card"
                   onClick={() => void openBook(continueBook.id)}
                 >
-                  <BookCover book={continueBook} percent={percentMap[continueBook.id]} width={64} />
+                  {/* 封面只留布面与丝带：书名由右侧正文承担，避免同一行里出现两遍 */}
+                  <BookCover book={continueBook} variant="mark" width={76} />
                   <span className="continue-meta">
-                    <h3>{continueBook.title}</h3>
-                    <p>
+                    <span className="continue-kicker">
+                      上次阅读 · {formatRelative(continueBook.lastOpenedAt ?? continueBook.createdAt)}
+                    </span>
+                    <span className="continue-title">{continueBook.title}</span>
+                    <span className="continue-sub">
                       {continueBook.author ? `${continueBook.author} · ` : ''}
-                      {formatPercent(percentMap[continueBook.id] ?? 0)} ·{' '}
-                      {formatRelative(continueBook.lastOpenedAt ?? continueBook.createdAt)}
-                    </p>
-                    <Progress value={percentMap[continueBook.id] ?? 0} style={{ maxWidth: 280 }} />
+                      共 {formatChars(continueBook.charCount)}
+                    </span>
+                    <span className="continue-progress">
+                      <Progress
+                        value={percentMap[continueBook.id] ?? 0}
+                        style={{ flex: '1 1 auto', maxWidth: 260 }}
+                      />
+                      <span className="continue-stat">
+                        还剩{' '}
+                        {formatRemaining(
+                          (1 - (percentMap[continueBook.id] ?? 0)) * continueBook.charCount,
+                        )}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="continue-pct">
+                    <b>{formatPercent(percentMap[continueBook.id] ?? 0)}</b>
+                    <i>已读</i>
+                  </span>
+                  <span className="continue-cta" aria-hidden>
+                    <IconChevronRight size={18} />
                   </span>
                 </button>
               </>
@@ -180,30 +212,40 @@ export function ShelfPage() {
             <div className={`shelf-grid${settings.shelfDensity === 'compact' ? ' compact' : ''}`}>
               {filtered.map((book) => (
                 <div className="shelf-cell" key={book.id}>
-                  <Menu
-                    align="end"
-                    trigger={
-                      <BookCover
-                        book={book}
-                        percent={percentMap[book.id]}
-                        onClick={() => void openBook(book.id)}
-                      />
-                    }
-                    items={[
-                      { key: 'open', label: '开始阅读', onSelect: () => void openBook(book.id) },
-                      {
-                        key: 'finish',
-                        label: book.finished ? '标记未读完' : '标记已读完',
-                        onSelect: () => void markFinished(book, !book.finished),
-                      },
-                      {
-                        key: 'del',
-                        label: '删除本书',
-                        danger: true,
-                        onSelect: () => void removeBook(book),
-                      },
-                    ]}
-                  />
+                  <div className="cell-cover">
+                    <BookCover
+                      book={book}
+                      percent={percentMap[book.id]}
+                      onClick={() => void openBook(book.id)}
+                    />
+                    {/* 操作入口独立于封面，点封面只负责打开，不会把菜单一起点开 */}
+                    <Menu
+                      align="end"
+                      trigger={
+                        <button
+                          type="button"
+                          className="cell-more"
+                          aria-label={`《${book.title}》更多操作`}
+                        >
+                          <IconMore size={16} />
+                        </button>
+                      }
+                      items={[
+                        { key: 'open', label: '开始阅读', onSelect: () => void openBook(book.id) },
+                        {
+                          key: 'finish',
+                          label: book.finished ? '标记未读完' : '标记已读完',
+                          onSelect: () => void markFinished(book, !book.finished),
+                        },
+                        {
+                          key: 'del',
+                          label: '删除本书',
+                          danger: true,
+                          onSelect: () => void removeBook(book),
+                        },
+                      ]}
+                    />
+                  </div>
                   <span className="shelf-cell-title clamp-2">{book.title}</span>
                   <span className="shelf-cell-sub">
                     {percentMap[book.id] != null && percentMap[book.id] > 0.001

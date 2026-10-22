@@ -153,6 +153,11 @@
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
 
+  /* 系统窗口按钮让位：默认 0，由 html[data-os] 按平台改写 */
+  --chrome-top: 0px;
+  --chrome-left: 0px;
+  --chrome-right: 0px;
+
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --dur-fast: 0.14s;
   --dur: 0.24s;
@@ -164,6 +169,19 @@
   --z-overlay: 50;
   --z-sheet: 60;
   --z-toast: 80;
+}
+
+/* ===================== 窗口 chrome：按平台让位 =====================
+   macOS 壳用 titleBarStyle=Overlay：红绿灯浮在网页之上，占左上角约 0–68 × 0–22。
+   给它留一条 28px 高的可拖拽带，内容整体下移，品牌字不再被压住。
+   Windows / Linux 用系统标题栏，内容从 0 开始，左右也不让位。 */
+html[data-shell='tauri'][data-os='macos'] {
+  --chrome-top: 28px;
+}
+
+/* 原生拖拽区（Tauri 识别 data-tauri-drag-region，双击即最大化） */
+[data-tauri-drag-region] {
+  cursor: default;
 }
 
 @media (prefers-reduced-motion: reduce) {

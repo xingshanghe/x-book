@@ -52,3 +52,6 @@ tests/fixtures/large-*.txt
 # 本机打包产物
 release/
 .dmg-staging/
+
+# 编辑器/工具生成
+.codegraph/

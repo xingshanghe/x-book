@@ -33,11 +33,11 @@ export function SettingsPage() {
 
   return (
     <div className="settings">
-      <header className="settings-top">
+      <header className="settings-top" data-tauri-drag-region="">
         <button type="button" className="qy-icon-btn" onClick={() => navigate('/')} aria-label="返回书架">
           <IconChevronLeft />
         </button>
-        <h1>设置</h1>
+        <h1 data-tauri-drag-region="">设置</h1>
       </header>
 
       <div className="settings-body">
@@ -52,7 +52,6 @@ export function SettingsPage() {
         {/* ── 外观 ── */}
         <section id="appearance" className="settings-section">
           <h2>外观</h2>
-          <p className="desc">三套纸面底色由品牌规范定义，日夜切换不带闪屏。</p>
           <div className="qy-row">
             <span className="qy-row-label">主题</span>
             <Segmented
@@ -167,10 +166,6 @@ export function SettingsPage() {
         {/* ── 同步 ── */}
         <section id="sync" className="settings-section">
           <h2>同步</h2>
-          <p className="desc">
-            当前为<b>单机模式</b>：所有数据只存在于本机，不发出任何网络请求。
-            同步为可选能力，接口已就位但未接入服务——将来配置服务地址后可多端同步进度与书签，配置错误或服务不可用时自动静默降级，不影响任何本地功能。
-          </p>
           <div className="qy-row">
             <span className="qy-row-label">状态</span>
             <span className="qy-row-hint">单机模式 · 未配置服务</span>
@@ -182,11 +177,7 @@ export function SettingsPage() {
           <h2>
             <LogoMark size={15} /> 关于轻阅
           </h2>
-          <p className="desc">
-            轻阅 QINGYUE v1.0 · 本地优先的纯离线 txt 阅读器
-            <br />
-            流式分块解析 · 字节级索引 · IndexedDB 存储 · PWA 可安装
-          </p>
+          <p className="desc">轻阅 QINGYUE v1.0 · 本地优先的纯离线 txt 阅读器</p>
           <div className="qy-row">
             <span className="qy-row-label">安装形态</span>
             <span className="qy-row-hint">{isStandalone() ? '已安装（独立窗口）' : '浏览器内运行'}</span>
@@ -238,7 +229,6 @@ function RecognitionSection({
   return (
     <section id="recognition" className="settings-section">
       <h2>识别与清洗</h2>
-      <p className="desc">章节识别采用「通杀正则 + 向本书学习」；广告清洗只删整行，命中数在导入报告里可见。</p>
       <Switch label="自动识别章节" checked={detectChapters} onChange={(v) => update({ detectChapters: v })} />
       <Switch label="脚注识别" hint="①–㊿ 引用与行首注释" checked={detectFootnotes} onChange={(v) => update({ detectFootnotes: v })} />
       <Switch label="广告清洗" checked={cleanAds} onChange={(v) => update({ cleanAds: v })} />

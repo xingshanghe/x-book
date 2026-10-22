@@ -32,19 +32,16 @@ import {
   IconBook,
   IconBookmark,
   IconChevronLeft,
+  IconChevronRight,
   IconList,
   IconMoon,
   IconSearch,
   IconSettings2,
   IconSun,
 } from '@/ui/icons';
-import {
-  BookmarkSheet,
-  FootnoteSheet,
-  LayoutSheet,
-  SearchSheet,
-  TocSheet,
-} from './ReaderSheets';
+import { BookmarkSheet, FootnoteSheet, LayoutSheet, SearchSheet } from './ReaderSheets';
+import { PagedView, type PagedHandle } from './PagedView';
+import { TocSidebar } from './TocSidebar';
 import { TitlePageView } from './TitlePage';
 import './reader.css';
 
@@ -70,24 +67,38 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   const updateTypography = useSettings((s) => s.updateTypography);
 
   const [data, setData] = useState<Loaded | null>(null);
-  const [missing, setMissing] = useState(false);
+  /** absent=书没了 / empty=正文为空（历史坏数据） */
+  const [missing, setMissing] = useState<null | 'absent' | 'empty'>(null);
 
   // 虚拟滚动状态
   const heights = useRef(new Map<number, number>());
   const [heightVersion, setHeightVersion] = useState(0);
   const [win, setWin] = useState({ start: 0, end: 8 });
+  // 必须放在所有 early return 之前：数据到达前后 hook 数量一旦变化，
+  // React 会抛「Rendered more hooks than during the previous render」并卸载整页，
+  // 表现就是点开书一片空白，一个字都看不到。
+  const blockIndexes = useMemo(() => {
+    const out: number[] = [];
+    for (let i = win.start; i < win.end; i++) out.push(i);
+    return out;
+  }, [win]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const pendingSeek = useRef<number | null>(null);
+  const pagedRef = useRef<PagedHandle | null>(null);
   const [currentChar, setCurrentChar] = useState(0);
+  const [pageInfo, setPageInfo] = useState({ index: 0, count: 1 });
+  const [segLoading, setSegLoading] = useState(false);
 
   // 浮层
-  const [sheet, setSheet] = useState<'toc' | 'search' | 'bookmark' | 'layout' | null>(null);
+  const [sheet, setSheet] = useState<'search' | 'bookmark' | 'layout' | null>(null);
   const [footnote, setFootnote] = useState<{ marker: string; text: string } | null>(null);
   const [barsVisible, setBarsVisible] = useState(true);
   const bookmarksRef = useRef<Bookmark[]>([]);
   const [, bumpBookmarks] = useState(0);
   const [currentText, setCurrentText] = useState('');
+  /** 已写回过「读完」标记，避免每次落盘都重复 touch */
+  const finishedMarked = useRef(false);
 
   /* ────────────── 加载书籍 ────────────── */
 
@@ -99,12 +110,18 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
       if (!bookId) return;
       const book = await getBook(bookId);
       if (!book) {
-        setMissing(true);
+        setMissing('absent');
         return;
       }
       const [blockIndex, blob] = await Promise.all([getBlockIndex(bookId), getBookBlob(bookId)]);
       if (!blockIndex || !blob) {
-        setMissing(true);
+        setMissing('absent');
+        return;
+      }
+      // 正文为空说明这份导入没把文件体存下来（历史坏数据），
+      // 直接说清楚，别让用户对着一页白纸猜。
+      if (blob.size === 0) {
+        setMissing('empty');
         return;
       }
       const [chapters, footnoteRec, saved, fonts] = await Promise.all([
@@ -124,17 +141,12 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
       };
       const reader = new BlockReader({ blob, blockSize: blockIndex.blockSize, blockCount: blockIndex.count, starts: blockIndex.starts });
       const pos = resolvePosition(idx, saved);
-      const excerpt = settings.showTitlePage
-        ? (await buildTitlePage(book, async (n) => {
-            const out: string[] = [];
-            for (let i = 0; i < Math.min(n, 4); i++) out.push(...(await reader.readLines(i)).slice(0, 8));
-            return out;
-          })).excerpt
-        : [];
 
       if (!alive) return;
       pendingSeek.current = idx.charOffsets[pos.blockIndex] + pos.charTarget;
       setCurrentChar(pendingSeek.current);
+      // 先把正文交出去：扉页摘要要额外解码几块，
+      // 之前它是 await 在 setData 之前的，首屏就白白多等一段。
       setData({
         book,
         idx,
@@ -144,9 +156,24 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
         startBlock: pos.blockIndex,
         charInBlock: pos.charTarget,
         savedPercent: saved?.percent ?? 0,
-        excerpt,
+        excerpt: [],
         userFonts: fonts.map((f) => ({ id: f.family, name: f.name })),
       });
+
+      if (settings.showTitlePage) {
+        void buildTitlePage(book, async (n) => {
+          const out: string[] = [];
+          for (let i = 0; i < Math.min(n, 4); i++) out.push(...(await reader.readLines(i)).slice(0, 8));
+          return out;
+        })
+          .then((tp) => {
+            if (!alive) return;
+            setData((d) => (d && d.book.id === book.id ? { ...d, excerpt: tp.excerpt } : d));
+          })
+          .catch(() => {
+            /* 摘要只是锦上添花，失败不影响阅读 */
+          });
+      }
     })();
     return () => {
       alive = false;
@@ -218,7 +245,6 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
           const end = Math.min(data.idx.count, last + 3);
           return Math.abs(w.start - start) + Math.abs(w.end - end) > 1 ? { start, end } : w;
         });
-        scheduleSave();
         const ch = firstVisibleChar();
         if (ch != null) setCurrentChar(ch);
       });
@@ -236,13 +262,25 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     const el = contentRef.current;
     const root = scrollRef.current;
     if (!el || !root || !data) return;
+    // 扉页没有块号，高度记在 -1。它一变正文起点就得跟着挪，
+    // 否则扉页（min-height: 62vh，常高于估算的 340）会直接压在正文上。
+    const measureTitle = (target: HTMLElement): boolean => {
+      const h = target.getBoundingClientRect().height;
+      if (heights.current.get(-1) === h) return false;
+      heights.current.set(-1, h);
+      return true;
+    };
     const ro = new ResizeObserver((entries) => {
       let changed = false;
       for (const e of entries) {
-        const bi = (e.target as HTMLElement).dataset.block;
-        if (bi == null) continue;
+        const target = e.target as HTMLElement;
+        const bi = target.dataset.block;
+        if (bi == null) {
+          if (measureTitle(target)) changed = true;
+          continue;
+        }
         const idx = Number(bi);
-        const h = (e.target as HTMLElement).getBoundingClientRect().height;
+        const h = target.getBoundingClientRect().height;
         const prev = heights.current.get(idx);
         if (prev === h) continue;
         // 修正锚点：高度变化发生在视口上方时补偿 scrollTop
@@ -258,10 +296,12 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     });
     el.querySelectorAll<HTMLElement>('.qy-block').forEach((b) => ro.observe(b));
     const tp = el.querySelector<HTMLElement>('.title-page');
+    let titleChanged = false;
     if (tp) {
       ro.observe(tp);
-      heights.current.set(-1, tp.getBoundingClientRect().height);
+      titleChanged = measureTitle(tp);
     }
+    if (titleChanged) setHeightVersion((v) => v + 1);
     return () => ro.disconnect();
   }, [data, win, tops]);
 
@@ -320,6 +360,19 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     [data, tops, linePx],
   );
 
+  /** 统一的「跳转到某字符」：分页模式交给 PagedView，滚动模式用滚动定位 */
+  const seek = useCallback(
+    (char: number, blockHint?: number) => {
+      if (settings.pageMode === 'page') {
+        pagedRef.current?.seek(char, blockHint);
+        setCurrentChar(char);
+      } else {
+        seekToChar(char);
+      }
+    },
+    [settings.pageMode, seekToChar],
+  );
+
   // 当前可视文本（书签/摘录用）
   useEffect(() => {
     if (!data) return;
@@ -368,6 +421,15 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     [total, typo.fontSize],
   );
 
+  /** 统一的「翻一页」：分页模式翻一屏（双页时两列），滚动模式滚一屏 */
+  const turn = useCallback(
+    (dir: 1 | -1) => {
+      if (settings.pageMode === 'page') pagedRef.current?.turn(dir);
+      else turnPage(dir);
+    },
+    [settings.pageMode, turnPage],
+  );
+
   /* ────────────── 键盘与手势 ────────────── */
 
   useEffect(() => {
@@ -381,17 +443,15 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
         case 'PageDown':
         case ' ':
           e.preventDefault();
-          if (settings.pageMode === 'page') turnPage(1);
-          else scrollRef.current?.scrollBy({ top: scrollRef.current.clientHeight * 0.85, behavior: 'smooth' });
+          turn(1);
           break;
         case 'ArrowLeft':
         case 'PageUp':
           e.preventDefault();
-          if (settings.pageMode === 'page') turnPage(-1);
-          else scrollRef.current?.scrollBy({ top: -scrollRef.current.clientHeight * 0.85, behavior: 'smooth' });
+          turn(-1);
           break;
         case 't':
-          setSheet((s) => (s === 'toc' ? null : 'toc'));
+          updateSettings({ tocDocked: !useSettings.getState().settings.tocDocked });
           break;
         case 'Escape':
           setSheet(null);
@@ -400,7 +460,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [settings.enableShortcuts, settings.pageMode, turnPage, sheet, footnote]);
+  }, [settings.enableShortcuts, turn, sheet, footnote]);
 
   // 水平滑动翻页
   useEffect(() => {
@@ -415,7 +475,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     const te = (e: TouchEvent) => {
       const dx = e.changedTouches[0].clientX - x0;
       const dy = e.changedTouches[0].clientY - y0;
-      if (Math.abs(dx) > 64 && Math.abs(dx) > Math.abs(dy) * 1.6) turnPage(dx < 0 ? 1 : -1);
+      if (Math.abs(dx) > 64 && Math.abs(dx) > Math.abs(dy) * 1.6) turn(dx < 0 ? 1 : -1);
     };
     el.addEventListener('touchstart', ts, { passive: true });
     el.addEventListener('touchend', te, { passive: true });
@@ -423,43 +483,72 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
       el.removeEventListener('touchstart', ts);
       el.removeEventListener('touchend', te);
     };
-  }, [turnPage]);
+  }, [turn]);
 
   /* ────────────── 进度落盘 ────────────── */
 
-  const scheduleSave = useMemo(
-    () =>
-      debounce(() => {
-        const d = data;
-        if (!d) return;
-        const ch = firstVisibleChar();
-        if (ch == null) return;
-        const totalChars = d.idx.charOffsets[d.idx.count - 1] + d.idx.charCounts[d.idx.count - 1];
-        const percent = totalChars > 0 ? ch / totalChars : 0;
-        void saveProgress({
-          bookId: d.book.id,
-          chapterIndex: 0,
-          blockIndex: 0,
-          lineInBlock: 0,
-          charOffset: ch,
-          percent,
-          updatedAt: Date.now(),
-          deviceId: settings.deviceId,
-        });
-        if (percent >= 0.995 && !d.book.finished) {
-          void touchBook(d.book.id, { finished: true, finishedAt: Date.now() });
-        }
-      }, 500),
-    [data, firstVisibleChar, settings.deviceId],
+  /**
+   * 位置落盘。分页 / 滚动两种模式统一走这里：
+   * 原先只有滚动模式的 scroll 回调才写库，而默认是分页模式，
+   * 于是整本书翻完一条进度都没存，退出重进只剩 0%。
+   */
+  const persist = useCallback(
+    (ch: number) => {
+      const d = data;
+      if (!d) return;
+      const last = d.idx.count - 1;
+      const totalChars = (d.idx.charOffsets[last] ?? 0) + (d.idx.charCounts[last] ?? 0);
+      if (totalChars <= 0) return;
+      const charOffset = Math.round(clamp(ch, 0, totalChars));
+      const percent = charOffset / totalChars;
+      void saveProgress({
+        bookId: d.book.id,
+        chapterIndex: d.chapters.length ? chapIndexAt(d.chapters, charOffset) : 0,
+        blockIndex: blockAtCharOffset(d.idx, charOffset),
+        lineInBlock: 0,
+        charOffset,
+        percent,
+        updatedAt: Date.now(),
+        deviceId: settings.deviceId,
+      });
+      if (percent >= 0.995 && !finishedMarked.current) {
+        finishedMarked.current = true;
+        if (!d.book.finished) void touchBook(d.book.id, { finished: true, finishedAt: Date.now() });
+      }
+    },
+    [data, settings.deviceId],
   );
 
+  // 去抖实例只建一次：随 data 重建会把上一次的待写位置丢在半路
+  const persistRef = useRef(persist);
+  persistRef.current = persist;
+  const scheduleSave = useMemo(() => debounce((ch: number) => persistRef.current(ch), 500), []);
+  const charRef = useRef(0);
+
+  // 位置一变就排队落盘（翻页 / 拖动进度条 / 目录跳转都会走到这里）
   useEffect(() => {
-    const flush = () => scheduleSave.flush();
-    document.addEventListener('visibilitychange', flush);
-    return () => {
-      document.removeEventListener('visibilitychange', flush);
-      flush();
+    if (!data) return;
+    charRef.current = currentChar;
+    scheduleSave(currentChar);
+  }, [currentChar, data, scheduleSave]);
+
+  // 关窗 / 切后台 / 离开阅读页：立刻写一次，别等去抖计时器
+  useEffect(() => {
+    const flush = () => {
       scheduleSave.cancel();
+      persistRef.current(charRef.current);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', flush);
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('beforeunload', flush);
+      flush();
     };
   }, [scheduleSave]);
 
@@ -474,8 +563,12 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
           </button>
         </div>
         <EmptyState
-          title="找不到这本书"
-          hint="它可能已被删除，或索引文件缺失。回到书架重新导入即可。"
+          title={missing === 'empty' ? '这本书没有正文' : '找不到这本书'}
+          hint={
+            missing === 'empty'
+              ? '导入时正文没能写入本地库，删掉这本书重新导入一次即可。'
+              : '它可能已被删除，或索引文件缺失。回到书架重新导入即可。'
+          }
           action={<Button onClick={() => navigate('/')}>返回书架</Button>}
         />
       </div>
@@ -483,9 +576,22 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   }
 
   if (!data) {
+    // 打开书的那一刻绝不能是黑屏：给一块书页骨架，
+    // 让「在忙」这件事可见，而不是让人以为点坏了。
     return (
       <div className="reader">
-        <EmptyState title="书页翻动中…" />
+        <div className="reader-loading" aria-busy="true">
+          <div className="reader-loading-mark">轻阅</div>
+          <div className="reader-loading-lines" aria-hidden>
+            <span style={{ width: '92%' }} />
+            <span style={{ width: '88%' }} />
+            <span style={{ width: '94%' }} />
+            <span style={{ width: '76%' }} />
+            <span style={{ width: '90%' }} />
+            <span style={{ width: '54%' }} />
+          </div>
+          <p>正在铺开书页…</p>
+        </div>
       </div>
     );
   }
@@ -498,18 +604,12 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     : null;
   const chapterName = currentChapter?.title ?? (chapters.length ? '' : book.title);
 
-  const blockIndexes = useMemo(() => {
-    const out: number[] = [];
-    for (let i = win.start; i < win.end; i++) out.push(i);
-    return out;
-  }, [win]);
-
   const onContentTap = (e: React.MouseEvent) => {
     if (window.getSelection()?.toString()) return;
-    if (!settings.tapToTurn || settings.pageMode !== 'page') return;
+    if (!settings.tapToTurn) return;
     const x = e.clientX / window.innerWidth;
-    if (x < 0.3) turnPage(-1);
-    else if (x > 0.7) turnPage(1);
+    if (x < 0.3) turn(-1);
+    else if (x > 0.7) turn(1);
     else setBarsVisible((v) => !v);
   };
 
@@ -523,12 +623,35 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
           : `"${settings.bodyFont}", var(--font-kai)`;
 
   return (
-    <div className="reader">
-      <header className={`reader-bar top${barsVisible ? '' : ' hidden'}`}>
+    <div className={`reader${settings.tocDocked ? ' with-toc' : ''}`}>
+      {settings.tocDocked && (
+        <TocSidebar
+          chapters={chapters}
+          bookmarks={bookmarksRef.current}
+          currentChar={currentChar}
+          onJump={seek}
+          onJumpBookmark={(b) => seek(b.charOffset)}
+          onClose={() => updateSettings({ tocDocked: false })}
+        />
+      )}
+
+      <div className="reader-main">
+      <header className={`reader-bar top${barsVisible ? '' : ' hidden'}`} data-tauri-drag-region="">
         <button type="button" className="qy-icon-btn" onClick={() => navigate('/')} aria-label="返回书架">
           <IconChevronLeft />
         </button>
-        <span className="title">{book.title}</span>
+        <button
+          type="button"
+          className={`qy-icon-btn${settings.tocDocked ? ' on' : ''}`}
+          onClick={() => updateSettings({ tocDocked: !settings.tocDocked })}
+          aria-label={settings.tocDocked ? '收起目录' : '展开目录'}
+          aria-pressed={settings.tocDocked}
+        >
+          <IconList />
+        </button>
+        <span className="title" data-tauri-drag-region="">
+          {book.title}
+        </span>
         <button
           type="button"
           className="qy-icon-btn"
@@ -539,17 +662,34 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
         </button>
       </header>
 
-      <div
-        ref={scrollRef}
-        className="reader-scroll"
-        style={settings.pageMode === 'page' ? { scrollbarWidth: 'none' } : undefined}
-      >
+      {settings.pageMode === 'page' ? (
+        <div className="reader-paged-wrap" onClick={onContentTap}>
+        <PagedView
+          idx={idx}
+          reader={reader}
+          chapters={chapters}
+          footnotes={data.footnotes}
+          typography={typo}
+          fontFamily={fontFamily}
+          charOffset={currentChar}
+          startBlock={data.startBlock}
+          onCharChange={setCurrentChar}
+          onFootnote={(m) =>
+            setFootnote({ marker: m, text: data.footnotes.get(m) ?? '未找到对应注释。' })
+          }
+          flipAnimation={settings.flipAnimation}
+          handleRef={pagedRef}
+          onLoadingChange={setSegLoading}
+          onPageInfo={setPageInfo}
+        />
+        </div>
+      ) : (
+      <div ref={scrollRef} className="reader-scroll" onClick={onContentTap}>
         <div
           ref={contentRef}
           className="reader-content"
-          onClick={onContentTap}
           style={{
-            maxWidth: `calc(${typo.maxWidth}ch + 48px)`,
+            maxWidth: `calc((${typo.maxWidth}ch + 48px) * var(--w-scale, 1))`,
             '--fs': `${typo.fontSize}px`,
             '--lh': typo.lineHeight,
             '--indent': `${typo.textIndent}em`,
@@ -559,7 +699,8 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
             lineHeight: typo.lineHeight,
           } as React.CSSProperties}
         >
-          <div style={{ height: tops[0] }} aria-hidden={win.start > 0}>
+          {/* 扉页占位用 min-height：实测高度回来之前也不会被正文压住 */}
+          <div style={{ minHeight: tops[0] }} aria-hidden={win.start > 0}>
             {settings.showTitlePage && win.start === 0 && (
               <TitlePageView book={book} excerpt={data.excerpt} />
             )}
@@ -583,9 +724,19 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
           <div style={{ height: Math.max(0, total - tops[win.end]) }} aria-hidden />
         </div>
       </div>
+      )}
 
       <footer className={`reader-bar bottom${barsVisible ? '' : ' hidden'}`}>
-        <span className="chapter">{chapterName}</span>
+        <span className="chapter">
+          {chapterName}
+          {settings.pageMode === 'page' && pageInfo.count > 1 && (
+            <span className="page-no">
+              {' '}
+              · {pageInfo.index + 1} / {pageInfo.count}
+            </span>
+          )}
+          {segLoading && <span className="page-no"> · 装订中…</span>}
+        </span>
         <div className="reader-progress-row">
           <span className="pct">{formatPercent(percent)}</span>
           <input
@@ -594,13 +745,22 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
             max={1000}
             value={Math.round(percent * 1000)}
             style={{ '--pct': `${percent * 100}%` } as React.CSSProperties}
-            onChange={(e) => seekToChar((Number(e.target.value) / 1000) * totalChars)}
+            onChange={(e) => seek((Number(e.target.value) / 1000) * totalChars)}
             aria-label="阅读进度"
           />
           <span className="pct">{totalChars > 0 ? formatRemaining(totalChars - currentChar) : ''}</span>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-around' }}>
-          <button type="button" className="qy-icon-btn" onClick={() => setSheet('toc')} aria-label="目录">
+        <div className="reader-tools">
+          <button type="button" className="qy-icon-btn" onClick={() => turn(-1)} aria-label="上一页">
+            <IconChevronLeft />
+          </button>
+          <button
+            type="button"
+            className={`qy-icon-btn${settings.tocDocked ? ' on' : ''}`}
+            onClick={() => updateSettings({ tocDocked: !settings.tocDocked })}
+            aria-label="目录"
+            aria-pressed={settings.tocDocked}
+          >
             <IconList />
           </button>
           <button
@@ -624,27 +784,21 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
           >
             {useSettings.getState().resolvedTheme === 'night' ? <IconSun /> : <IconMoon />}
           </button>
+          <button type="button" className="qy-icon-btn" onClick={() => turn(1)} aria-label="下一页">
+            <IconChevronRight />
+          </button>
         </div>
         {settings.showProgressHints && percent > 0.9 && percent < 1 && (
           <span className="hint">快读完啦，还剩 {formatRemaining(totalChars - currentChar)}</span>
         )}
       </footer>
+      </div>
 
-      <TocSheet
-        open={sheet === 'toc'}
-        onClose={() => setSheet(null)}
-        chapters={chapters}
-        idx={idx}
-        currentCharOffset={currentChar}
-        onJump={seekToChar}
-        bookmarks={bookmarksRef.current}
-        onJumpBookmark={(b) => seekToChar(b.charOffset)}
-      />
       <SearchSheet
         open={sheet === 'search'}
         onClose={() => setSheet(null)}
         book={book}
-        onJump={seekToChar}
+        onJump={seek}
       />
       <BookmarkSheet
         open={sheet === 'bookmark'}
@@ -660,7 +814,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
               }
             : null
         }
-        onJump={(b) => seekToChar(b.charOffset)}
+        onJump={(b) => seek(b.charOffset)}
         onChanged={() => {
           void listBookmarks(book.id).then((bs) => {
             bookmarksRef.current = bs;

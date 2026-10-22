@@ -11,7 +11,21 @@ export async function loadSettings(): Promise<AppSettings> {
     const raw = localStorage.getItem('qingyue.settings.v1');
     if (!raw) return defaultSettings();
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
-    return { ...defaultSettings(), ...parsed, typography: { ...defaultSettings().typography, ...parsed.typography } };
+    const base = defaultSettings();
+    const merged: AppSettings = {
+      ...base,
+      ...parsed,
+      typography: { ...base.typography, ...parsed.typography },
+    };
+    // v1 → v2：阅读器默认改为分页 + 左侧常驻目录。
+    // 一次性的，之后用户自己改的选择会被尊重。
+    if ((parsed.schemaVersion ?? 1) < 2) {
+      merged.pageMode = 'page';
+      merged.tocDocked = true;
+      merged.schemaVersion = 2;
+      saveSettings(merged);
+    }
+    return merged;
   } catch {
     return defaultSettings();
   }

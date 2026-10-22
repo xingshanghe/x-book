@@ -18,7 +18,7 @@ export const BODY_FONT_OPTIONS: { id: AppSettings['bodyFont']; label: string; sa
 export function defaultSettings(): AppSettings {
   return {
     key: 'default',
-    schemaVersion: 1,
+    schemaVersion: 2,
 
     themeMode: 'system',
     bodyFont: 'kai',
@@ -33,7 +33,8 @@ export function defaultSettings(): AppSettings {
       textAlign: 'start',
     },
 
-    pageMode: 'scroll',
+    pageMode: 'page',
+    tocDocked: true,
     flipAnimation: true,
     showTitlePage: true,
     showProgressHints: true,

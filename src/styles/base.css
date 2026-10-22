@@ -189,3 +189,59 @@ hr {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ---------- 崩溃兜底页（ErrorBoundary） ---------- */
+.qy-crash {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 32px;
+  text-align: center;
+  background: var(--paper-0);
+  color: var(--ink-1);
+}
+.qy-crash h1 {
+  font-family: var(--font-kai);
+  font-size: var(--step-2);
+  letter-spacing: 0.08em;
+}
+.qy-crash p {
+  color: var(--ink-2);
+  max-width: 46ch;
+}
+.qy-crash pre {
+  max-width: min(680px, 90vw);
+  max-height: 30vh;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--paper-1);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--step--1);
+  text-align: left;
+  white-space: pre-wrap;
+}
+.qy-crash-actions {
+  display: flex;
+  gap: 10px;
+}
+.qy-crash button {
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--paper-1);
+  color: var(--ink-1);
+  cursor: pointer;
+}
+.qy-crash button.qy-crash-primary {
+  background: var(--indigo);
+  border-color: var(--indigo);
+  color: var(--paper-0);
+}

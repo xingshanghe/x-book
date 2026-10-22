@@ -11,12 +11,15 @@ export function BookCover({
   book,
   percent,
   width = 132,
+  variant = 'full',
   onClick,
   onContextMenu,
 }: {
   book: Book;
   percent?: number;
   width?: number;
+  /** mark = 只留布面 + 丝带 + 一个书名首字（用于「继续阅读」卡，书名在卡片正文里，不再重复） */
+  variant?: 'full' | 'mark';
   onClick?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }) {
@@ -34,48 +37,64 @@ export function BookCover({
     };
   }, [hue]);
 
-  const title = book.title.length > 10 ? `${book.title.slice(0, 10)}…` : book.title;
-  const vertical = book.title.length <= 6;
+  // 历史数据里可能存在空书名，取长度前先兜底，避免一条脏数据崩掉整页
+  const rawTitle = book.title ?? '';
+  const title = rawTitle.length > 10 ? `${rawTitle.slice(0, 10)}…` : rawTitle;
+  const vertical = rawTitle.length <= 6;
+  const mark = variant === 'mark';
+
+  const content = (
+    <span className="qy-cover-cloth" style={{ background: `linear-gradient(160deg, ${top}, ${bottom})` }}>
+      {/* 格纹窗框 */}
+      <span className="gingham qy-cover-frame" />
+      {/* 书名 */}
+      {mark ? null : vertical ? (
+        <span className="qy-cover-title vert" style={{ color: ink }}>
+          {rawTitle.split('').map((ch, i) => (
+            <i key={i}>{ch}</i>
+          ))}
+        </span>
+      ) : (
+        <span className="qy-cover-title" style={{ color: ink }}>
+          {title}
+        </span>
+      )}
+      {!mark && book.author && (
+        <span className="qy-cover-author" style={{ color: ink }}>
+          {book.author.slice(0, 8)}
+        </span>
+      )}
+      {/* 朱红丝带 */}
+      <span className="qy-ribbon" />
+      {/* 底部进度条 */}
+      {percent != null && percent > 0.001 && (
+        <span className="qy-cover-progress">
+          <span style={{ width: formatPercent(percent) }} data-pct={formatPercent(percent)} />
+        </span>
+      )}
+      {book.finished && <span className="qy-cover-finished">读完</span>}
+    </span>
+  );
+
+  // 没有点击行为时用 span：按钮里再套按钮是非法结构，会把外层点击吃掉
+  if (!onClick && !onContextMenu) {
+    return (
+      <span className={`qy-cover static${mark ? ' mark' : ''}`} style={{ width, height }} aria-hidden>
+        {content}
+      </span>
+    );
+  }
 
   return (
     <button
       type="button"
-      className="qy-cover"
+      className={`qy-cover${mark ? ' mark' : ''}`}
       style={{ width, height }}
       onClick={onClick}
       onContextMenu={onContextMenu}
-      aria-label={book.title}
+      aria-label={rawTitle}
     >
-      <span className="qy-cover-cloth" style={{ background: `linear-gradient(160deg, ${top}, ${bottom})` }}>
-        {/* 格纹窗框 */}
-        <span className="gingham qy-cover-frame" />
-        {/* 书名 */}
-        {vertical ? (
-          <span className="qy-cover-title vert" style={{ color: ink }}>
-            {book.title.split('').map((ch, i) => (
-              <i key={i}>{ch}</i>
-            ))}
-          </span>
-        ) : (
-          <span className="qy-cover-title" style={{ color: ink }}>
-            {title}
-          </span>
-        )}
-        {book.author && (
-          <span className="qy-cover-author" style={{ color: ink }}>
-            {book.author.slice(0, 8)}
-          </span>
-        )}
-        {/* 朱红丝带 */}
-        <span className="qy-ribbon" />
-        {/* 底部进度条 */}
-        {percent != null && percent > 0.001 && (
-          <span className="qy-cover-progress">
-            <span style={{ width: formatPercent(percent) }} data-pct={formatPercent(percent)} />
-          </span>
-        )}
-        {book.finished && <span className="qy-cover-finished">读完</span>}
-      </span>
+      {content}
     </button>
   );
 }

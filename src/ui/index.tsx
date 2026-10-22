@@ -278,6 +278,16 @@ const ToastCtx = createContext<{ push: (text: string, kind?: ToastItem['kind']) 
   push: () => {},
 });
 
+/**
+ * 模块级 toast 桥：导入队列、存储层这类非组件代码也要能提示用户。
+ * 没有 Provider 时静默丢弃，不抛错。
+ */
+let pushGlobal: ((text: string, kind?: ToastItem['kind']) => void) | null = null;
+
+export function toast(text: string, kind: ToastItem['kind'] = 'info'): void {
+  pushGlobal?.(text, kind);
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const seq = useRef(0);
@@ -287,6 +297,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setItems((prev) => [...prev.slice(-2), { id, text, kind }]);
     setTimeout(() => setItems((prev) => prev.filter((t) => t.id !== id)), 3200);
   }, []);
+
+  useEffect(() => {
+    pushGlobal = push;
+    return () => {
+      if (pushGlobal === push) pushGlobal = null;
+    };
+  }, [push]);
 
   return (
     <ToastCtx.Provider value={{ push }}>

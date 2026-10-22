@@ -1,51 +1,17 @@
 /** 拖放导入 + 导入任务托盘 */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import { describeTask, totalBytes, useImportQueue } from '@/features/import/importQueue';
 import { Progress } from '@/ui';
 import { IconClose } from '@/ui/icons';
 
-/** 返回拖放事件绑定与当前拖入状态 */
+/**
+ * 返回拖放绑定与当前拖入状态。
+ * 监听器由 installGlobalDrop() 统一挂在 window 上（任何页面拖入都生效），
+ * 这里只负责把状态读出来给遮罩用。
+ */
 export function useDropImport() {
-  const [dragging, setDragging] = useState(false);
-  const counter = useRef(0);
-  const add = useImportQueue((s) => s.add);
-
-  useEffect(() => {
-    // 阻止浏览器默认打开文件
-    const prevent = (e: DragEvent) => {
-      e.preventDefault();
-    };
-    const onEnter = (e: DragEvent) => {
-      e.preventDefault();
-      counter.current++;
-      if (e.dataTransfer?.types.includes('Files')) setDragging(true);
-    };
-    const onLeave = (e: DragEvent) => {
-      e.preventDefault();
-      counter.current = Math.max(0, counter.current - 1);
-      if (counter.current === 0) setDragging(false);
-    };
-    const onDrop = (e: DragEvent) => {
-      e.preventDefault();
-      counter.current = 0;
-      setDragging(false);
-      const files = e.dataTransfer?.files;
-      if (files?.length) add([...files]);
-    };
-
-    window.addEventListener('dragenter', onEnter);
-    window.addEventListener('dragover', prevent);
-    window.addEventListener('dragleave', onLeave);
-    window.addEventListener('drop', onDrop);
-    return () => {
-      window.removeEventListener('dragenter', onEnter);
-      window.removeEventListener('dragover', prevent);
-      window.removeEventListener('dragleave', onLeave);
-      window.removeEventListener('drop', onDrop);
-    };
-  }, [add]);
-
+  const dragging = useImportQueue((s) => s.dragging);
   const props = {};
   return [props, dragging] as const;
 }

@@ -17,8 +17,9 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px clamp(14px, 4vw, 44px);
-  padding-top: calc(10px + var(--safe-t));
+  padding: 10px calc(clamp(14px, 4vw, 44px) + var(--chrome-right)) 10px
+    calc(clamp(14px, 4vw, 44px) + var(--chrome-left));
+  padding-top: calc(10px + var(--safe-t) + var(--chrome-top));
   background: color-mix(in srgb, var(--paper-0) 90%, transparent);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);

@@ -138,6 +138,8 @@ export interface AppSettings {
   typography: Typography;
 
   pageMode: 'scroll' | 'page';
+  /** 目录常驻在左侧（不遮罩正文），可随时收起 */
+  tocDocked: boolean;
   flipAnimation: boolean;
   showTitlePage: boolean;
   showProgressHints: boolean;

@@ -19,15 +19,18 @@ SHELL := /bin/bash
 
 # ── 基本参数 ────────────────────────────────────────────────
 VERSION      ?= $(shell node -p "require('./package.json').version" 2>/dev/null || echo 1.0.0)
+V            ?= $(VERSION)   # release-tag / publish / release-upload 的默认版本号
 PNPM         ?= pnpm
 NODE_BIN     := ./node_modules/.bin
 RELEASE_DIR  := release
 
 # Rust 相关：默认把 cargo 的家与产物目录收敛到仓库内，方便清理
+# 注意：cargo 只认 CARGO_TARGET_DIR；导出成 CARGO_TARGET 会被忽略，
+#       产物会落到 src-tauri/target，与下面的 BUNDLE_MACOS 错位（打包出旧包）。
 CARGO_HOME   ?= $(CURDIR)/.cargo-home
 CARGO_TARGET ?= $(CURDIR)/.cargo-target
 export CARGO_HOME
-export CARGO_TARGET
+export CARGO_TARGET_DIR := $(CARGO_TARGET)
 
 # macOS 架构：本机 Apple Silicon 产物 aarch64；Intel 传 ARCH=x86_64
 ARCH         ?= $(shell uname -m)
@@ -40,7 +43,8 @@ else
 endif
 
 APP_NAME     := 轻阅
-BUNDLE_MACOS := $(CARGO_TARGET)/release/bundle/macos
+# 带 --target 构建时产物在 <target>/<triple>/ 下，别漏了这一段，否则会打包到旧包
+BUNDLE_MACOS = $(CARGO_TARGET)/$(APPLE_TARGET)/release/bundle/macos
 
 .PHONY: help setup check typecheck test lint dev build preview clean distclean pack-web \
         rust-init pack-macos pack-macos-app pack-macos-dmg pack-macos-universal \
@@ -131,7 +135,7 @@ pack-macos-dmg: ## 由已产出的 .app 生成 .zip，并尽量生成 .dmg
 pack-macos-universal: ## macOS 通用二进制 dmg（需 rustup target add 两个目标）
 	rustup target add aarch64-apple-darwin x86_64-apple-darwin
 	$(PNPM) tauri build --bundles app --target universal-apple-darwin
-	@$(MAKE) pack-macos-dmg ARCH_LABEL=universal
+	@$(MAKE) pack-macos-dmg ARCH_LABEL=universal APPLE_TARGET=universal-apple-darwin
 
 # ── Windows ───────────────────────────────────────────────
 # 本机跨平台编译 Windows 需要 MSVC 工具链（Visual Studio Build Tools）。
@@ -183,6 +187,11 @@ sync-harmony: build ## 同步 dist 到鸿蒙工程的 rawfile
 	@echo "  3) gh release upload v$(VERSION) harmony/entry/build/default/outputs/default/*.app"
 
 # ── 发布 ──────────────────────────────────────────────────
+push: ## 推送 main 到 origin（本机推送；本 Agent 环境可能无权限）
+	git push origin main
+
+push-tag: release-tag ## 别名：打 tag 推送即触发 Actions 构建
+
 publish: ## 全流程发布：推 main + 打 tag + 建 Release + 上传 release/
 	@test -n "$(V)" || { echo "用法：make publish V=1.0.0"; exit 1; }
 	./scripts/publish-release.sh $(V)

@@ -176,7 +176,11 @@ export async function indexBook(file: Blob, opts: IndexOptions): Promise<IndexOu
   onProgress(1, 'scan');
 
   return {
-    normalized: needsTranscode ? accumulator.result() : file,
+    // 必须是内存里的 Blob，不能复用传入的 File：
+    // File 带着「磁盘上的路径」语义，跨 Worker 传回主线程再落 IndexedDB 时，
+    // WKWebView / 自定义协议源下可能只存下引用，读回来是空的 ——
+    // 表现为书架上有书、打开却一个字都没有。
+    normalized: accumulator.result(),
     scan,
     encoding: det.encoding,
     encodingConfidence: det.confidence,

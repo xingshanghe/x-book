@@ -7,7 +7,7 @@
 
 **本地优先、完全离线的 txt 阅读器。**
 
-翻开就读，读到哪里算哪里 —— 大书秒开 · 离线优先 · 一套代码跑八端。
+翻开就读，读到哪里算哪里 —— 大书秒开 · 离线优先 。
 
 [![Release](https://img.shields.io/github/v/release/xingshanghe/x-book?label=release&color=B44326)](https://github.com/xingshanghe/x-book/releases/latest)
 [![Build & Release](https://github.com/xingshanghe/x-book/actions/workflows/release.yml/badge.svg)](https://github.com/xingshanghe/x-book/actions/workflows/release.yml)
@@ -60,7 +60,7 @@
 |---|---|---|
 | Web / PWA | `qingyue-web-<tag>.zip` | 解压后任意静态服务器打开，离线运行 |
 | macOS | `qingyue-<tag>-macos-universal.dmg` | Intel / Apple Silicon 通用 |
-| Windows | `qingyue-<tag>-windows-x86_64-setup.exe` / `.msi` | NSIS 安装器 |
+| Windows | `qingyue-<tag>-windows-x86_64-setup.exe` | NSIS 安装器（MSI 需 WiX v3，CI 不产出） |
 | Linux | `qingyue-<tag>-linux-x86_64.deb` / `.AppImage` | AppImage 免安装 |
 | Android | `qingyue-<tag>-android-*.apk` | 未配置签名时为可安装的 debug 包 |
 | iOS | `qingyue-<tag>-ios-unsigned.zip` | 未签名 `.app`，需自签或 TestFlight |
