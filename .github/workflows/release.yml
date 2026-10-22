@@ -131,6 +131,9 @@ jobs:
           - os: windows-latest
             label: Windows
             slug: windows-x86_64
+            # 漏了 target 会导致 tauri build --target 取到空值：
+            # error: a value is required for '--target <TARGET>' but none was supplied
+            target: x86_64-pc-windows-msvc
             # 不出 msi：Tauri 的 MSI 依赖 WiX v3 工具集，GitHub runner 上未预装且需 .NET 3.5，必然失败
             bundles: nsis
             rust_targets: x86_64-pc-windows-msvc
@@ -176,10 +179,19 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: 构建 ${{ matrix.label }} 安装包
+        shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: pnpm exec tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+          TARGET: ${{ matrix.target }}
+          BUNDLES: ${{ matrix.bundles }}
+        run: |
+          # TARGET 为空时不要把 --target 传成空参数，直接按 runner 默认目标构建
+          if [ -n "$TARGET" ]; then
+            pnpm exec tauri build --target "$TARGET" --bundles "$BUNDLES"
+          else
+            pnpm exec tauri build --bundles "$BUNDLES"
+          fi
 
       # .app 这类「目录型」产物打成 zip；单文件安装包直接上传。
       # 用 bash glob 而不是 find：Windows runner 的 PATH 里也有个 C:\Windows\System32\find.exe，
@@ -190,6 +202,8 @@ jobs:
           shopt -s nullglob
           mkdir -p artifacts
           BUNDLE="src-tauri/target/${{ matrix.target }}/release/bundle"
+          # 未指定 target 时 Tauri 走宿主默认目标，产物路径少一层 triple
+          [ -d "$BUNDLE" ] || BUNDLE="src-tauri/target/release/bundle"
           ls -R "$BUNDLE" || true
           # 单文件：dmg / exe / deb / AppImage
           for f in "$BUNDLE"/*/*.dmg "$BUNDLE"/*/*.exe "$BUNDLE"/*/*.deb "$BUNDLE"/*/*.AppImage; do
