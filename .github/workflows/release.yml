@@ -4,18 +4,23 @@ name: release
 #   1) 推送 tag（推荐）： git tag v1.0.0 && git push origin v1.0.0
 #   2) 手动： Actions → release → Run workflow（可选是否发布 Release、是否构建 HarmonyOS）
 #
-# 产物：macOS(dmg/app) · Windows(nsis/msi) · Linux(deb/appimage) · Android(apk/aab) · iOS(ipa/app) · Web(zip)
+# 产物：macOS(dmg/app) · Windows(nsis) · Linux(deb/appimage) · Android(apk) · iOS(app/ipa) · Web(zip)
 # 全部资产会上传到同一个 Release；未配置签名密钥时退化为可安装的调试包。
 #
-# 结构说明：prepare 作业先建「草稿 Release」，后续作业只做「上传资产」，
+# 结构说明：prepare 作业先建好 Release（唯一创建者），后续作业只做「上传资产」，
 # 避免多个作业并发争抢创建 Release 导致的 422 Release already exists；
-# 最后 finalize 把草稿转正。
+# finalize 只输出汇总。
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
     inputs:
+      tag:
+        description: '发布到哪个 tag（留空=当前分支名；填 v1.0.1 会按该 tag 创建 Release）'
+        type: string
+        required: false
+        default: ''
       publish:
         description: '是否发布到 GitHub Release'
         type: boolean
@@ -37,17 +42,18 @@ env:
   # 必须与 package.json 的 packageManager / pnpm-lock.yaml 的 lockfileVersion 保持一致
   PNPM_VERSION: 8.15.9
   RUST_TOOLCHAIN: stable
-  TAG: ${{ github.ref_name }}
+  # tag push → ref_name 就是 tag 名；workflow_dispatch → 优先用输入的 tag，否则退回分支名
+  TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
 
 jobs:
-  # ───────────────────────── 草稿 Release（唯一创建者） ─────────────────────────
+  # ───────────────────────── 创建 Release（唯一创建者） ─────────────────────────
   prepare:
     runs-on: ubuntu-latest
     outputs:
       release_id: ${{ steps.create.outputs.release_id }}
       upload_url: ${{ steps.create.outputs.upload_url }}
     steps:
-      - name: 创建草稿 Release
+      - name: 创建 Release
         id: create
         uses: actions/github-script@v7
         with:
@@ -175,20 +181,23 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm exec tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
-      # .app / AppImage 这类「目录型」或需保留权限的产物统一打成 zip；单文件安装包直接上传
+      # .app 这类「目录型」产物打成 zip；单文件安装包直接上传。
+      # 用 bash glob 而不是 find：Windows runner 的 PATH 里也有个 C:\Windows\System32\find.exe，
+      # shell: bash 下容易踩到非 GNU 版本导致参数报错
       - name: 整理产物
         shell: bash
         run: |
+          shopt -s nullglob
           mkdir -p artifacts
           BUNDLE="src-tauri/target/${{ matrix.target }}/release/bundle"
           ls -R "$BUNDLE" || true
-          # 单文件：dmg / exe / msi / deb / AppImage
-          find "$BUNDLE" -maxdepth 2 -type f \
-            \( -name '*.dmg' -o -name '*.exe' -o -name '*.msi' -o -name '*.deb' -o -name '*.AppImage' \) \
-            -exec cp {} artifacts/ \; 2>/dev/null || true
-          # 目录型：*.app
-          for app in $(find "$BUNDLE/macos" -maxdepth 1 -name '*.app' -type d 2>/dev/null); do
-            (cd "$BUNDLE/macos" && zip -r -y -q "$GITHUB_WORKSPACE/artifacts/qingyue-${TAG}-${{ matrix.slug }}-app.zip" "$(basename "$app")")
+          # 单文件：dmg / exe / deb / AppImage
+          for f in "$BUNDLE"/*/*.dmg "$BUNDLE"/*/*.exe "$BUNDLE"/*/*.deb "$BUNDLE"/*/*.AppImage; do
+            cp -v "$f" artifacts/
+          done
+          # 目录型：*.app（仅 macOS 产物）
+          for app in "$BUNDLE"/macos/*.app; do
+            (cd "$(dirname "$app")" && zip -r -y -q "$GITHUB_WORKSPACE/artifacts/qingyue-${TAG}-${{ matrix.slug }}-app.zip" "$(basename "$app")")
           done
           ls -la artifacts
 
@@ -224,38 +233,52 @@ jobs:
           distribution: zulu
           java-version: '17'
 
-      # 镜像已内置 Android SDK（ANDROID_HOME），android-actions/setup-android 在新版 runner 上不稳定，
-      # 这里直接用内置 SDK；步骤拆细，便于一眼定位失败点
-      - name: 诊断 Android 环境
+      # 镜像已内置 Android SDK（ANDROID_HOME），但 sdkmanager 不一定在 PATH 里：
+      # 旧镜像在 cmdline-tools/latest/bin，新镜像可能只有 cmdline-tools/bin。
+      # 之前「配置 Android SDK 与 NDK」步骤 exit 127 就是因为裸调 sdkmanager 找不到命令。
+      # 这里探测一次并写进 GITHUB_ENV / GITHUB_PATH，后续步骤统一用 $SDKMANAGER。
+      - name: 定位 Android SDK
+        id: sdk
         shell: bash
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          ls "$ANDROID_HOME"
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-          sdkmanager --version
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMANAGER=""
+          for d in "$SDK/cmdline-tools/latest/bin" "$SDK/cmdline-tools/bin" "$SDK/tools/bin"; do
+            if [ -x "$d/sdkmanager" ]; then
+              SDKMANAGER="$d/sdkmanager"
+              echo "$d" >> "$GITHUB_PATH"
+              break
+            fi
+          done
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::未找到 sdkmanager，SDK 目录内容如下"
+            ls -la "$SDK" 2>/dev/null || true
+            exit 1
+          fi
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+          "$SDKMANAGER" --version
 
       - name: 接受 SDK licenses
         shell: bash
         continue-on-error: true
         run: |
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-          yes | sdkmanager --licenses > /dev/null
+          yes | "$SDKMANAGER" --licenses > /dev/null
 
       - name: 安装平台与构建工具
         shell: bash
         run: |
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: 安装 NDK 26.3
         shell: bash
         run: |
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-          sdkmanager --install "ndk;26.3.11579264"
+          "$SDKMANAGER" --install "ndk;26.3.11579264"
           ls "$ANDROID_HOME/ndk" || true
           test -d "$ANDROID_HOME/ndk/26.3.11579264" || { echo "::error::NDK 未安装成功"; exit 1; }
-          echo "NDK_HOME=$ANDROID_HOME/ndk/26.3.11579264" >> $GITHUB_ENV
+          echo "NDK_HOME=$ANDROID_HOME/ndk/26.3.11579264" >> "$GITHUB_ENV"
 
       - name: 安装 Rust Android 目标
         run: rustup target add armv7-linux-androideabi aarch64-linux-android i686-linux-android x86_64-linux-android
@@ -264,23 +287,36 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: 初始化 Android 工程
+        env:
+          CI: true
         run: pnpm exec tauri android init
 
+      # secrets 不能用于 step 级 if，只能在 shell 里判断；之前写成 if: env.KEYSTORE != '' 永远为假
       - name: 配置签名（可选）
-        if: env.KEYSTORE != ''
+        shell: bash
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "$KEYSTORE" | base64 --decode > $RUNNER_TEMP/upload-keystore.jks
+          if [ -z "$KEYSTORE" ]; then
+            echo "::notice::未配置 ANDROID_KEYSTORE_BASE64，将构建可安装的 debug APK"
+            exit 0
+          fi
+          echo "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/upload-keystore.jks"
           {
             echo "KEYSTORE_FILE=$RUNNER_TEMP/upload-keystore.jks"
-            echo "KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
-            echo "KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}"
-            echo "KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}"
+            echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "KEY_ALIAS=$KEY_ALIAS"
+            echo "KEY_PASSWORD=$KEY_PASSWORD"
             echo "SIGNING_CONFIGURED=true"
-          } >> $GITHUB_ENV
+          } >> "$GITHUB_ENV"
 
       - name: 构建 APK / AAB
+        shell: bash
+        env:
+          CI: true
         run: |
           if [ "$SIGNING_CONFIGURED" = "true" ]; then
             pnpm exec tauri android build --apk --aab --split-per-abi
