@@ -48,7 +48,7 @@
 | 广告清洗 | 站点类规则允许尾随正文、短语类保守守卫，不误删正文 |
 | 阅读体验 | 扉页藏书章、左侧章节栏、底部页码条、统一封面 + 朱红丝带、书签与摘录 |
 | 渐进增强 | 同步只留 `SyncAdapter` 接口（默认单机）；Worker 不可用退化主线程；能力探测走 feature detect |
-| 多端通用 | 响应式三档（360 / 768 / 1440），PWA 可安装；Tauri 2 覆盖桌面与移动，ArkTS 覆盖鸿蒙 |
+| 排版自适应 | 手机、平板、桌面三档布局（360 / 768 / 1440），可安装到桌面或主屏幕 |
 
 **体积预算**：JS 产物 gzip 约 93 KB（预算 180 KB），PWA 预缓存 19 条 639 KB，Worker 单独分包 14.9 KB。
 
@@ -66,7 +66,7 @@
 | iOS | `qingyue-<tag>-ios-unsigned.zip` | 未签名 `.app`，需自签或 TestFlight |
 | HarmonyOS | `qingyue-<tag>-harmony-unsigned.app` | 需本地 DevEco Studio 产出 |
 
-推送 `v*` tag 后 GitHub Actions 会自动构建以上全部产物并挂到 Release。
+各平台产物随版本一起发布，下载后即可安装或直接打开使用。
 
 ## 快速开始
 
@@ -96,7 +96,7 @@ pnpm tauri dev      # 桌面开发模式（macOS / Linux / Windows）
 
 ## 构建与发布
 
-五端打包一条命令（产物统一输出到 `release/`）：
+本机产出各平台安装包（产物统一输出到 `release/`）：
 
 ```bash
 make pack-web          # Web / PWA zip
@@ -109,7 +109,7 @@ make sync-harmony      # 鸿蒙：同步 dist，再用 DevEco Studio 打包
 make publish V=1.0.0   # 推代码 + 打 tag + 建 Release + 上传本地产物
 ```
 
-不想在本机折腾工具链时，推送 tag 交给 GitHub Actions 跑五端：
+不想在本机折腾工具链时，推送 tag 交给 GitHub Actions 构建：
 
 ```bash
 git tag v1.0.0 && git push origin v1.0.0     # 或 make release-tag V=1.0.0
@@ -131,8 +131,8 @@ git tag v1.0.0 && git push origin v1.0.0     # 或 make release-tag V=1.0.0
 | 存储 | IndexedDB + idb | 结构化数据 + Blob 同库，1.2 KB |
 | 解析 | 自研字节级扫描器 | 产品技术核心，见下节 |
 | PWA | vite-plugin-pwa | 只预缓存外壳，不配任何跨域 runtimeCaching |
-| 桌面/移动壳 | Tauri 2 | 一套 Rust 壳覆盖 5 端 |
-| 鸿蒙壳 | ArkTS + ArkWeb | 复用同一份 dist，见 `harmony/` |
+| 桌面/移动壳 | Tauri 2 | 系统窗口、文件访问与安装包封装 |
+| 鸿蒙壳 | ArkTS + ArkWeb | 见 `harmony/` |
 
 ```
 x-book/
@@ -196,7 +196,7 @@ x-book/
 
 - 命名与定位：名字从「轻书」改为「轻阅」—— 书是物，阅是动作；
 - 色彩：米黄纸底 / 靛蓝 / 朱砂三色系统，含夜间反白对照表（11 个设计令牌）；
-- 字体与排版：楷体优先的标题体系、9 项排版默认值、三端断点；
+- 字体与排版：楷体优先的标题体系、9 项排版默认值、三档断点；
 - 标志：符号为「一页纸的折角」，折角填朱砂，含 Primary / Reverse / 构造网格与最小尺寸；
 - 组件与页面：书架、扉页、阅读器、设置共 6 张页面稿，全部内联 SVG，可直接对照实现。
 
@@ -214,8 +214,8 @@ README 使用的标志资产（`docs/assets/`）即从该规范导出：
 |---|---|
 | [`docs/brand-vi.html`](./docs/brand-vi.html) | 品牌 VI 与 UI 设计规范（单文件，浏览器打开） |
 | [`docs/tech-design.md`](./docs/tech-design.md) | 技术方案：分层规则、目录结构、解析内核设计 |
-| [`docs/build.md`](./docs/build.md) | 构建细节：依赖安装、镜像配置、五端打包步骤 |
-| [.github/workflows/release.yml](./.github/workflows/release.yml) | CI/CD：推 tag 自动构建八端产物并发布 Release |
+| [`docs/build.md`](./docs/build.md) | 构建细节：依赖安装、镜像配置、各平台打包步骤 |
+| [.github/workflows/release.yml](./.github/workflows/release.yml) | CI/CD：推送 tag 自动构建并发布各平台产物 |
 
 ## 已知边界与路线
 

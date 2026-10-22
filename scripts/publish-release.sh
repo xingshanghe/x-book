@@ -36,7 +36,7 @@ cat > "$NOTES" <<EOF
 | 平台 | 文件 |
 |---|---|
 | macOS | \`qingyue-${V}-macos-*.zip\` / \`.dmg\` —— 解压拖进「应用程序」即可 |
-| Windows | \`*_x64-setup.exe\` (NSIS) / \`.msi\` |
+| Windows | \`*_x64-setup.exe\` (NSIS) |
 | Linux | \`.deb\` / \`.AppImage\` |
 | Android | \`.apk\` / \`.aab\` |
 | iOS | \`.ipa\` |
@@ -50,7 +50,7 @@ cat > "$NOTES" <<EOF
 - **秒开**：UTF-8 归一 + 16 KB 块索引，任意大书流式读取，全文不入内存
 - **纯离线**：导入、书架、阅读、排版、书签、进度、搜索、字体，零网络请求
 - **渐进增强**：同步只留接口 + 单机模式；Worker 不可用时退化主线程解析
-- **多端**：响应式三档 + PWA + Tauri 桌面/移动 + ArkTS 鸿蒙外壳
+- **排版自适应**：手机、平板、桌面三档布局，可安装到桌面或主屏幕
 EOF
 
 if [[ "${2:-}" != "--skip-push" ]]; then

@@ -1,4 +1,4 @@
-# 轻阅 QINGYUE · 多端构建 Makefile
+# 轻阅 QINGYUE · 构建 Makefile
 #
 #   原则：一条命令一件事，先 make help 看全貌。
 #   所有需要本机工具链的命令都在这里列全环境变量，复制即跑。
@@ -196,7 +196,7 @@ publish: ## 全流程发布：推 main + 打 tag + 建 Release + 上传 release/
 	@test -n "$(V)" || { echo "用法：make publish V=1.0.0"; exit 1; }
 	./scripts/publish-release.sh $(V)
 
-release-tag: ## 打 tag 并推送，触发 GitHub Actions 五端构建 + Release
+release-tag: ## 打 tag 并推送，触发 GitHub Actions 构建 + Release
 	@test -n "$(V)" || { echo "用法：make release-tag V=1.0.0"; exit 1; }
 	git tag -a "v$(V)" -m "轻阅 v$(V)"
 	git push origin "v$(V)"

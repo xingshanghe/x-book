@@ -1,7 +1,7 @@
-# 轻阅 · 多端打包与发布手册
+# 轻阅 · 打包与发布手册
 
 > 一句话原则：**先有 Web，再有壳。** dist/ 本身就是一个可安装的 PWA，
-> 所有原生壳只是把它装进不同系统的窗口里，因此任何一端都可以单独放弃而不影响其他端。
+> 各平台安装包只是把它装进对应的系统窗口里，因此任一平台的产物都可以单独处理。
 
 > 所有命令都已写进仓库根目录的 `Makefile`，先跑 `make help` 看全貌。
 > 本文是「为什么」，Makefile 是「怎么跑」。
@@ -71,7 +71,7 @@ git tag v1.0.0 && git push origin v1.0.0
 
 `.github/workflows/release.yml` 会在三个 runner 上并行构建并上传到同一个 Release：
 
-- Windows：`轻阅_1.0.0_x64-setup.exe`(NSIS) + `.msi`
+- Windows：`轻阅_1.0.0_x64-setup.exe`(NSIS)
 - Linux：`qingyue_1.0.0_amd64.deb` + `qingyue_1.0.0_amd64.AppImage`
 - macOS：`轻阅_1.0.0_universal.dmg`（同时含 arm64 与 x86_64）
 
@@ -152,9 +152,9 @@ make publish V=1.0.0     # = git push main + 打/推 tag + gh release create + �
 
 Actions 会自动：
 
-1. 构建 Web zip + 桌面三端 + Android + iOS；
-2. desktop 作业创建 Release `轻阅 v1.0.0` 并上传 dmg / app / exe / msi / deb / AppImage；
-3. `android` / `ios` / `web` 作业（依赖 desktop）追加上传 apk / aab / ipa / web zip。
+1. 构建 Web zip、桌面安装包、Android 与 iOS 产物；
+2. `prepare` 作业创建 Release `轻阅 v1.0.0`，各作业并行上传 dmg / app / exe / deb / AppImage；
+3. `android` / `ios` / `web` 作业上传 apk / aab / ipa / web zip。
 
 > 本项目未引入 `tauri-plugin-updater`，因此 `includeUpdaterJson` 关闭、不产 `latest.json`——
 > 增量更新属于「可选增强」，等真正需要时再打开，避免给离线优先的产品引入额外的网络面。

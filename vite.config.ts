@@ -5,8 +5,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 const r = (p: string) => new URL(p, import.meta.url).pathname;
 
 export default defineConfig({
-  // 相对路径：同一份 dist 既能跑 Tauri 的资产协议，也能跑 file://（鸿蒙 ArkWeb 外壳），
-  // 这是「一套产物多端交付」的前提。
+  // 相对路径：这份 dist 既能跑 Tauri 的资产协议，也能跑 file://（鸿蒙 ArkWeb 外壳），
+  // 因此产物不绑定任何一种加载方式。
   base: './',
   plugins: [
     react(),
