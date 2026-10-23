@@ -249,7 +249,7 @@ export class StreamIndexer {
       return;
     }
 
-    // 2) 脚注定义行：以 ①–㊿ 开头
+    // 2) 脚注定义行：以 ①–㊿ 或 [n] 开头
     if (this.detectFootnotes && text !== null && isFootnoteDef(text) && this.lineChars > 2) {
       const def = parseFootnoteDef(text);
       if (def) {

@@ -436,20 +436,64 @@ export function LayoutSheet({
   );
 }
 
-/* ─────────────── 脚注浮层 ─────────────── */
+/* ─────────────── 注释浮层（贴在注号旁边，易笺同款） ─────────────── */
 
-export function FootnoteSheet({
+export function NotePopover({
   marker,
   text,
+  rect,
+  noteChar,
+  onJump,
   onClose,
 }: {
   marker: string | null;
   text: string | null;
+  rect: DOMRect | null;
+  noteChar?: number;
+  onJump: (char: number) => void;
   onClose: () => void;
 }) {
+  useEffect(() => {
+    if (!marker) return;
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('.qy-ref, .footnote-pop')) return;
+      onClose();
+    };
+    document.addEventListener('pointerdown', onPointer);
+    return () => document.removeEventListener('pointerdown', onPointer);
+  }, [marker, onClose]);
+
+  if (!marker || !rect || text == null) return null;
+
+  const width = Math.min(340, window.innerWidth - 24);
+  const left = Math.max(12, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 12));
+  const below = window.innerHeight - rect.bottom > 168;
+  const label = /^\d+$/.test(marker) ? `[${marker}]` : marker;
+  const arrow = rect.left + rect.width / 2 - left;
+
   return (
-    <Sheet open={marker != null} onClose={onClose} title={`注 ${marker ?? ''}`} side="bottom">
-      <p style={{ lineHeight: 1.9, fontSize: 14 }}>{text ?? '未找到对应注释。'}</p>
-    </Sheet>
+    <div
+      className={`footnote-pop${below ? ' arrow-up' : ' arrow-down'}`}
+      role="dialog"
+      aria-label={`注释 ${label}`}
+      style={{
+        left,
+        width,
+        top: below ? rect.bottom + 10 : undefined,
+        bottom: below ? undefined : window.innerHeight - rect.top + 10,
+        ['--arrow-left' as string]: `${arrow}px`,
+      }}
+    >
+      <p>
+        <span className="qy-note-no">{label}</span>
+        {text}
+      </p>
+      {noteChar != null && (
+        <button type="button" className="footnote-jump" onClick={() => onJump(noteChar)}>
+          翻到这条注释
+        </button>
+      )}
+    </div>
   );
 }

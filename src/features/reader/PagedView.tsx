@@ -6,14 +6,19 @@
  * 翻一屏就走完这一屏的栏，所以不会缺行，也不会让同一行出现两次。
  *
  * 内容按段装载：有章节取一章，无章节取 300 块，翻到段边界再换段。
+ * 章回、前言、正文若出现在一页的中途，会先补一段空白，从下一页页首再排。
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { splitByRefs } from '@/core/parser/footnotes';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { takeHeadingPlate } from '@/core/parser/chapters';
+import { collectNotes } from '@/core/parser/footnotes';
 import type { BlockReader } from '@/core/reader/blockReader';
 import type { BlockIndexView } from '@/core/reader/progress';
 import type { Chapter, Typography } from '@/types/models';
+import { AnnotatedLine } from './AnnotatedLine';
+import { ChapterHeading } from './ChapterHeading';
 import {
+  chapterPushes,
   clampPage,
   columnOffsets,
   type LinePage,
@@ -50,7 +55,6 @@ interface Props {
   idx: BlockIndexView;
   reader: BlockReader;
   chapters: Chapter[];
-  footnotes: Map<string, string>;
   typography: Typography;
   fontFamily: string;
   charOffset: number;
@@ -58,7 +62,13 @@ interface Props {
   startBlock?: number;
   /** 翻页 / 换段后回报当前位置 */
   onCharChange: (charOffset: number) => void;
-  onFootnote: (marker: string) => void;
+  onFootnote: (
+    marker: string,
+    anchor: DOMRect,
+    char: number,
+    text?: string,
+    noteChar?: number,
+  ) => void;
   flipAnimation: boolean;
   handleRef: React.MutableRefObject<PagedHandle | null>;
   /** 换段时通知外层（用于显示"正在装订下一页"的骨架） */
@@ -78,6 +88,13 @@ interface MeasuredLine {
   top: number;
   bottom: number;
   char: number;
+  breakBefore?: boolean;
+}
+
+function samePushMap(a: ReadonlyMap<number, number>, b: ReadonlyMap<number, number>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [key, value] of a) if (b.get(key) !== value) return false;
+  return true;
 }
 
 function measureLines(flow: HTMLElement): MeasuredLine[] {
@@ -87,6 +104,17 @@ function measureLines(flow: HTMLElement): MeasuredLine[] {
   for (const node of nodes) {
     const char = Number(node.dataset.char);
     if (!Number.isFinite(char)) continue;
+    if (node.classList.contains('qy-chapter')) {
+      const rect = node.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) continue;
+      out.push({
+        top: rect.top - origin,
+        bottom: rect.bottom - origin,
+        char,
+        breakBefore: true,
+      });
+      continue;
+    }
     const range = document.createRange();
     range.selectNodeContents(node);
     // 元素的 getClientRects 是整段一个框。Range 才会按行盒拆开。
@@ -116,42 +144,39 @@ function sameOffsets(a: readonly (number | null)[], b: readonly (number | null)[
 
 function FlowBody({
   lines,
-  hasFootnotes,
+  headingTitles,
+  pushes,
+  notes,
   onFootnote,
 }: {
   lines: FlowLine[];
-  hasFootnotes: boolean;
-  onFootnote: (marker: string) => void;
+  headingTitles: readonly string[];
+  pushes: ReadonlyMap<number, number>;
+  notes: ReadonlyMap<string, { text: string; char?: number }>;
+  onFootnote: (marker: string, anchor: DOMRect, char: number, text?: string, noteChar?: number) => void;
 }) {
+  const seen = new Set<string>();
   return lines.map((line) => {
-    const parts = hasFootnotes ? splitByRefs(line.text) : null;
-    const seen = new Map<string, number>();
+    const plate = takeHeadingPlate(line.text, headingTitles, seen, line.role);
+    if (plate) {
+      const push = pushes.get(line.char) ?? 0;
+      return (
+        <Fragment key={line.char}>
+          {push > 0 ? <div className="qy-chapter-push" style={{ height: push }} aria-hidden /> : null}
+          <ChapterHeading char={line.char} plate={plate} />
+        </Fragment>
+      );
+    }
     return (
-      <p className="qy-line" data-char={line.char} key={line.char}>
-        {parts
-          ? parts.map((part) => {
-              const base = part.ref ? `r:${part.ref}` : `t:${part.text}`;
-              const nth = seen.get(base) ?? 0;
-              seen.set(base, nth + 1);
-              const key = nth === 0 ? base : `${base}#${nth}`;
-              return part.ref ? (
-                <button
-                  key={key}
-                  type="button"
-                  className="qy-ref"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onFootnote(part.ref as string);
-                  }}
-                >
-                  {part.ref}
-                </button>
-              ) : (
-                <span key={key}>{part.text}</span>
-              );
-            })
-          : line.text}
-      </p>
+      <AnnotatedLine
+        key={line.char}
+        text={line.text}
+        char={line.char}
+        onNote={(marker, anchor, char) => {
+          const note = notes.get(marker);
+          onFootnote(marker, anchor, char, note?.text, note?.char);
+        }}
+      />
     );
   });
 }
@@ -160,7 +185,6 @@ export function PagedView({
   idx,
   reader,
   chapters,
-  footnotes,
   typography,
   fontFamily,
   charOffset,
@@ -177,6 +201,9 @@ export function PagedView({
 
   const [seg, setSeg] = useState<Segment>(() => segmentOf(idx, chapters, charOffset, startBlock));
   const [lines, setLines] = useState<FlowLine[] | null>(null);
+  const [pushes, setPushes] = useState<ReadonlyMap<number, number>>(() => new Map());
+  const pushesRef = useRef(pushes);
+  pushesRef.current = pushes;
   const [box, setBox] = useState({ w: 0, h: 0 });
   const [pageIndex, setPageIndex] = useState(0);
   const [pageCount, setPageCount] = useState(1);
@@ -227,6 +254,15 @@ export function PagedView({
   const colsRef = useRef(metrics.cols);
   colsRef.current = metrics.cols;
 
+  const headingTitles = useMemo(
+    () =>
+      chapters
+        .filter((chapter) => chapter.charOffset >= seg.startChar && chapter.charOffset < seg.endChar)
+        .map((chapter) => chapter.title),
+    [chapters, seg.startChar, seg.endChar],
+  );
+  const chapterNotes = useMemo(() => collectNotes(lines ?? []), [lines]);
+
   const reportPosition = useCallback((index: number, count: number) => {
     onPageInfoRef.current?.({ index, count });
     const page = pagesRef.current[index * colsRef.current];
@@ -252,6 +288,7 @@ export function PagedView({
   useEffect(() => {
     let alive = true;
     setLines(null);
+    setPushes((prev) => (prev.size === 0 ? prev : new Map()));
     setPageIndex(0);
     setOffsets([0]);
     onLoadingChangeRef.current?.(true);
@@ -338,10 +375,19 @@ export function PagedView({
       );
     };
 
+    let waitingForPush = false;
     const settle = (force: boolean) => {
-      if (!alive) return;
+      if (!alive || waitingForPush) return;
       const measured = measureLines(flow);
       if (!measured.length && !force) return;
+      const nextPushes = chapterPushes(measured, metrics.contentH, pushesRef.current);
+      if (!samePushMap(pushesRef.current, nextPushes)) {
+        // 空白落地之前不要按旧行盒分页，否则章回会在页尾闪一下
+        waitingForPush = true;
+        pushesRef.current = nextPushes;
+        setPushes(nextPushes);
+        return;
+      }
       const pages = packLinePages(measured, metrics.contentH);
       pagesRef.current = pages;
       measuredRef.current = measured;
@@ -375,7 +421,7 @@ export function PagedView({
       window.clearTimeout(late);
       void fonts;
     };
-  }, [lines, metricsKey, metrics, seekGen, showScreen, reportPosition]);
+  }, [lines, metricsKey, metrics, seekGen, showScreen, reportPosition, pushes]);
 
   useEffect(() => {
     if (seeking.current || !lines?.length) return;
@@ -457,7 +503,6 @@ export function PagedView({
 
   /* ---------- 渲染 ---------- */
 
-  const hasFootnotes = footnotes.size > 0;
   const flowStyle = {
     width: metrics.colW || '100%',
     fontFamily,
@@ -511,7 +556,13 @@ export function PagedView({
                   </div>
                 )}
                 {lines && (
-                  <FlowBody lines={lines} hasFootnotes={hasFootnotes} onFootnote={onFootnote} />
+                  <FlowBody
+                    lines={lines}
+                    headingTitles={headingTitles}
+                    pushes={pushes}
+                    notes={chapterNotes}
+                    onFootnote={onFootnote}
+                  />
                 )}
               </div>
             </div>

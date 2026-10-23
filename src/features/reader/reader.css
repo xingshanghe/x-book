@@ -68,13 +68,147 @@
   height: calc(var(--fs, 19px) * var(--lh, 1.9) * 0.55);
 }
 
+/* 前言、正文、章回：居中标题牌，和缩进正文分开 */
+.qy-line.qy-chapter {
+  text-indent: 0;
+  text-align: center;
+  font-family: var(--font-kai);
+  font-weight: 600;
+  letter-spacing: 0;
+  white-space: normal;
+  line-height: 1.45;
+  color: var(--ink-1);
+  margin: 0;
+  padding: 1.15em 0 0.35em;
+}
+
+.qy-chapter-kicker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7em;
+  margin: 0 0 0.42em;
+  color: var(--seal);
+  font-size: 0.78em;
+  font-weight: 500;
+  letter-spacing: 0.28em;
+  line-height: 1;
+}
+
+.qy-chapter-kicker::before,
+.qy-chapter-kicker::after {
+  content: '';
+  width: 2em;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.72;
+}
+
+.qy-chapter-title {
+  display: block;
+  font-size: 1.28em;
+  letter-spacing: 0.14em;
+  line-height: 1.45;
+}
+
+.qy-chapter.is-short .qy-chapter-title {
+  letter-spacing: 0.62em;
+  padding-left: 0.62em;
+}
+
+.qy-chapter-front,
+.qy-chapter-back {
+  padding-top: 1.7em;
+  padding-bottom: 0.55em;
+}
+
+.qy-chapter-front .qy-chapter-title,
+.qy-chapter-back .qy-chapter-title {
+  font-size: 1.5em;
+}
+
+.qy-chapter-part {
+  padding-top: 2.5em;
+  padding-bottom: 0.85em;
+}
+
+.qy-chapter-part .qy-chapter-kicker::before,
+.qy-chapter-part .qy-chapter-kicker::after {
+  width: 3.4em;
+}
+
+.qy-chapter-part .qy-chapter-title {
+  font-size: 1.85em;
+}
+
+.qy-chapter-part.is-short .qy-chapter-title {
+  letter-spacing: 0.82em;
+  padding-left: 0.82em;
+}
+
+.qy-chapter-push {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+/* 滚动模式没有页框，用留白和一道线把章回切开 */
+.reader-content .qy-line.qy-chapter {
+  margin-top: 3.6em;
+  padding-top: 1.25em;
+  background-image: linear-gradient(var(--line), var(--line));
+  background-size: min(72%, 16em) 1px;
+  background-repeat: no-repeat;
+  background-position: center top;
+}
+
+.reader-content .qy-chapter-part,
+.reader-content .qy-chapter-front,
+.reader-content .qy-chapter-back {
+  margin-top: 5.4em;
+}
+
+.reader-content .qy-block:first-of-type > .qy-chapter:first-child {
+  margin-top: 0.6em;
+  background-image: none;
+}
+
+.qy-line.qy-note {
+  text-indent: 0;
+  text-align: start;
+  font-size: 0.86em;
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
+.qy-note-no {
+  color: var(--seal);
+  margin-right: 0.4em;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.qy-line.qy-note-rule {
+  text-indent: 0;
+  text-align: center;
+  letter-spacing: 0.6em;
+  color: var(--ink-3);
+}
+
 .qy-ref {
-  color: var(--indigo);
-  font-size: 0.62em;
+  font: inherit;
+  font-size: 0.65em;
+  font-weight: 600;
+  line-height: 1;
   vertical-align: super;
+  color: var(--seal);
+  background: transparent;
+  border: 0;
+  margin: 0;
+  padding: 0 0.12em;
   cursor: pointer;
-  padding: 0 1px;
-  font-family: var(--font-sans);
 }
 .qy-ref:hover {
   text-decoration: underline;
@@ -318,19 +452,56 @@
   padding: 0 1px;
 }
 
-/* ---------- 脚注浮层 ---------- */
+/* ---------- 注释浮层：贴在注号旁边 ---------- */
 .footnote-pop {
-  max-width: 320px;
+  position: fixed;
+  z-index: var(--z-sheet);
+  max-width: 340px;
   background: var(--paper-1);
-  border: 1px solid var(--line-soft);
-  border-left: 3px solid var(--seal);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-lg);
-  padding: 12px 14px;
-  font-size: 13px;
-  line-height: 1.7;
+  border-radius: 8px;
+  filter: drop-shadow(0 10px 28px rgba(40, 28, 16, 0.2));
+  padding: 12px 14px 10px;
+  font-size: 14px;
+  line-height: 1.75;
   color: var(--ink-1);
-  animation: qy-rise var(--dur) var(--ease);
+}
+
+.footnote-pop p {
+  margin: 0;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.footnote-pop::before {
+  content: '';
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 10px solid var(--paper-1);
+  left: var(--arrow-left, 50%);
+}
+
+.footnote-pop.arrow-up::before {
+  top: -9px;
+  transform: translateX(-50%);
+}
+
+.footnote-pop.arrow-down::before {
+  bottom: -9px;
+  transform: translateX(-50%) rotate(180deg);
+}
+
+.footnote-jump {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--seal);
+  font-size: 12px;
+  cursor: pointer;
 }
 
 /* ---------- 排版抽屉预览 ---------- */
@@ -431,6 +602,10 @@
 
 .paged-flow .qy-line {
   margin: 0 0 var(--p-gap, 0.6em);
+}
+
+.paged-flow .qy-line.qy-chapter {
+  margin: 0 0 1.25em;
 }
 
 .paged-skeleton {

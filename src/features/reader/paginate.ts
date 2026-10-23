@@ -11,6 +11,7 @@
 
 import type { BlockIndexView } from '@/core/reader/progress';
 import type { BlockReader } from '@/core/reader/blockReader';
+import { chapterRole, type ChapterRole } from '@/core/parser/chapters';
 import type { Chapter } from '@/types/models';
 import { trimLeadingSpaces } from '@/core/text/sanitize';
 
@@ -22,6 +23,8 @@ export interface FlowLine {
   char: number;
   text: string;
   block: number;
+  /** 本章开头那一行。学来的标题靠它认，内置标题渲染时还能再认一次。 */
+  role?: ChapterRole;
 }
 
 export interface Segment {
@@ -160,17 +163,27 @@ async function readOnce(
     let acc = 0;
     for (const raw of lines) {
       const t = trimLeadingSpaces(raw);
+      let opening = false;
       if (!started) {
         // 还没到本章标题：这是上一章的尾巴，跳过
-        if (t.includes(seg.startTitle as string)) started = true;
-        else {
+        if (t.includes(seg.startTitle as string)) {
+          started = true;
+          opening = t.length <= 80;
+        } else {
           acc += raw.length + 1;
           continue;
         }
       }
       // 撞上下一章标题就收工（前几行不判，避免正文里引用标题被误杀）
       if (useTitles && seg.endTitle && out.length > 3 && t.includes(seg.endTitle)) return out;
-      if (t) out.push({ char: base + acc, text: t, block: b });
+      if (t) {
+        out.push({
+          char: base + acc,
+          text: t,
+          block: b,
+          role: opening ? chapterRole(t) : undefined,
+        });
+      }
       acc += raw.length + 1;
     }
   }

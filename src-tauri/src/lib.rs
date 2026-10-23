@@ -8,9 +8,16 @@
  *   · 去掉原生壳后 dist/ 依然是一个可用的 PWA。
  */
 
+#[cfg(desktop)]
+mod menu;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    let builder = builder.menu(menu::build).on_menu_event(menu::on_event);
+
+    builder
         .run(tauri::generate_context!())
         .expect("启动轻阅主窗口失败");
 }

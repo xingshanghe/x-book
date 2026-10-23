@@ -20,6 +20,8 @@ export const BUILTIN_CHAPTER_SOURCES = [
   '^\\s*(?:[0-9]{1,4}\\s*[.、．:：]\\s*|[零一二三四五六七八九十百千]{1,6}\\s*[、.]\\s*).{1,60}$',
   // 固定词标题
   '^\\s*(?:序章?|序言?|前言|引子|楔子|後记|后记|尾声|尾聲|番外|附录|附錄|自序|楔|引)\\s*[:：、.．。]?\\s*.{0,40}$',
+  // 「正文」必须独占一行。写进上面那条会把「正文里有一句话」也当成标题。
+  '^\\s*正文\\s*[:：、.．。]?\\s*$',
 ];
 
 export const MANUAL_MARKER = '[::]';
@@ -188,4 +190,91 @@ function generalize(line: string): string | null {
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** 卷前、部头（正文/卷）、章回、卷末。决定标题牌的大小和另起一页。 */
+export type ChapterRole = 'front' | 'part' | 'chapter' | 'back';
+
+const FRONT_RE = /^(?:序章|序言|前言|引子|楔子|自序|引言|开篇|序幕|序|楔|引)/;
+const BACK_RE = /^(?:后记|後记|尾声|尾聲|番外|附录|附錄|跋|结语)/;
+const PART_RE =
+  /^(?:正文|卷\s*[零一二三四五六七八九十百千两〇0-9]+|第\s*[零一二三四五六七八九十百千两〇0-9]+\s*[卷部篇])/;
+
+export function chapterRole(title: string): ChapterRole {
+  const t = title.trim();
+  if (PART_RE.test(t)) return 'part';
+  if (BACK_RE.test(t)) return 'back';
+  if (FRONT_RE.test(t)) return 'front';
+  return 'chapter';
+}
+
+export interface HeadingPlate {
+  role: ChapterRole;
+  /** 章回编号，如「第一章」。卷前卷末为空。 */
+  kicker: string;
+  /** 展示用标题。章回只留题名。 */
+  title: string;
+  /** 原文，给无障碍标签 */
+  full: string;
+  /** 短标题拉开字距，如「前 言」「正 文」 */
+  spaced: boolean;
+}
+
+const headingDetector = new ChapterDetector();
+
+export function headingKey(value: string): string {
+  return value.trim().replace(/\s+/g, '');
+}
+
+function buildPlate(full: string, role: ChapterRole): HeadingPlate {
+  const compact = full.replace(/\s+/g, '');
+  const spaced = compact.length > 0 && compact.length <= 6;
+  if (role !== 'chapter') return { role, kicker: '', title: full, full, spaced };
+  const matched = full.match(
+    /^(第\s*[零一二三四五六七八九十百千两〇0-9]+\s*[章节節回巻卷部篇集话話折幕])\s*(.*)$/,
+  );
+  const rest = matched?.[2]?.trim() ?? '';
+  if (matched && rest) {
+    return { role, kicker: matched[1].replace(/\s+/g, ''), title: rest, full, spaced: false };
+  }
+  return { role, kicker: '', title: full, full, spaced };
+}
+
+/** 这一行是不是章回标题。roleHint 用来接住索引时学到、但内置规则认不出的标题。 */
+export function plateForLine(line: string, roleHint?: ChapterRole): HeadingPlate | null {
+  const text = line.trim();
+  if (!text) return null;
+  const detected = headingDetector.test(text);
+  if (detected) return buildPlate(detected.title, chapterRole(detected.title));
+  if (!roleHint || text.length > 80) return null;
+  return buildPlate(text.replace(/\s+/g, ' '), roleHint);
+}
+
+export function plateForStoredTitle(line: string, titles: readonly string[]): HeadingPlate | null {
+  if (titles.length === 0) return null;
+  const text = line.trim();
+  if (!text || text.length > 80) return null;
+  const key = headingKey(text);
+  for (const title of titles) {
+    if (headingKey(title) !== key) continue;
+    return buildPlate(title.trim().replace(/\s+/g, ' '), chapterRole(title));
+  }
+  return null;
+}
+
+/**
+ * 同一标题在一章里只成一次牌。seen 是这一轮渲染的记账，调用方自己准备。
+ */
+export function takeHeadingPlate(
+  line: string,
+  storedTitles: readonly string[],
+  seen: Set<string>,
+  roleHint?: ChapterRole,
+): HeadingPlate | null {
+  const plate = plateForLine(line, roleHint) ?? plateForStoredTitle(line, storedTitles);
+  if (!plate) return null;
+  const key = headingKey(plate.full);
+  if (!key || seen.has(key)) return null;
+  seen.add(key);
+  return plate;
 }

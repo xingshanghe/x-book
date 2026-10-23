@@ -164,6 +164,57 @@ export interface FlowAnchor {
   block: number;
 }
 
+export interface PushLine extends LineBox {
+  char: number;
+  breakBefore?: boolean;
+  /** 已经插在这一行前面、并算进 top/bottom 的空白（章回另起一页） */
+  push?: number;
+}
+
+/**
+ * 章回标题如果还挤在当前页里，就算出要把它推到下一页页首的空白。
+ * 空白算进现有 top 之后再调用，结果应保持不变，避免来回补空白。
+ */
+export function chapterPushes(
+  lines: readonly PushLine[],
+  contentH: number,
+  current: ReadonlyMap<number, number>,
+): Map<number, number> {
+  const next = new Map<number, number>();
+  if (contentH <= 0 || lines.length === 0) return next;
+
+  let applied = 0;
+  const natural = lines.map((line) => {
+    const push = line.breakBefore ? (current.get(line.char) ?? line.push ?? 0) : 0;
+    const box = { top: line.top - applied - push, bottom: line.bottom - applied - push };
+    applied += push;
+    return { ...box, breakBefore: Boolean(line.breakBefore), char: line.char };
+  });
+
+  let shift = 0;
+  let origin = natural[0].top;
+  for (let i = 0; i < natural.length; i++) {
+    const top = natural[i].top + shift;
+    const bottom = natural[i].bottom + shift;
+    if (i > 0 && natural[i].breakBefore) {
+      const used = top - origin;
+      if (used < contentH - 0.5) {
+        const computed = Math.ceil(contentH - used);
+        const prev = current.get(natural[i].char) ?? 0;
+        const push = prev > 0 && Math.abs(computed - prev) <= 1 ? prev : computed;
+        if (push > 0) next.set(natural[i].char, push);
+        shift += push;
+        origin = top + push;
+        continue;
+      }
+      origin = top;
+      continue;
+    }
+    if (i > 0 && bottom - origin > contentH + 0.01) origin = top;
+  }
+  return next;
+}
+
 /**
  * 字符位置和块号对不上时以块号为准（清洗后字符统计会漂），
  * 两者邻近时用字符落到具体那一行。

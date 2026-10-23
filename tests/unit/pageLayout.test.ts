@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  chapterPushes,
   clampPage,
   columnOffsets,
   type LineBox,
@@ -7,6 +8,7 @@ import {
   pageIndexForLine,
   pageMetrics,
   pickFlowLine,
+  type PushLine,
   screenCount,
   screenIndexForPage,
 } from '@/features/reader/pageLayout';
@@ -124,6 +126,71 @@ describe('按行装页', () => {
     expect(clampPage(-3, 4)).toBe(0);
     expect(clampPage(9, 4)).toBe(3);
     expect(clampPage(2, 1)).toBe(0);
+  });
+});
+
+function shiftByPushes(lines: PushLine[], pushes: ReadonlyMap<number, number>): PushLine[] {
+  let shift = 0;
+  return lines.map((line) => {
+    const push = line.breakBefore ? (pushes.get(line.char) ?? 0) : 0;
+    const next = { ...line, top: line.top + shift + push, bottom: line.bottom + shift + push };
+    shift += push;
+    return next;
+  });
+}
+
+describe('章回另起一页', () => {
+  const contentH = 200;
+  const raw: PushLine[] = [
+    { char: 1, top: 0, bottom: 30 },
+    { char: 2, top: 40, bottom: 70 },
+    { char: 3, top: 80, bottom: 130, breakBefore: true },
+    { char: 4, top: 140, bottom: 170 },
+  ];
+
+  it('页内还有空时，把章回标题推到下一页页首', () => {
+    const pushes = chapterPushes(raw, contentH, new Map());
+    expect(pushes.get(3)).toBe(120);
+    const shifted = shiftByPushes(raw, pushes);
+    expect(shifted[2].top).toBe(200);
+    expect(packLinePages(shifted, contentH).map((page) => page.line)).toEqual([0, 2]);
+  });
+
+  it('空白已经算进去之后，再算一次不会越推越远', () => {
+    const first = chapterPushes(raw, contentH, new Map());
+    const shifted = shiftByPushes(raw, first);
+    const second = chapterPushes(shifted, contentH, first);
+    expect(second.get(3)).toBe(first.get(3));
+  });
+
+  it('开篇标题就在页首，不再多推一页空白', () => {
+    const lines: PushLine[] = [
+      { char: 1, top: 0, bottom: 40, breakBefore: true },
+      { char: 2, top: 50, bottom: 80 },
+    ];
+    expect(chapterPushes(lines, contentH, new Map()).size).toBe(0);
+  });
+
+  it('标题已经落在下一页时不再补空白', () => {
+    const lines: PushLine[] = [
+      { char: 1, top: 0, bottom: 90 },
+      { char: 2, top: 100, bottom: 140, breakBefore: true },
+    ];
+    expect(chapterPushes(lines, 100, new Map()).size).toBe(0);
+  });
+
+  it('连续两个章回各自另起一页', () => {
+    const lines: PushLine[] = [
+      { char: 1, top: 0, bottom: 30 },
+      { char: 2, top: 40, bottom: 80, breakBefore: true },
+      { char: 3, top: 90, bottom: 120 },
+      { char: 4, top: 130, bottom: 170, breakBefore: true },
+    ];
+    const pushes = chapterPushes(lines, 100, new Map());
+    expect(pushes.get(2)).toBe(60);
+    expect(pushes.get(4)).toBe(10);
+    const shifted = shiftByPushes(lines, pushes);
+    expect(packLinePages(shifted, 100).map((page) => page.line)).toEqual([0, 1, 3]);
   });
 });
 

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { StreamIndexer } from '@/core/parser/scanner';
-import { ChapterDetector } from '@/core/parser/chapters';
+import { ChapterDetector, takeHeadingPlate } from '@/core/parser/chapters';
+import {
+  collectNotes,
+  isFootnoteDef,
+  isNoteDivider,
+  parseFootnoteDef,
+  splitByRefs,
+} from '@/core/parser/footnotes';
 import { Cleaner } from '@/core/parser/cleaner';
 import { detectEncoding } from '@/core/encoding/detect';
 
@@ -80,6 +87,70 @@ describe('chapters', () => {
   });
   it('[::] 手动标记最高优先级', () => {
     expect(d.test('[::]我的标记')?.title).toBe('我的标记');
+  });
+  it('单独一行的正文是部头，写在句子里的不是', () => {
+    expect(d.test('正文')?.title).toBe('正文');
+    expect(d.test('正文：')).not.toBeNull();
+    expect(d.test('正文从这里写起，雨还没停。')).toBeNull();
+  });
+});
+
+describe('章回标题牌', () => {
+  it('前言、正文、章回、后记分成四档', () => {
+    expect(takeHeadingPlate('前言', [], new Set())?.role).toBe('front');
+    expect(takeHeadingPlate('正文', [], new Set())?.role).toBe('part');
+    expect(takeHeadingPlate('后记', [], new Set())?.role).toBe('back');
+    const chapter = takeHeadingPlate('第一章 开端', [], new Set());
+    expect(chapter?.role).toBe('chapter');
+    expect(chapter?.kicker).toBe('第一章');
+    expect(chapter?.title).toBe('开端');
+  });
+
+  it('同一标题在一章里只成一次牌', () => {
+    const seen = new Set<string>();
+    expect(takeHeadingPlate('第一章 开端', [], seen)?.kicker).toBe('第一章');
+    expect(takeHeadingPlate('第一章 开端', [], seen)).toBeNull();
+  });
+
+  it('短的卷前标题拉开字距', () => {
+    expect(takeHeadingPlate('前言', [], new Set())?.spaced).toBe(true);
+    expect(takeHeadingPlate('第一章 开端', [], new Set())?.spaced).toBe(false);
+  });
+});
+
+describe('footnotes', () => {
+  it('方括号定义行拆出序号和释义', () => {
+    expect(parseFootnoteDef('[1]搦（nuò）战——挑战。')).toEqual({
+      marker: '1',
+      text: '搦（nuò）战——挑战。',
+    });
+    expect(parseFootnoteDef('【22】部曲，部下。')).toEqual({ marker: '22', text: '部曲，部下。' });
+    expect(isFootnoteDef('①机谋不密，反受其害。')).toBe(true);
+  });
+
+  it('正文里的注号可以点，年份和普通句子不是注释', () => {
+    expect(splitByRefs('部曲[22]将吏皆英俊之士')).toEqual([
+      { text: '部曲' },
+      { text: '[22]', ref: '22' },
+      { text: '将吏皆英俊之士' },
+    ]);
+    expect(splitByRefs('少顷[23]，何进入白后[24]').filter((part) => part.ref)).toEqual([
+      { text: '[23]', ref: '23' },
+      { text: '[24]', ref: '24' },
+    ]);
+    expect(splitByRefs('事在[2024]年')).toEqual([{ text: '事在[2024]年' }]);
+    expect(isFootnoteDef('正文从这里写起')).toBe(false);
+  });
+
+  it('星号行是注释界线，同章后写的释义盖过前面的', () => {
+    expect(isNoteDivider('* * *')).toBe(true);
+    expect(isNoteDivider('***')).toBe(true);
+    expect(isNoteDivider('部曲将吏')).toBe(false);
+    const notes = collectNotes([
+      { text: '[1]先写的释义。', char: 10 },
+      { text: '[1]章末这条为准。', char: 80 },
+    ]);
+    expect(notes.get('1')).toEqual({ text: '章末这条为准。', char: 80 });
   });
 });
 

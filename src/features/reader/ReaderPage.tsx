@@ -20,9 +20,11 @@ import { listBookmarks } from '@/storage/repositories/bookmarkRepo';
 import { listFonts } from '@/storage/fontStore';
 import { BlockReader } from '@/core/reader/blockReader';
 import { resolvePosition, type BlockIndexView } from '@/core/reader/progress';
-import { splitByRefs } from '@/core/parser/footnotes';
+import { takeHeadingPlate } from '@/core/parser/chapters';
+import { collectNotes, type CollectedNote } from '@/core/parser/footnotes';
 import { lineHeightPx } from '@/core/text/typography';
 import { trimLeadingSpaces } from '@/core/text/sanitize';
+import { readSegment, segmentOf } from '@/features/reader/paginate';
 import { buildTitlePage } from '@/core/reader/titlepage';
 import { debounce } from '@/lib/throttle';
 import { formatPercent, formatRemaining, clamp } from '@/lib/format';
@@ -39,11 +41,15 @@ import {
   IconSettings2,
   IconSun,
 } from '@/ui/icons';
-import { BookmarkSheet, FootnoteSheet, LayoutSheet, SearchSheet } from './ReaderSheets';
+import { BookmarkSheet, LayoutSheet, NotePopover, SearchSheet } from './ReaderSheets';
 import { PagedView, type PagedHandle } from './PagedView';
 import { TocSidebar } from './TocSidebar';
+import { AnnotatedLine } from './AnnotatedLine';
+import { ChapterHeading } from './ChapterHeading';
 import { TitlePageView } from './TitlePage';
 import './reader.css';
+
+const NO_HEADINGS: readonly string[] = [];
 
 interface Loaded {
   book: Book;
@@ -82,6 +88,14 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     for (let i = win.start; i < win.end; i++) out.push(i);
     return out;
   }, [win]);
+  const headingsByBlock = useMemo(() => {
+    const map = new Map<number, readonly string[]>();
+    for (const chapter of data?.chapters ?? []) {
+      const prev = map.get(chapter.blockIndex) ?? NO_HEADINGS;
+      map.set(chapter.blockIndex, [...prev, chapter.title]);
+    }
+    return map;
+  }, [data]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const pendingSeek = useRef<number | null>(null);
@@ -92,7 +106,14 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
 
   // 浮层
   const [sheet, setSheet] = useState<'search' | 'bookmark' | 'layout' | null>(null);
-  const [footnote, setFootnote] = useState<{ marker: string; text: string } | null>(null);
+  const [footnote, setFootnote] = useState<{
+    marker: string;
+    text: string;
+    rect: DOMRect;
+    noteChar?: number;
+  } | null>(null);
+  const noteCache = useRef(new Map<number, Map<string, CollectedNote>>());
+  const noteOpenedAt = useRef<number | null>(null);
   const [barsVisible, setBarsVisible] = useState(true);
   const bookmarksRef = useRef<Bookmark[]>([]);
   const [, bumpBookmarks] = useState(0);
@@ -373,6 +394,46 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     [settings.pageMode, seekToChar],
   );
 
+  const openNote = useCallback(
+    (marker: string, rect: DOMRect, char: number, known?: string, noteChar?: number) => {
+      noteOpenedAt.current = currentChar;
+      if (known) {
+        setFootnote({ marker, text: known, rect, noteChar });
+        return;
+      }
+      setFootnote({ marker, text: '正在查找这条注释…', rect, noteChar });
+      const loaded = data;
+      if (!loaded) return;
+      const chapter = loaded.chapters.length ? chapIndexAt(loaded.chapters, char) : -1;
+      const cached = chapter >= 0 ? noteCache.current.get(chapter)?.get(marker) : undefined;
+      if (cached) {
+        setFootnote({ marker, text: cached.text, rect, noteChar: cached.char });
+        return;
+      }
+      void (async () => {
+        const flow = await readSegment(loaded.reader, loaded.idx, segmentOf(loaded.idx, loaded.chapters, char));
+        const found = collectNotes(flow);
+        if (chapter >= 0) noteCache.current.set(chapter, found);
+        const note = found.get(marker);
+        const text = note?.text ?? loaded.footnotes.get(marker) ?? '这一章里没有找到对应注释。';
+        setFootnote((current) =>
+          current && current.marker === marker && current.rect === rect
+            ? { marker, text, rect, noteChar: note?.char }
+            : current,
+        );
+      })();
+    },
+    [data, currentChar],
+  );
+
+  useEffect(() => {
+    noteCache.current.clear();
+  }, [data?.book.id]);
+
+  useEffect(() => {
+    setFootnote((current) => (current && noteOpenedAt.current !== currentChar ? null : current));
+  }, [currentChar]);
+
   // 当前可视文本（书签/摘录用）
   useEffect(() => {
     if (!data) return;
@@ -435,6 +496,11 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   useEffect(() => {
     if (!settings.enableShortcuts) return;
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (footnote) setFootnote(null);
+        setSheet(null);
+        return;
+      }
       if (sheet || footnote) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
@@ -452,9 +518,6 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
           break;
         case 't':
           updateSettings({ tocDocked: !useSettings.getState().settings.tocDocked });
-          break;
-        case 'Escape':
-          setSheet(null);
           break;
       }
     };
@@ -668,15 +731,12 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
           idx={idx}
           reader={reader}
           chapters={chapters}
-          footnotes={data.footnotes}
           typography={typo}
           fontFamily={fontFamily}
           charOffset={currentChar}
           startBlock={data.startBlock}
           onCharChange={setCurrentChar}
-          onFootnote={(m) =>
-            setFootnote({ marker: m, text: data.footnotes.get(m) ?? '未找到对应注释。' })
-          }
+          onFootnote={openNote}
           flipAnimation={settings.flipAnimation}
           handleRef={pagedRef}
           onLoadingChange={setSegLoading}
@@ -714,10 +774,8 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
               reader={reader}
               charBase={idx.charOffsets[i] ?? 0}
               fontSize={typo.fontSize}
-              hasFootnotes={data.footnotes.size > 0}
-              onFootnote={(m) =>
-                setFootnote({ marker: m, text: data.footnotes.get(m) ?? '未找到对应注释。' })
-              }
+              headings={headingsByBlock.get(i) ?? NO_HEADINGS}
+              onFootnote={openNote}
             />
           ))}
           {/* 下方占位 */}
@@ -840,9 +898,15 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
         showTitlePage={settings.showTitlePage}
         onShowTitlePage={(v) => updateSettings({ showTitlePage: v })}
       />
-      <FootnoteSheet
+      <NotePopover
         marker={footnote?.marker ?? null}
         text={footnote?.text ?? null}
+        rect={footnote?.rect ?? null}
+        noteChar={footnote?.noteChar}
+        onJump={(char) => {
+          setFootnote(null);
+          seek(char);
+        }}
         onClose={() => setFootnote(null)}
       />
       {toast ? null : null}
@@ -860,15 +924,15 @@ function LazyBlock({
   reader,
   charBase,
   fontSize,
-  hasFootnotes,
+  headings,
   onFootnote,
 }: {
   index: number;
   reader: BlockReader;
   charBase: number;
   fontSize: number;
-  hasFootnotes: boolean;
-  onFootnote: (marker: string) => void;
+  headings: readonly string[];
+  onFootnote: (marker: string, anchor: DOMRect, char: number, text?: string, noteChar?: number) => void;
 }) {
   const [lines, setLines] = useState<string[] | null>(null);
 
@@ -882,37 +946,28 @@ function LazyBlock({
     };
   }, [reader, index]);
 
+  const seen = new Set<string>();
+  const positioned = lines ? positionedLines(lines, charBase) : [];
+  const blockNotes = collectNotes(positioned);
   return (
     <section className="qy-block" data-block={index}>
       {lines === null ? (
         <div style={{ height: fontSize * 2 }} aria-hidden />
       ) : (
-        lines.map((line, li) => {
-          const char = charBase + charsBefore(lines, li);
-          const t = trimLeadingSpaces(line);
-          if (!t) return null; // 空行交给段距表达
-          const parts = hasFootnotes ? splitByRefs(t) : null;
+        positioned.map((line, li) => {
+          if (!line.text) return null;
+          const plate = takeHeadingPlate(line.text, headings, seen);
+          if (plate) return <ChapterHeading char={line.char} plate={plate} key={li} />;
           return (
-            <p className="qy-line" data-char={char} key={li}>
-              {parts
-                ? parts.map((p, pi) =>
-                    p.ref ? (
-                      <sup
-                        key={pi}
-                        className="qy-ref"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onFootnote(p.ref as string);
-                        }}
-                      >
-                        {p.ref}
-                      </sup>
-                    ) : (
-                      <span key={pi}>{p.text}</span>
-                    ),
-                  )
-                : t}
-            </p>
+            <AnnotatedLine
+              key={li}
+              text={line.text}
+              char={line.char}
+              onNote={(marker, anchor, at) => {
+                const found = blockNotes.get(marker);
+                onFootnote(marker, anchor, at, found?.text, found?.char);
+              }}
+            />
           );
         })
       )}
@@ -920,10 +975,14 @@ function LazyBlock({
   );
 }
 
-function charsBefore(lines: string[], upto: number): number {
-  let n = 0;
-  for (let i = 0; i < upto; i++) n += lines[i].length + 1;
-  return n;
+function positionedLines(lines: string[], charBase: number): { text: string; char: number }[] {
+  const out: { text: string; char: number }[] = [];
+  let acc = 0;
+  for (const raw of lines) {
+    out.push({ text: trimLeadingSpaces(raw), char: charBase + acc });
+    acc += raw.length + 1;
+  }
+  return out;
 }
 
 function blockAtCharOffset(idx: BlockIndexView, charOffset: number): number {
