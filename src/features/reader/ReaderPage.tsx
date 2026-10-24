@@ -11,24 +11,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useSettings } from '@/app/store';
-import type { Book, Chapter } from '@/types/models';
-import { getBook } from '@/storage/repositories/bookRepo';
-import { getBookBlob } from '@/storage/blobStore';
-import { getBlockIndex, getChapters, getFootnotes, touchBook } from '@/storage/repositories/bookRepo';
-import { getProgress, saveProgress } from '@/storage/repositories/progressRepo';
-import { listBookmarks } from '@/storage/repositories/bookmarkRepo';
-import { listFonts } from '@/storage/fontStore';
-import { BlockReader } from '@/core/reader/blockReader';
-import { resolvePosition, type BlockIndexView } from '@/core/reader/progress';
 import { takeHeadingPlate } from '@/core/parser/chapters';
-import { collectNotes, type CollectedNote } from '@/core/parser/footnotes';
-import { lineHeightPx } from '@/core/text/typography';
-import { trimLeadingSpaces } from '@/core/text/sanitize';
-import { readSegment, segmentOf } from '@/features/reader/paginate';
+import { type CollectedNote, collectNotes } from '@/core/parser/footnotes';
+import { isPageBreakLine } from '@/core/parser/reformat';
+import { BlockReader } from '@/core/reader/blockReader';
+import { type BlockIndexView, resolvePosition } from '@/core/reader/progress';
 import { buildTitlePage } from '@/core/reader/titlepage';
+import { trimLeadingSpaces } from '@/core/text/sanitize';
+import { lineHeightPx } from '@/core/text/typography';
+import { readSegment, segmentOf } from '@/features/reader/paginate';
+import { clamp, formatPercent, formatRemaining } from '@/lib/format';
 import { debounce } from '@/lib/throttle';
-import { formatPercent, formatRemaining, clamp } from '@/lib/format';
-import type { Bookmark } from '@/types/models';
+import { getBookBlob } from '@/storage/blobStore';
+import { listFonts } from '@/storage/fontStore';
+import { listBookmarks } from '@/storage/repositories/bookmarkRepo';
+import {
+  getBlockIndex,
+  getBook,
+  getChapters,
+  getFootnotes,
+  touchBook,
+} from '@/storage/repositories/bookRepo';
+import { getProgress, saveProgress } from '@/storage/repositories/progressRepo';
+import type { Book, Bookmark, Chapter } from '@/types/models';
 import { Button, EmptyState, useToast } from '@/ui';
 import {
   IconBook,
@@ -41,12 +46,12 @@ import {
   IconSettings2,
   IconSun,
 } from '@/ui/icons';
-import { BookmarkSheet, LayoutSheet, NotePopover, SearchSheet } from './ReaderSheets';
-import { PagedView, type PagedHandle } from './PagedView';
-import { TocSidebar } from './TocSidebar';
 import { AnnotatedLine } from './AnnotatedLine';
 import { ChapterHeading } from './ChapterHeading';
+import { type PagedHandle, PagedView } from './PagedView';
+import { BookmarkSheet, LayoutSheet, NotePopover, SearchSheet } from './ReaderSheets';
 import { TitlePageView } from './TitlePage';
+import { TocSidebar } from './TocSidebar';
 import './reader.css';
 
 const NO_HEADINGS: readonly string[] = [];
@@ -160,7 +165,12 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
         lineCounts: blockIndex.lineCounts,
         count: blockIndex.count,
       };
-      const reader = new BlockReader({ blob, blockSize: blockIndex.blockSize, blockCount: blockIndex.count, starts: blockIndex.starts });
+      const reader = new BlockReader({
+        blob,
+        blockSize: blockIndex.blockSize,
+        blockCount: blockIndex.count,
+        starts: blockIndex.starts,
+      });
       const pos = resolvePosition(idx, saved);
 
       if (!alive) return;
@@ -184,7 +194,8 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
       if (settings.showTitlePage) {
         void buildTitlePage(book, async (n) => {
           const out: string[] = [];
-          for (let i = 0; i < Math.min(n, 4); i++) out.push(...(await reader.readLines(i)).slice(0, 8));
+          for (let i = 0; i < Math.min(n, 4); i++)
+            out.push(...(await reader.readLines(i)).slice(0, 8));
           return out;
         })
           .then((tp) => {
@@ -219,7 +230,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     [data, linePx, gapPx],
   );
 
-  const titleH = data && settings.showTitlePage ? heights.current.get(-1) ?? 340 : 0;
+  const titleH = data && settings.showTitlePage ? (heights.current.get(-1) ?? 340) : 0;
 
   const tops = useMemo(() => {
     const n = data?.idx.count ?? 0;
@@ -369,11 +380,19 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   }, [win, data, tops, heightVersion]);
 
   const seekToChar = useCallback(
-    (charOffset: number) => {
+    (charOffset: number, blockHint?: number) => {
       if (!data) return;
-      const clamped = clamp(charOffset, 0, data.idx.charOffsets[data.idx.count - 1] + data.idx.charCounts[data.idx.count - 1]);
-      const b = blockAtCharOffset(data.idx, clamped);
+      const clamped = clamp(
+        charOffset,
+        0,
+        data.idx.charOffsets[data.idx.count - 1] + data.idx.charCounts[data.idx.count - 1],
+      );
+      const b = blockHint ?? blockAtCharOffset(data.idx, clamped);
       pendingSeek.current = clamped;
+      setWin({
+        start: Math.max(0, b - 1),
+        end: Math.min(data.idx.count, b + 3),
+      });
       const y = tops[b] ?? 0;
       const root = scrollRef.current;
       if (root) root.scrollTop = Math.max(0, y - linePx);
@@ -388,7 +407,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
         pagedRef.current?.seek(char, blockHint);
         setCurrentChar(char);
       } else {
-        seekToChar(char);
+        seekToChar(char, blockHint);
       }
     },
     [settings.pageMode, seekToChar],
@@ -411,7 +430,11 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
         return;
       }
       void (async () => {
-        const flow = await readSegment(loaded.reader, loaded.idx, segmentOf(loaded.idx, loaded.chapters, char));
+        const flow = await readSegment(
+          loaded.reader,
+          loaded.idx,
+          segmentOf(loaded.idx, loaded.chapters, char),
+        );
         const found = collectNotes(flow);
         if (chapter >= 0) noteCache.current.set(chapter, found);
         const note = found.get(marker);
@@ -621,7 +644,12 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     return (
       <div className="reader">
         <div className="reader-bar top">
-          <button type="button" className="qy-icon-btn" onClick={() => navigate('/')} aria-label="返回书架">
+          <button
+            type="button"
+            className="qy-icon-btn"
+            onClick={() => navigate('/')}
+            aria-label="返回书架"
+          >
             <IconChevronLeft />
           </button>
         </div>
@@ -662,9 +690,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   const { book, idx, chapters, reader } = data;
   const totalChars = idx.charOffsets[idx.count - 1] + idx.charCounts[idx.count - 1];
   const percent = totalChars > 0 ? clamp(currentChar / totalChars, 0, 1) : 0;
-  const currentChapter = chapters.length
-    ? chapters[chapIndexAt(chapters, currentChar)]
-    : null;
+  const currentChapter = chapters.length ? chapters[chapIndexAt(chapters, currentChar)] : null;
   const chapterName = currentChapter?.title ?? (chapters.length ? '' : book.title);
 
   const onContentTap = (e: React.MouseEvent) => {
@@ -699,157 +725,186 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
       )}
 
       <div className="reader-main">
-      <header className={`reader-bar top${barsVisible ? '' : ' hidden'}`} data-tauri-drag-region="">
-        <button type="button" className="qy-icon-btn" onClick={() => navigate('/')} aria-label="返回书架">
-          <IconChevronLeft />
-        </button>
-        <button
-          type="button"
-          className={`qy-icon-btn${settings.tocDocked ? ' on' : ''}`}
-          onClick={() => updateSettings({ tocDocked: !settings.tocDocked })}
-          aria-label={settings.tocDocked ? '收起目录' : '展开目录'}
-          aria-pressed={settings.tocDocked}
+        <header
+          className={`reader-bar top${barsVisible ? '' : ' hidden'}`}
+          data-tauri-drag-region=""
         >
-          <IconList />
-        </button>
-        <span className="title" data-tauri-drag-region="">
-          {book.title}
-        </span>
-        <button
-          type="button"
-          className="qy-icon-btn"
-          onClick={() => setSheet('search')}
-          aria-label="搜索"
-        >
-          <IconSearch />
-        </button>
-      </header>
-
-      {settings.pageMode === 'page' ? (
-        <div className="reader-paged-wrap" onClick={onContentTap}>
-        <PagedView
-          idx={idx}
-          reader={reader}
-          chapters={chapters}
-          typography={typo}
-          fontFamily={fontFamily}
-          charOffset={currentChar}
-          startBlock={data.startBlock}
-          onCharChange={setCurrentChar}
-          onFootnote={openNote}
-          flipAnimation={settings.flipAnimation}
-          handleRef={pagedRef}
-          onLoadingChange={setSegLoading}
-          onPageInfo={setPageInfo}
-        />
-        </div>
-      ) : (
-      <div ref={scrollRef} className="reader-scroll" onClick={onContentTap}>
-        <div
-          ref={contentRef}
-          className="reader-content"
-          style={{
-            maxWidth: `calc((${typo.maxWidth}ch + 48px) * var(--w-scale, 1))`,
-            '--fs': `${typo.fontSize}px`,
-            '--lh': typo.lineHeight,
-            '--indent': `${typo.textIndent}em`,
-            '--ls': `${typo.letterSpacing}em`,
-            fontFamily,
-            fontSize: typo.fontSize,
-            lineHeight: typo.lineHeight,
-          } as React.CSSProperties}
-        >
-          {/* 扉页占位用 min-height：实测高度回来之前也不会被正文压住 */}
-          <div style={{ minHeight: tops[0] }} aria-hidden={win.start > 0}>
-            {settings.showTitlePage && win.start === 0 && (
-              <TitlePageView book={book} excerpt={data.excerpt} />
-            )}
-          </div>
-          {/* 上方占位 */}
-          <div style={{ height: Math.max(0, tops[win.start] - tops[0]) }} aria-hidden />
-          {blockIndexes.map((i) => (
-            <LazyBlock
-              key={i}
-              index={i}
-              reader={reader}
-              charBase={idx.charOffsets[i] ?? 0}
-              fontSize={typo.fontSize}
-              headings={headingsByBlock.get(i) ?? NO_HEADINGS}
-              onFootnote={openNote}
-            />
-          ))}
-          {/* 下方占位 */}
-          <div style={{ height: Math.max(0, total - tops[win.end]) }} aria-hidden />
-        </div>
-      </div>
-      )}
-
-      <footer className={`reader-bar bottom${barsVisible ? '' : ' hidden'}`}>
-        <span className="chapter">
-          {chapterName}
-          {settings.pageMode === 'page' && pageInfo.count > 1 && (
-            <span className="page-no">
-              {' '}
-              · {pageInfo.index + 1} / {pageInfo.count}
-            </span>
-          )}
-          {segLoading && <span className="page-no"> · 装订中…</span>}
-        </span>
-        <div className="reader-progress-row">
-          <span className="pct">{formatPercent(percent)}</span>
-          <input
-            type="range"
-            min={0}
-            max={1000}
-            value={Math.round(percent * 1000)}
-            style={{ '--pct': `${percent * 100}%` } as React.CSSProperties}
-            onChange={(e) => seek((Number(e.target.value) / 1000) * totalChars)}
-            aria-label="阅读进度"
-          />
-          <span className="pct">{totalChars > 0 ? formatRemaining(totalChars - currentChar) : ''}</span>
-        </div>
-        <div className="reader-tools">
-          <button type="button" className="qy-icon-btn" onClick={() => turn(-1)} aria-label="上一页">
+          <button
+            type="button"
+            className="qy-icon-btn"
+            onClick={() => navigate('/')}
+            aria-label="返回书架"
+          >
             <IconChevronLeft />
           </button>
           <button
             type="button"
             className={`qy-icon-btn${settings.tocDocked ? ' on' : ''}`}
             onClick={() => updateSettings({ tocDocked: !settings.tocDocked })}
-            aria-label="目录"
+            aria-label={settings.tocDocked ? '收起目录' : '展开目录'}
             aria-pressed={settings.tocDocked}
           >
             <IconList />
           </button>
+          <span className="title" data-tauri-drag-region="">
+            {book.title}
+          </span>
           <button
             type="button"
             className="qy-icon-btn"
-            onClick={() => setSheet('bookmark')}
-            aria-label="书签"
+            onClick={() => setSheet('search')}
+            aria-label="搜索"
           >
-            <IconBookmark />
+            <IconSearch />
           </button>
-          <button type="button" className="qy-icon-btn" onClick={() => setSheet('layout')} aria-label="排版">
-            <IconSettings2 />
-          </button>
-          <button
-            type="button"
-            className="qy-icon-btn"
-            aria-label="切换昼夜"
-            onClick={() =>
-              updateSettings({ themeMode: useSettings.getState().resolvedTheme === 'night' ? 'day' : 'night' })
-            }
-          >
-            {useSettings.getState().resolvedTheme === 'night' ? <IconSun /> : <IconMoon />}
-          </button>
-          <button type="button" className="qy-icon-btn" onClick={() => turn(1)} aria-label="下一页">
-            <IconChevronRight />
-          </button>
-        </div>
-        {settings.showProgressHints && percent > 0.9 && percent < 1 && (
-          <span className="hint">快读完啦，还剩 {formatRemaining(totalChars - currentChar)}</span>
+        </header>
+
+        {settings.pageMode === 'page' ? (
+          <div className="reader-paged-wrap" onClick={onContentTap}>
+            <PagedView
+              idx={idx}
+              reader={reader}
+              chapters={chapters}
+              typography={typo}
+              fontFamily={fontFamily}
+              charOffset={currentChar}
+              startBlock={data.startBlock}
+              onCharChange={setCurrentChar}
+              onFootnote={openNote}
+              flipAnimation={settings.flipAnimation}
+              handleRef={pagedRef}
+              onLoadingChange={setSegLoading}
+              onPageInfo={setPageInfo}
+            />
+          </div>
+        ) : (
+          <div ref={scrollRef} className="reader-scroll" onClick={onContentTap}>
+            <div
+              ref={contentRef}
+              className="reader-content"
+              style={
+                {
+                  maxWidth: `calc((${typo.maxWidth}ch + 48px) * var(--w-scale, 1))`,
+                  '--fs': `${typo.fontSize}px`,
+                  '--lh': typo.lineHeight,
+                  '--indent': `${typo.textIndent}em`,
+                  '--ls': `${typo.letterSpacing}em`,
+                  fontFamily,
+                  fontSize: typo.fontSize,
+                  lineHeight: typo.lineHeight,
+                } as React.CSSProperties
+              }
+            >
+              {/* 扉页占位用 min-height：实测高度回来之前也不会被正文压住 */}
+              <div style={{ minHeight: tops[0] }} aria-hidden={win.start > 0}>
+                {settings.showTitlePage && win.start === 0 && (
+                  <TitlePageView book={book} excerpt={data.excerpt} />
+                )}
+              </div>
+              {/* 上方占位 */}
+              <div style={{ height: Math.max(0, tops[win.start] - tops[0]) }} aria-hidden />
+              {blockIndexes.map((i) => (
+                <LazyBlock
+                  key={i}
+                  index={i}
+                  reader={reader}
+                  charBase={idx.charOffsets[i] ?? 0}
+                  fontSize={typo.fontSize}
+                  headings={headingsByBlock.get(i) ?? NO_HEADINGS}
+                  onFootnote={openNote}
+                />
+              ))}
+              {/* 下方占位 */}
+              <div style={{ height: Math.max(0, total - tops[win.end]) }} aria-hidden />
+            </div>
+          </div>
         )}
-      </footer>
+
+        <footer className={`reader-bar bottom${barsVisible ? '' : ' hidden'}`}>
+          <span className="chapter">
+            {chapterName}
+            {settings.pageMode === 'page' && pageInfo.count > 1 && (
+              <span className="page-no">
+                {' '}
+                · {pageInfo.index + 1} / {pageInfo.count}
+              </span>
+            )}
+            {segLoading && <span className="page-no"> · 装订中…</span>}
+          </span>
+          <div className="reader-progress-row">
+            <span className="pct">{formatPercent(percent)}</span>
+            <input
+              type="range"
+              min={0}
+              max={1000}
+              value={Math.round(percent * 1000)}
+              style={{ '--pct': `${percent * 100}%` } as React.CSSProperties}
+              onChange={(e) => seek((Number(e.target.value) / 1000) * totalChars)}
+              aria-label="阅读进度"
+            />
+            <span className="pct">
+              {totalChars > 0 ? formatRemaining(totalChars - currentChar) : ''}
+            </span>
+          </div>
+          <div className="reader-tools">
+            <button
+              type="button"
+              className="qy-icon-btn"
+              onClick={() => turn(-1)}
+              aria-label="上一页"
+            >
+              <IconChevronLeft />
+            </button>
+            <button
+              type="button"
+              className={`qy-icon-btn${settings.tocDocked ? ' on' : ''}`}
+              onClick={() => updateSettings({ tocDocked: !settings.tocDocked })}
+              aria-label="目录"
+              aria-pressed={settings.tocDocked}
+            >
+              <IconList />
+            </button>
+            <button
+              type="button"
+              className="qy-icon-btn"
+              onClick={() => setSheet('bookmark')}
+              aria-label="书签"
+            >
+              <IconBookmark />
+            </button>
+            <button
+              type="button"
+              className="qy-icon-btn"
+              onClick={() => setSheet('layout')}
+              aria-label="排版"
+            >
+              <IconSettings2 />
+            </button>
+            <button
+              type="button"
+              className="qy-icon-btn"
+              aria-label="切换昼夜"
+              onClick={() =>
+                updateSettings({
+                  themeMode: useSettings.getState().resolvedTheme === 'night' ? 'day' : 'night',
+                })
+              }
+            >
+              {useSettings.getState().resolvedTheme === 'night' ? <IconSun /> : <IconMoon />}
+            </button>
+            <button
+              type="button"
+              className="qy-icon-btn"
+              onClick={() => turn(1)}
+              aria-label="下一页"
+            >
+              <IconChevronRight />
+            </button>
+          </div>
+          {settings.showProgressHints && percent > 0.9 && percent < 1 && (
+            <span className="hint">快读完啦，还剩 {formatRemaining(totalChars - currentChar)}</span>
+          )}
+        </footer>
       </div>
 
       <SearchSheet
@@ -932,7 +987,13 @@ function LazyBlock({
   charBase: number;
   fontSize: number;
   headings: readonly string[];
-  onFootnote: (marker: string, anchor: DOMRect, char: number, text?: string, noteChar?: number) => void;
+  onFootnote: (
+    marker: string,
+    anchor: DOMRect,
+    char: number,
+    text?: string,
+    noteChar?: number,
+  ) => void;
 }) {
   const [lines, setLines] = useState<string[] | null>(null);
 
@@ -979,7 +1040,7 @@ function positionedLines(lines: string[], charBase: number): { text: string; cha
   const out: { text: string; char: number }[] = [];
   let acc = 0;
   for (const raw of lines) {
-    out.push({ text: trimLeadingSpaces(raw), char: charBase + acc });
+    if (!isPageBreakLine(raw)) out.push({ text: trimLeadingSpaces(raw), char: charBase + acc });
     acc += raw.length + 1;
   }
   return out;
@@ -1026,4 +1087,3 @@ async function textAroundChar(
 function isTouchDevice(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches;
 }
-

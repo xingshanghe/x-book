@@ -2,19 +2,21 @@
  * 导入流水线编排（在 Web Worker 中运行）：
  *
  *   File/Blob → 采样检测编码 → [非 UTF-8: 流式转码] → 字节扫描建块索引
- *             → 章节识别 → 脚注配对 → 广告清洗 → 归一化 UTF-8 Blob
+ *             → 拆出章回并写入分页符 → 章节识别 → 脚注配对 → 广告清洗
+ *             → 格式化后的 UTF-8 写入书籍缓存
  *
  * 性能预算（M1 / iPhone12 基准）：100MB UTF-8 全程 < 2.5s
  * 每处理 ~4MB 上报一次进度；UTF-8 走快路径，不复制文件。
  */
 
-import { BlobAccumulator, Transcoder, normalizeNewlines } from '../encoding/normalize';
-import { detectEncoding, toDecoderLabel, type DetectedEncoding } from '../encoding/detect';
+import type { CleanRule } from '@/types/models';
+import { type DetectedEncoding, detectEncoding, toDecoderLabel } from '../encoding/detect';
+import { BlobAccumulator, normalizeNewlines, Transcoder } from '../encoding/normalize';
 import { ChapterDetector, learnPatterns } from './chapters';
 import { Cleaner, mergeRules } from './cleaner';
-import { StreamIndexer, type ScanResult } from './scanner';
-import { guessMeta, guessLang } from './meta';
-import type { CleanRule } from '@/types/models';
+import { guessLang, guessMeta } from './meta';
+import { ChapterRewriter } from './reformat';
+import { type ScanResult, StreamIndexer } from './scanner';
 
 export const LEARN_SAMPLE_BYTES = 512 * 1024;
 
@@ -93,7 +95,10 @@ export async function indexBook(file: Blob, opts: IndexOptions): Promise<IndexOu
     learned = learnPatterns(normalizeNewlines(learnText));
   }
 
-  const detector = opts.detectChapters === false ? undefined : new ChapterDetector({ learned, custom: opts.customChapterPattern });
+  const detector =
+    opts.detectChapters === false
+      ? undefined
+      : new ChapterDetector({ learned, custom: opts.customChapterPattern });
   const cleaner = new Cleaner(mergeRules(opts.cleanRules), opts.cleanAds !== false);
   const indexer = new StreamIndexer({
     blockSize: opts.blockSize,
@@ -101,6 +106,8 @@ export async function indexBook(file: Blob, opts: IndexOptions): Promise<IndexOu
     cleaner,
     detectFootnotes: opts.detectFootnotes !== false,
   });
+  // 和扫描器吃同一份字节：缓存里的正文就是建了目录的那一份。
+  const rewriter = detector ? new ChapterRewriter(detector) : null;
 
   // ── 3. 流式扫描 ───────────────────────────────────────────────
   const accumulator = new BlobAccumulator();
@@ -110,20 +117,30 @@ export async function indexBook(file: Blob, opts: IndexOptions): Promise<IndexOu
   let lastReport = 0;
   let pending: Uint8Array | null = null; // 跨块残留（\r\n 拆开的情况）
 
-  const feed = (chunk: Uint8Array) => {
+  const accept = (chunk: Uint8Array) => {
+    if (chunk.length === 0) return;
+    indexer.push(chunk);
+    accumulator.push(chunk);
+  };
+
+  const deliver = (chunk: Uint8Array) => {
+    if (rewriter) {
+      for (const out of rewriter.push(chunk)) accept(out);
+      return;
+    }
     if (pending) {
       const merged = new Uint8Array(pending.length + chunk.length);
       merged.set(pending);
       merged.set(chunk, pending.length);
       pending = null;
-      indexer.push(subarraySkipCR(merged));
+      accept(skipTrailingCR(merged));
       return;
     }
-    indexer.push(subarraySkipCR(chunk));
+    accept(skipTrailingCR(chunk));
   };
 
   // 读到块尾的 \r 时需要看下一个字节才能定夺，此处统一延迟一个字节
-  function subarraySkipCR(chunk: Uint8Array): Uint8Array {
+  function skipTrailingCR(chunk: Uint8Array): Uint8Array {
     if (chunk.length > 0 && chunk[chunk.length - 1] === 0x0d) {
       pending = chunk.subarray(chunk.length - 1);
       return chunk.subarray(0, chunk.length - 1);
@@ -139,13 +156,9 @@ export async function indexBook(file: Blob, opts: IndexOptions): Promise<IndexOu
     const bytes: Uint8Array = value;
 
     if (needsTranscode && transcoder) {
-      for (const out of transcoder.write(bytes)) {
-        feed(out);
-        accumulator.push(out);
-      }
+      for (const out of transcoder.write(bytes)) deliver(out);
     } else {
-      feed(bytes);
-      accumulator.push(bytes);
+      deliver(bytes);
     }
 
     offset += bytes.byteLength;
@@ -159,15 +172,13 @@ export async function indexBook(file: Blob, opts: IndexOptions): Promise<IndexOu
   }
 
   if (needsTranscode && transcoder) {
-    for (const out of transcoder.flush()) {
-      feed(out);
-      accumulator.push(out);
-    }
+    for (const out of transcoder.flush()) deliver(out);
+  }
+  if (rewriter) {
+    for (const out of rewriter.finish()) accept(out);
   } else if (pending) {
     // 文件以 \r 结尾：补一个 \n，保持「行终止符」语义完整
-    const tail = new Uint8Array([0x0a]);
-    indexer.push(tail);
-    accumulator.push(tail);
+    accept(new Uint8Array([0x0a]));
     pending = null;
   }
 

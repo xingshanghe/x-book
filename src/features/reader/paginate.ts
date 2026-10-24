@@ -9,11 +9,12 @@
  * 浏览器按真实排版断行，不需要自己算每行几个字，也就不会出现半个字被切掉。
  */
 
-import type { BlockIndexView } from '@/core/reader/progress';
+import { type ChapterRole, chapterRole } from '@/core/parser/chapters';
+import { isPageBreakLine } from '@/core/parser/reformat';
 import type { BlockReader } from '@/core/reader/blockReader';
-import { chapterRole, type ChapterRole } from '@/core/parser/chapters';
-import type { Chapter } from '@/types/models';
+import type { BlockIndexView } from '@/core/reader/progress';
 import { trimLeadingSpaces } from '@/core/text/sanitize';
+import type { Chapter } from '@/types/models';
 
 /** 无章节书按块切段的粒度 */
 export const SEGMENT_BLOCKS = 300;
@@ -99,7 +100,7 @@ export function segmentOf(
         next ? (next.blockIndex ?? blockAtCharOffset(idx, endChar)) + 1 : idx.count,
       ),
     );
-    const titleOf = (c?: Chapter) => (c ? c.shortTitle || c.title : undefined);
+    const titleOf = (c?: Chapter) => (c?.title ? c.title : undefined);
     // 单章异常巨大（比如整本被识别成一章）时仍按块切，避免一次性铺十万行
     if (endBlock - startBlock > SEGMENT_BLOCKS) {
       const at = Math.max(0, blockAtCharOffset(idx, charOffset) - startBlock);
@@ -163,6 +164,10 @@ async function readOnce(
     let acc = 0;
     for (const raw of lines) {
       const t = trimLeadingSpaces(raw);
+      if (isPageBreakLine(raw) || isPageBreakLine(t)) {
+        acc += raw.length + 1;
+        continue;
+      }
       let opening = false;
       if (!started) {
         // 还没到本章标题：这是上一章的尾巴，跳过

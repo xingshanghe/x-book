@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { StreamIndexer } from '@/core/parser/scanner';
+import { detectEncoding } from '@/core/encoding/detect';
 import { ChapterDetector, takeHeadingPlate } from '@/core/parser/chapters';
+import { Cleaner } from '@/core/parser/cleaner';
 import {
   collectNotes,
   isFootnoteDef,
@@ -8,8 +9,7 @@ import {
   parseFootnoteDef,
   splitByRefs,
 } from '@/core/parser/footnotes';
-import { Cleaner } from '@/core/parser/cleaner';
-import { detectEncoding } from '@/core/encoding/detect';
+import { StreamIndexer } from '@/core/parser/scanner';
 
 const enc = new TextEncoder();
 
@@ -72,13 +72,32 @@ describe('scanner', () => {
 describe('chapters', () => {
   const d = new ChapterDetector();
   it('通杀正则覆盖常见格式', () => {
-    for (const t of ['第一章 开端', '第100章 大结局（下）', '卷一', 'Chapter 12: The End', '楔子', '后记']) {
+    for (const t of [
+      '第一章 开端',
+      '第100章 大结局（下）',
+      '第2章 《初露锋芒》',
+      '第２章 《初露锋芒》',
+      '【第2章 初露锋芒】',
+      '卷之一',
+      'Chapter 12: The End',
+      '终章',
+      '楔子',
+      '后记',
+      '（一）初露锋芒',
+    ]) {
       expect(d.test(t), t).not.toBeNull();
     }
+    expect(d.test('第２章 《初露锋芒》')?.title).toBe('第2章 《初露锋芒》');
+  });
+  it('标题后面粘着的正文不是标题的一部分', () => {
+    expect(d.test('第2章 《初露锋芒》秦末那会，天下乱得跟一锅粥')).toBeNull();
+    expect(d.test('大家都支持他。第2章 《初露锋芒》')).toBeNull();
   });
   it('正文不误报', () => {
     expect(d.test('他说第一章只是个开始，然后走出了门。')).toBeNull();
-    expect(d.test('这是一段很长很长的正文，讲述主角在雨天里遇见了一只猫，它的毛是橘色的。')).toBeNull();
+    expect(
+      d.test('这是一段很长很长的正文，讲述主角在雨天里遇见了一只猫，它的毛是橘色的。'),
+    ).toBeNull();
   });
   it('学习模式可覆盖非标准编号', () => {
     const learned = ['^\\s*[0-9]{1,4}[、.]\\s*\\S{1,40}$'];
@@ -163,8 +182,24 @@ describe('detectEncoding', () => {
     const gbk = new TextEncoder(); // Node 环境无 GBK 编码器，用字节样本直接验证
     void gbk;
     const sample = new Uint8Array([
-      0xce, 0xd2, 0xb0, 0xae, 0xd4, 0xc4, 0xb6, 0xc1, 0x0a, // 我爱阅读\n (GBK)
-      0xd5, 0xe2, 0xca, 0xc7, 0xd6, 0xd0, 0xce, 0xc4, 0x0a, // 这是中文\n
+      0xce,
+      0xd2,
+      0xb0,
+      0xae,
+      0xd4,
+      0xc4,
+      0xb6,
+      0xc1,
+      0x0a, // 我爱阅读\n (GBK)
+      0xd5,
+      0xe2,
+      0xca,
+      0xc7,
+      0xd6,
+      0xd0,
+      0xce,
+      0xc4,
+      0x0a, // 这是中文\n
     ]);
     const r = detectEncoding(sample);
     expect(['gb18030', 'big5']).toContain(r.encoding);

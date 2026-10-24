@@ -10,18 +10,27 @@
  * 只在「行首 40 字节内有可能」时才解码整行，避免全文解码。
  */
 
-/** 内置：绝大多数中文出版物与网文 */
+/** 章回序号：半角、全角数字和汉字数字 */
+export const CHAPTER_NUMBER = '0-9０-９零一二三四五六七八九十百千万两〇○';
+/** 章回单位 */
+export const CHAPTER_UNIT = '章节節回巻卷部篇集话話折幕';
+
+const PAREN = `[（(][^）)\\n]{1,8}[）)]`;
+const QUOTED = `[《「『“"][^》」』”"\\n]{1,40}[》」』”"]`;
+const PLAIN = `[^。！？!?\\n《》「」『』]{1,40}`;
+const HEAD = `第\\s*[${CHAPTER_NUMBER}]{1,12}\\s*[${CHAPTER_UNIT}]`;
+const TAIL =
+  `(?:\\s*${PAREN})?` +
+  `(?:\\s*[：:、.．]\\s*(?:${QUOTED}(?:\\s*${PAREN})?|${PLAIN})|\\s*${QUOTED}(?:\\s*${PAREN})?|\\s+${PLAIN})?`;
+
+/** 内置：绝大多数中文出版物与网文。整行必须像标题，句号后面的正文不算进去。 */
 export const BUILTIN_CHAPTER_SOURCES = [
-  // 第X章/节/回/卷/部/篇/集/话/折/幕  + 可选标题
-  '^\\s*(?:第\\s*[零一二三四五六七八九十百千两〇0-9]{1,12}\\s*[章节節回巻卷部篇集话話折幕折]\\s*[：:、.．。]?\\s*).{0,60}$',
-  // 卷 / Chapter / Part /Chapter Roman
-  '^\\s*(?:卷\\s*[零一二三四五六七八九十百千两〇0-9]{1,8}|Chapter\\s+[0-9IVXLC]{1,8}|Part\\s+[0-9IVXLC]{1,8})\\s*[:：、.．。]?\\s*.{0,60}$',
-  // 纯序号式：1. xxx / 001 xxx / 一、xxx
-  '^\\s*(?:[0-9]{1,4}\\s*[.、．:：]\\s*|[零一二三四五六七八九十百千]{1,6}\\s*[、.]\\s*).{1,60}$',
-  // 固定词标题
-  '^\\s*(?:序章?|序言?|前言|引子|楔子|後记|后记|尾声|尾聲|番外|附录|附錄|自序|楔|引)\\s*[:：、.．。]?\\s*.{0,40}$',
-  // 「正文」必须独占一行。写进上面那条会把「正文里有一句话」也当成标题。
+  `^\\s*${HEAD}${TAIL}\\s*$`,
+  `^\\s*(?:(?:卷|冊|册)\\s*(?:之\\s*)?[${CHAPTER_NUMBER}]{1,8}|[Cc]hapter\\s+[0-9IVXLCivxlc]{1,8}|[Pp]art\\s+[0-9IVXLCivxlc]{1,8})\\s*[:：、.．。]?\\s*[^。！？\\n]{0,40}$`,
+  `^\\s*(?:[${CHAPTER_NUMBER}]{1,4}\\s*[.、．:：]\\s*|[零一二三四五六七八九十百千]{1,6}\\s*[、.]\\s*)[^。！？\\n]{1,40}$`,
+  '^\\s*(?:序章?|序言?|前言|引子|楔子|後记|后记|尾声|尾聲|番外篇?|附录|附錄|自序|楔|引|终章|终回|尾章|外传|特别篇|间章|序篇|上篇|中篇|下篇|后篇)\\s*[:：、.．。]?\\s*[^。！？\\n]{0,40}$',
   '^\\s*正文\\s*[:：、.．。]?\\s*$',
+  `^\\s*[（(]\\s*[${CHAPTER_NUMBER}]{1,4}\\s*[）)]\\s*[^。！？，,\\n]{1,30}$`,
 ];
 
 export const MANUAL_MARKER = '[::]';
@@ -58,20 +67,21 @@ export class ChapterDetector {
    * 返回 null 表示非标题；否则返回 { title, level }
    */
   test(rawLine: string): { title: string; level: number } | null {
-    const line = rawLine.trim();
-    if (!line) return null;
+    const trimmed = rawLine.trim();
+    if (!trimmed || trimmed === '\f') return null;
 
     // 手动标记最高优先级
-    if (line.startsWith(MANUAL_MARKER)) {
-      const t = line.slice(MANUAL_MARKER.length).trim() || line;
+    if (trimmed.startsWith(MANUAL_MARKER)) {
+      const t = trimmed.slice(MANUAL_MARKER.length).trim() || trimmed;
       return { title: t, level: 0 };
     }
 
-    if (line.length > 80) return null;
+    const line = normalizeHeadingLine(trimmed);
+    if (!line || line.length > 80) return null;
 
-    if (this.customRegex?.test(line)) return { title: cleanTitle(line), level: 2 };
-    if (this.builtinRegex.test(line)) return { title: cleanTitle(line), level: 2 };
-    if (this.learnedRegex?.test(line)) return { title: cleanTitle(line), level: 2 };
+    if (this.customRegex?.test(line)) return acceptTitle(line);
+    if (this.builtinRegex.test(line)) return acceptTitle(line);
+    if (this.learnedRegex?.test(line)) return acceptTitle(line);
 
     return null;
   }
@@ -85,11 +95,24 @@ export class ChapterDetector {
       (firstByte >= 0x41 && firstByte <= 0x5a) ||
       (firstByte >= 0x61 && firstByte <= 0x7a) ||
       firstByte === 0x5b || // '[' 手动标记
+      firstByte === 0x23 || // '#'
+      firstByte === 0x28 || // '('
+      firstByte === 0x3d || // '='
+      firstByte === 0x2d || // '-'
+      firstByte === 0x2a || // '*'
+      firstByte === 0xef || // 全角数字、全角括号
+      firstByte === 0xe3 || // 【】
       (firstByte >= 0xe4 && firstByte <= 0xe9) ||
       firstByte === 0x20 ||
       firstByte === 0x09
     );
   }
+}
+
+function acceptTitle(line: string): { title: string; level: number } | null {
+  // 带句号的是正文。重复的叙述句不该被「向这本书学习」收成章回。
+  if (/[。！？!?]/.test(line)) return null;
+  return { title: cleanTitle(line), level: 2 };
 }
 
 function safeBuild(src: string): RegExp | null {
@@ -100,10 +123,31 @@ function safeBuild(src: string): RegExp | null {
   }
 }
 
+/** 去掉围栏、井号和成对括号，让「【第2章 标题】」「# 第一章」能进同一套规则。 */
+export function normalizeHeadingLine(raw: string): string {
+  let line = raw.replace(/\u3000/g, ' ').trim();
+  if (!line || line === '\f') return line;
+  line = line.replace(/^#{1,6}\s+/, '');
+  const fenced = line
+    .replace(/^(?:[=＝\-—–_*＊~～#＃]){2,}\s*/, '')
+    .replace(/\s*(?:[=＝\-—–_*＊~～#＃]){2,}$/, '');
+  if (fenced.trim()) line = fenced.trim();
+  const wrapped = line.match(/^[【[［]\s*(.+)\s*[】\]］]$/);
+  if (wrapped?.[1]?.trim()) line = wrapped[1].trim();
+  return line;
+}
+
+function foldDigits(text: string): string {
+  return text.replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0));
+}
+
 function cleanTitle(line: string): string {
-  return line
+  return foldDigits(line)
     .replace(/^\[::\]\s*/, '')
-    .replace(/^第\s*([零一二三四五六七八九十百千两〇0-9]+)\s*([章节節回巻卷部篇集话話折幕])/, (_, n, u) => `第${n}${u}`)
+    .replace(
+      /^第\s*([0-9零一二三四五六七八九十百千万两〇○]+)\s*([章节節回巻卷部篇集话話折幕])/,
+      (_, n, u) => `第${n}${u}`,
+    )
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 60);
@@ -116,8 +160,11 @@ function cleanTitle(line: string): string {
 export function simplifyTitle(title: string, index: number): string {
   let t = title.trim();
   t = t.replace(/^(正文|作品相关|内容|本书|全书)\s*[：:]?\s*/, '');
-  t = t.replace(/^(第[零一二三四五六七八九十百千两〇0-9]+[卷部篇])\s*[^\p{L}\p{N}]*/u, '$1 ');
-  t = t.replace(/^第([零一二三四五六七八九十百千两〇0-9]+)([章节節回话話])/, (_m, n, u) => {
+  t = t.replace(
+    /^(第[0-9０-９零一二三四五六七八九十百千万两〇○]+[卷部篇])\s*[^\p{L}\p{N}]*/u,
+    '$1 ',
+  );
+  t = t.replace(/^第([0-9０-９零一二三四五六七八九十百千万两〇○]+)([章节節回话話])/, (_m, n, u) => {
     return `${u}${toNumber(n)}`;
   });
   if (!t) t = `第 ${index + 1} 节`;
@@ -127,7 +174,18 @@ export function simplifyTitle(title: string, index: number): string {
 function toNumber(zh: string): string {
   if (/^[0-9]+$/.test(zh)) return zh;
   const map: Record<string, number> = {
-    零: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 两: 2, 〇: 0,
+    零: 0,
+    一: 1,
+    二: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+    两: 2,
+    〇: 0,
   };
   const units: Record<string, number> = { 十: 10, 百: 100, 千: 1000 };
   let total = 0;
@@ -157,6 +215,7 @@ export function learnPatterns(sample: string, maxPatterns = 4): string[] {
   for (const raw of lines) {
     const line = raw.trim();
     if (!line || line.length > 60 || line.length < 2) continue;
+    if (/[。！？!?]/.test(line)) continue;
     if (builtin?.test(line)) continue; // 已能被通杀规则覆盖，无需学习
     const template = generalize(line);
     if (!template) continue;
@@ -198,7 +257,7 @@ export type ChapterRole = 'front' | 'part' | 'chapter' | 'back';
 const FRONT_RE = /^(?:序章|序言|前言|引子|楔子|自序|引言|开篇|序幕|序|楔|引)/;
 const BACK_RE = /^(?:后记|後记|尾声|尾聲|番外|附录|附錄|跋|结语)/;
 const PART_RE =
-  /^(?:正文|卷\s*[零一二三四五六七八九十百千两〇0-9]+|第\s*[零一二三四五六七八九十百千两〇0-9]+\s*[卷部篇])/;
+  /^(?:正文|(?:卷|冊|册)\s*(?:之\s*)?[0-9０-９零一二三四五六七八九十百千万两〇○]+|第\s*[0-9０-９零一二三四五六七八九十百千万两〇○]+\s*[卷部篇])/;
 
 export function chapterRole(title: string): ChapterRole {
   const t = title.trim();
@@ -231,7 +290,7 @@ function buildPlate(full: string, role: ChapterRole): HeadingPlate {
   const spaced = compact.length > 0 && compact.length <= 6;
   if (role !== 'chapter') return { role, kicker: '', title: full, full, spaced };
   const matched = full.match(
-    /^(第\s*[零一二三四五六七八九十百千两〇0-9]+\s*[章节節回巻卷部篇集话話折幕])\s*(.*)$/,
+    /^(第\s*[0-9０-９零一二三四五六七八九十百千万两〇○]+\s*[章节節回巻卷部篇集话話折幕])\s*(.*)$/,
   );
   const rest = matched?.[2]?.trim() ?? '';
   if (matched && rest) {

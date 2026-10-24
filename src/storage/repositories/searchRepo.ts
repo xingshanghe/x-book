@@ -4,8 +4,9 @@
  * 每块 ~2ms，50MB 书全量扫描 < 3s，且随时可以提前终止。
  */
 
-import { getDB } from '../db';
+import { isPageBreakLine } from '@/core/parser/reformat';
 import type { Book } from '@/types/models';
+import { getDB } from '../db';
 
 export interface SearchHit {
   bookId: string;
@@ -56,7 +57,7 @@ export async function searchBook(
     for (let p = 0; p <= text.length; p++) {
       if (p === text.length || text.charCodeAt(p) === 10) {
         const line = p > lineStart ? text.slice(lineStart, p) : '';
-        if (line && line.toLowerCase().includes(needle)) {
+        if (line && !isPageBreakLine(line) && line.toLowerCase().includes(needle)) {
           const pos = line.toLowerCase().indexOf(needle);
           hits.push({
             bookId: book.id,
