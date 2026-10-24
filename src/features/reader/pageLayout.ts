@@ -215,6 +215,54 @@ export function chapterPushes(
   return next;
 }
 
+export interface ScrollChapterMark {
+  char: number;
+  /** 章标题边框顶，相对滚动内容顶端，已经含当前空白 */
+  top: number;
+  /** 当前空白高度，已经含在 top 里 */
+  spacer: number;
+  /** 全书第一章，且自然位置还在第一页：不在开篇前补一整页空白 */
+  opening?: boolean;
+}
+
+/**
+ * 滚动阅读没有页框，按视口高度把正文切成一屏一屏。
+ * 章标题不在某一屏的页首时，补一段空白：上一屏剩下的地方留空，标题落到下一屏页首。
+ * 空白已经算进 top 之后再调用，结果应保持不变。
+ */
+export function scrollChapterBreaks(
+  chapters: readonly ScrollChapterMark[],
+  pageH: number,
+  current: ReadonlyMap<number, number>,
+): Map<number, number> {
+  const next = new Map<number, number>();
+  if (pageH <= 0 || chapters.length === 0) return next;
+  let delta = 0;
+  for (const chapter of chapters) {
+    const base = chapter.top - chapter.spacer + delta;
+    if (chapter.opening && base < pageH) {
+      delta -= chapter.spacer;
+      continue;
+    }
+    const into = floorMod(base, pageH);
+    if (into <= 1.5) {
+      delta -= chapter.spacer;
+      continue;
+    }
+    const computed = Math.ceil(pageH - into);
+    const prev = current.get(chapter.char) ?? 0;
+    const push = prev > 0 && Math.abs(computed - prev) <= 1 ? prev : computed;
+    if (push > 0) next.set(chapter.char, push);
+    delta += push - chapter.spacer;
+  }
+  return next;
+}
+
+function floorMod(value: number, pageH: number): number {
+  const into = value % pageH;
+  return into < 0 ? into + pageH : into;
+}
+
 /**
  * 字符位置和块号对不上时以块号为准（清洗后字符统计会漂），
  * 两者邻近时用字符落到具体那一行。

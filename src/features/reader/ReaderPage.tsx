@@ -8,7 +8,15 @@
  *   · 进度锚点 = 全书可见字符偏移（charOffset），换字号/换设备不漂移。
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useLocation } from 'wouter';
 import { useSettings } from '@/app/store';
 import { takeHeadingPlate } from '@/core/parser/chapters';
@@ -49,12 +57,14 @@ import {
 import { AnnotatedLine } from './AnnotatedLine';
 import { ChapterHeading } from './ChapterHeading';
 import { type PagedHandle, PagedView } from './PagedView';
+import { type ScrollChapterMark, scrollChapterBreaks } from './pageLayout';
 import { BookmarkSheet, LayoutSheet, NotePopover, SearchSheet } from './ReaderSheets';
 import { TitlePageView } from './TitlePage';
 import { TocSidebar } from './TocSidebar';
 import './reader.css';
 
 const NO_HEADINGS: readonly string[] = [];
+const EMPTY_BREAKS: ReadonlyMap<number, number> = new Map();
 
 interface Loaded {
   book: Book;
@@ -84,6 +94,15 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   // 虚拟滚动状态
   const heights = useRef(new Map<number, number>());
   const [heightVersion, setHeightVersion] = useState(0);
+  const [layoutTick, setLayoutTick] = useState(0);
+  /** 滚动阅读里，章回标题前要补的空白，让上一章在屏尾留白、下一章从新的一屏开始 */
+  const [chapterBreaks, setChapterBreaks] = useState(EMPTY_BREAKS);
+  const [scrollH, setScrollH] = useState(0);
+  const chapterBreaksRef = useRef(EMPTY_BREAKS);
+  const breakBook = useRef<string | undefined>(undefined);
+  const onBlockLayout = useCallback(() => {
+    setLayoutTick((n) => n + 1);
+  }, []);
   const [win, setWin] = useState({ start: 0, end: 8 });
   // 必须放在所有 early return 之前：数据到达前后 hook 数量一旦变化，
   // React 会抛「Rendered more hooks than during the previous render」并卸载整页，
@@ -315,11 +334,13 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
         const h = target.getBoundingClientRect().height;
         const prev = heights.current.get(idx);
         if (prev === h) continue;
-        // 修正锚点：高度变化发生在视口上方时补偿 scrollTop
+        // 修正锚点：整块都在视口上方时补偿 scrollTop。
+        // 用变化前的底边判断，章末补上的空白才不会把正在看的内容往下顶。
+        const prevH = prev ?? h;
         const blockTop = tops[idx] ?? 0;
         const anchorY = root.scrollTop;
-        if (anchorY > blockTop + h) {
-          root.scrollTop += h - (prev ?? h);
+        if (anchorY > blockTop + prevH) {
+          root.scrollTop += h - prevH;
         }
         heights.current.set(idx, h);
         changed = true;
@@ -336,6 +357,75 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     if (titleChanged) setHeightVersion((v) => v + 1);
     return () => ro.disconnect();
   }, [data, win, tops]);
+
+  // 滚动模式：章回标题对齐到视口页首。分页模式由 PagedView 自己推页。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 字号、块高和视口高度变了都要重算章前空白
+  useLayoutEffect(() => {
+    if (settings.pageMode === 'page' || !data) return;
+    const root = scrollRef.current;
+    const content = contentRef.current;
+    if (!root || !content) return;
+    const pageH = root.clientHeight;
+    if (pageH < 80) return;
+    const nodes = content.querySelectorAll<HTMLElement>('.qy-line.qy-chapter');
+    const contentTop = content.getBoundingClientRect().top;
+    const openingChar = data.chapters[0]?.charOffset;
+    const firstNode = nodes[0];
+    const marks: ScrollChapterMark[] = [];
+    const seen: number[] = [];
+    for (const node of nodes) {
+      const char = Number(node.dataset.char);
+      if (!Number.isFinite(char)) continue;
+      const spacerEl = node.previousElementSibling;
+      const spacer =
+        spacerEl instanceof HTMLElement && spacerEl.classList.contains('qy-page-break')
+          ? spacerEl.getBoundingClientRect().height
+          : 0;
+      marks.push({
+        char,
+        top: node.getBoundingClientRect().top - contentTop,
+        spacer,
+        opening: char === openingChar || (win.start === 0 && node === firstNode),
+      });
+      seen.push(char);
+    }
+    const bookId = data.book.id;
+    const prev = breakBook.current === bookId ? chapterBreaksRef.current : EMPTY_BREAKS;
+    breakBook.current = bookId;
+    const measured = scrollChapterBreaks(marks, pageH, prev);
+    const next = applyMeasuredBreaks(prev, measured, seen);
+    if (next !== prev) {
+      chapterBreaksRef.current = next;
+      setChapterBreaks(next);
+    }
+  }, [
+    data,
+    win,
+    heightVersion,
+    layoutTick,
+    settings.pageMode,
+    typo.fontSize,
+    typo.lineHeight,
+    typo.maxWidth,
+    typo.paragraphSpacing,
+    typo.letterSpacing,
+    typo.textIndent,
+    scrollH,
+  ]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 正文挂上之后滚动容器才存在
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root || settings.pageMode === 'page') return;
+    const publish = () => {
+      const next = root.clientHeight;
+      setScrollH((prev) => (prev === next ? prev : next));
+    };
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(root);
+    return () => ro.disconnect();
+  }, [settings.pageMode, data]);
 
   /* ────────────── 定位 ────────────── */
 
@@ -811,6 +901,8 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
                   charBase={idx.charOffsets[i] ?? 0}
                   fontSize={typo.fontSize}
                   headings={headingsByBlock.get(i) ?? NO_HEADINGS}
+                  chapterBreaks={chapterBreaks}
+                  onLayout={onBlockLayout}
                   onFootnote={openNote}
                 />
               ))}
@@ -980,6 +1072,8 @@ function LazyBlock({
   charBase,
   fontSize,
   headings,
+  chapterBreaks,
+  onLayout,
   onFootnote,
 }: {
   index: number;
@@ -987,6 +1081,8 @@ function LazyBlock({
   charBase: number;
   fontSize: number;
   headings: readonly string[];
+  chapterBreaks: ReadonlyMap<number, number>;
+  onLayout: () => void;
   onFootnote: (
     marker: string,
     anchor: DOMRect,
@@ -1007,6 +1103,10 @@ function LazyBlock({
     };
   }, [reader, index]);
 
+  useLayoutEffect(() => {
+    if (lines) onLayout();
+  }, [lines, onLayout]);
+
   const seen = new Set<string>();
   const positioned = lines ? positionedLines(lines, charBase) : [];
   const blockNotes = collectNotes(positioned);
@@ -1018,7 +1118,15 @@ function LazyBlock({
         positioned.map((line, li) => {
           if (!line.text) return null;
           const plate = takeHeadingPlate(line.text, headings, seen);
-          if (plate) return <ChapterHeading char={line.char} plate={plate} key={li} />;
+          if (plate) {
+            const gap = chapterBreaks.get(line.char) ?? 0;
+            return (
+              <Fragment key={line.char}>
+                <div className="qy-page-break" style={{ height: gap }} aria-hidden="true" />
+                <ChapterHeading char={line.char} plate={plate} />
+              </Fragment>
+            );
+          }
           return (
             <AnnotatedLine
               key={li}
@@ -1034,6 +1142,25 @@ function LazyBlock({
       )}
     </section>
   );
+}
+
+function applyMeasuredBreaks(
+  prev: ReadonlyMap<number, number>,
+  measured: ReadonlyMap<number, number>,
+  seen: readonly number[],
+): ReadonlyMap<number, number> {
+  let changed = false;
+  const next = new Map(prev);
+  for (const char of seen) {
+    const height = measured.get(char) ?? 0;
+    const old = next.get(char) ?? 0;
+    if (height === old) continue;
+    if (height > 0 && old > 0 && Math.abs(height - old) <= 1) continue;
+    changed = true;
+    if (height > 0) next.set(char, height);
+    else next.delete(char);
+  }
+  return changed ? next : prev;
 }
 
 function positionedLines(lines: string[], charBase: number): { text: string; char: number }[] {

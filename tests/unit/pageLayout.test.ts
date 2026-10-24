@@ -4,13 +4,15 @@ import {
   clampPage,
   columnOffsets,
   type LineBox,
+  type PushLine,
   packLinePages,
   pageIndexForLine,
   pageMetrics,
   pickFlowLine,
-  type PushLine,
+  type ScrollChapterMark,
   screenCount,
   screenIndexForPage,
+  scrollChapterBreaks,
 } from '@/features/reader/pageLayout';
 
 const base = {
@@ -191,6 +193,64 @@ describe('章回另起一页', () => {
     expect(pushes.get(4)).toBe(10);
     const shifted = shiftByPushes(lines, pushes);
     expect(packLinePages(shifted, 100).map((page) => page.line)).toEqual([0, 1, 3]);
+  });
+});
+
+function placeScrollBreaks(
+  chapters: ScrollChapterMark[],
+  breaks: ReadonlyMap<number, number>,
+): ScrollChapterMark[] {
+  let shift = 0;
+  return chapters.map((chapter) => {
+    const spacer = breaks.get(chapter.char) ?? 0;
+    const next = { ...chapter, top: chapter.top + shift + spacer, spacer };
+    shift += spacer;
+    return next;
+  });
+}
+
+describe('滚动阅读章末留白', () => {
+  const pageH = 200;
+  const raw: ScrollChapterMark[] = [
+    { char: 1, top: 40, spacer: 0, opening: true },
+    { char: 2, top: 90, spacer: 0 },
+    { char: 3, top: 150, spacer: 0 },
+  ];
+
+  it('上一章没写满这一屏时，下一章被推到下一屏页首', () => {
+    const breaks = scrollChapterBreaks(raw, pageH, new Map());
+    expect(breaks.get(1)).toBeUndefined();
+    expect(breaks.get(2)).toBe(110);
+    expect(breaks.get(3)).toBe(140);
+    const placed = placeScrollBreaks(raw, breaks);
+    expect(placed[1].top).toBe(200);
+    expect(placed[2].top).toBe(400);
+  });
+
+  it('空白落地后再算一次，不会再往下推一屏', () => {
+    const first = scrollChapterBreaks(raw, pageH, new Map());
+    const placed = placeScrollBreaks(raw, first);
+    const second = scrollChapterBreaks(placed, pageH, first);
+    expect(second.get(2)).toBe(first.get(2));
+    expect(second.get(3)).toBe(first.get(3));
+  });
+
+  it('已经在屏首的章回不再补空白', () => {
+    const lines: ScrollChapterMark[] = [
+      { char: 1, top: 0, spacer: 0, opening: true },
+      { char: 2, top: 200, spacer: 0 },
+    ];
+    expect(scrollChapterBreaks(lines, pageH, new Map()).size).toBe(0);
+  });
+
+  it('开篇标题在第一屏里，不在书前留一整屏空白', () => {
+    const lines: ScrollChapterMark[] = [{ char: 1, top: 16, spacer: 0, opening: true }];
+    expect(scrollChapterBreaks(lines, pageH, new Map()).size).toBe(0);
+  });
+
+  it('开篇标题已经被扉页顶过第一屏时，改从下一屏页首开始', () => {
+    const lines: ScrollChapterMark[] = [{ char: 1, top: 240, spacer: 0, opening: true }];
+    expect(scrollChapterBreaks(lines, pageH, new Map()).get(1)).toBe(160);
   });
 });
 

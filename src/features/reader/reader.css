@@ -97,7 +97,7 @@
 
 .qy-chapter-kicker::before,
 .qy-chapter-kicker::after {
-  content: '';
+  content: "";
   width: 2em;
   height: 1px;
   background: currentColor;
@@ -146,15 +146,20 @@
   padding-left: 0.82em;
 }
 
-.qy-chapter-push {
+.qy-chapter-push,
+.qy-page-break {
   display: block;
   width: 100%;
   margin: 0;
   padding: 0;
+  border: 0;
+  overflow: hidden;
+  line-height: 0;
+  font-size: 0;
   pointer-events: none;
 }
 
-/* 滚动模式没有页框，用留白和一道线把章回切开 */
+/* 滚动模式按视口分页：章前的空白把上一屏余下的地方留空，标题从下一屏页首开始 */
 .reader-content .qy-line.qy-chapter {
   margin-top: 3.6em;
   padding-top: 1.25em;
@@ -473,7 +478,7 @@
 }
 
 .footnote-pop::before {
-  content: '';
+  content: "";
   position: absolute;
   width: 0;
   height: 0;
@@ -606,6 +611,12 @@
 
 .paged-flow .qy-line.qy-chapter {
   margin: 0 0 1.25em;
+}
+
+/* 盖过滚动模式章前的装饰线：分页空白已经把两章切开 */
+.reader-content .qy-page-break + .qy-line.qy-chapter {
+  margin-top: 0;
+  background-image: none;
 }
 
 .paged-skeleton {
