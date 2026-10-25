@@ -11,7 +11,7 @@ import {
   speakSentence,
   type EngineProgress,
 } from '@/tts/engine';
-import { playWavBytes } from '@/tts/playback';
+import { playWavBytes, primePlayback } from '@/tts/playback';
 import { createSentencePlayer, type SentencePlayer } from '@/tts/player';
 import { desktopReadingReady } from '@/tts/support';
 import type { PlayerSnapshot } from '@/tts/types';
@@ -46,6 +46,7 @@ export function ReadAloud({ passage, onClose }: { passage: string; onClose: () =
   }, [snapshot?.sentence]);
 
   const start = async () => {
+    primePlayback();
     if (!desktopReadingReady()) {
       setNote('朗读即将支持');
       return;
@@ -69,7 +70,14 @@ export function ReadAloud({ passage, onClose }: { passage: string; onClose: () =
     });
     setPlayer(next);
     setNote(null);
-    await next.start();
+    try {
+      await next.start();
+    } catch (error) {
+      const message = textOf(error);
+      setSnapshot(null);
+      setNote(message);
+      if (message.includes('sherpa-onnx-offline-tts')) setConfirming(true);
+    }
     setPlayer(null);
   };
 
@@ -162,6 +170,12 @@ export function ReadAloud({ passage, onClose }: { passage: string; onClose: () =
       </div>
     </section>
   );
+}
+
+function textOf(error: unknown): string {
+  if (typeof error === 'string' && error.trim()) return error;
+  if (error instanceof Error && error.message) return error.message;
+  return '这一句没有读出来';
 }
 
 function progressPercent(progress: EngineProgress): number {

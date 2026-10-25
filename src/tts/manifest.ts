@@ -25,6 +25,12 @@ export const ENGINE_MANIFEST: EngineManifest = {
       bytes: 54_157_409,
       sha256: 'bcb3b970e384161c4d634f0bb9e999ff1c471b34c9bc0b1049a5014065ed3cc0',
     },
+    {
+      name: 'sherpa-onnx-v2.0.0-osx-arm64-shared.tar.bz2',
+      url: `${ENGINE_DOWNLOAD_ORIGIN}/sherpa-onnx-v2.0.0-osx-arm64-shared.tar.bz2`,
+      bytes: 20_225_744,
+      sha256: 'ca352a87d313fb1cce311c7b5ddc2e48df3ff899fb2c43ce8076071f029d1d3f',
+    },
   ],
 };
 

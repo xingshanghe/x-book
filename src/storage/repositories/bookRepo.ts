@@ -45,10 +45,19 @@ export async function deleteBook(id: string): Promise<void> {
   await tx.objectStore('footnotes').delete(id);
   await tx.objectStore('progress').delete(id);
   const bm = tx.objectStore('bookmarks');
-  let cursor = await bm.index('by-book').openCursor(IDBKeyRange.only(id));
-  while (cursor) {
-    await cursor.delete();
-    cursor = await cursor.continue();
+  // 旧库可能建了书签表却没有 by-book。直接 index() 会让整笔删除事务作废。
+  if (bm.indexNames.contains('by-book')) {
+    let cursor = await bm.index('by-book').openCursor(IDBKeyRange.only(id));
+    while (cursor) {
+      await cursor.delete();
+      cursor = await cursor.continue();
+    }
+  } else {
+    let cursor = await bm.openCursor();
+    while (cursor) {
+      if (cursor.value.bookId === id) await cursor.delete();
+      cursor = await cursor.continue();
+    }
   }
   await tx.done;
   await deleteBookFile(id);

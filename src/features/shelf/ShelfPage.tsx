@@ -37,6 +37,8 @@ export function ShelfPage() {
   const settings = useSettings((s) => s.settings);
   const update = useSettings((s) => s.update);
   const [books, setBooks] = useState<Book[] | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Book | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [percentMap, setPercentMap] = useState<Record<string, number>>({});
   const [query, setQuery] = useState('');
   const [dropProps, dropping] = useDropImport();
@@ -95,13 +97,34 @@ export function ShelfPage() {
     useImportQueue.getState().add([...files]);
   };
 
-  const removeBook = async (book: Book) => {
-    if (!window.confirm(`确定删除《${book.title}》？\n阅读进度、书签与文件将一并移除，此操作不可撤销。`))
-      return;
-    await deleteBook(book.id);
-    toast('已删除', 'ok');
-    void reload();
+  const removeBook = (book: Book) => {
+    setPendingDelete(book);
   };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete || deleting) return;
+    setDeleting(true);
+    try {
+      await deleteBook(pendingDelete.id);
+      toast('已删除', 'ok');
+      setPendingDelete(null);
+      void reload();
+    } catch (err) {
+      const message = err instanceof Error && err.message ? err.message : '删除失败';
+      toast(message, 'warn');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!pendingDelete) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !deleting) setPendingDelete(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pendingDelete, deleting]);
 
   const markFinished = async (book: Book, finished: boolean) => {
     await touchBook(book.id, { finished, finishedAt: finished ? Date.now() : undefined });
@@ -278,6 +301,34 @@ export function ShelfPage() {
 
       <ImportTray />
       {dropping && <div className="dropzone-overlay">松手导入 · 完全离线可用</div>}
+      {pendingDelete && (
+        <div className="qy-overlay shelf-account-modal">
+          <button
+            type="button"
+            className="shelf-confirm-backdrop"
+            aria-label="取消删除"
+            disabled={deleting}
+            onClick={() => setPendingDelete(null)}
+          />
+          <div
+            className="shelf-account-dialog shelf-confirm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="shelf-confirm-title"
+          >
+            <h2 id="shelf-confirm-title">删除《{pendingDelete.title}》</h2>
+            <p>阅读进度、书签与文件会一并移除，此操作不可撤销。</p>
+            <div className="shelf-confirm-actions">
+              <Button variant="ghost" disabled={deleting} onClick={() => setPendingDelete(null)}>
+                取消
+              </Button>
+              <Button variant="danger" disabled={deleting} onClick={() => void confirmDelete()}>
+                {deleting ? '正在删除…' : '删除'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

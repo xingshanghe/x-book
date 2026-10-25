@@ -380,9 +380,12 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     const firstNode = nodes[0];
     const marks: ScrollChapterMark[] = [];
     const seen: number[] = [];
+    const seenChar = new Set<number>();
     for (const node of nodes) {
       const char = Number(node.dataset.char);
-      if (!Number.isFinite(char)) continue;
+      // 同一个字符偏移只量一次。重复节点会再推一整屏空白，章回就只剩标题牌。
+      if (!Number.isFinite(char) || seenChar.has(char)) continue;
+      seenChar.add(char);
       const spacerEl = node.previousElementSibling;
       const spacer =
         spacerEl instanceof HTMLElement && spacerEl.classList.contains('qy-page-break')
@@ -1138,14 +1141,14 @@ function LazyBlock({
       {lines === null ? (
         <div style={{ height: fontSize * 2 }} aria-hidden />
       ) : (
-        positioned.map((line, li) => {
+        positioned.map((line) => {
           if (!line.text) return null;
           if (headingRepeat(line.text, seen)) return null;
           const plate = takeHeadingPlate(line.text, headings, seen);
           if (plate) {
             const gap = chapterBreaks.get(line.char) ?? 0;
             return (
-              <Fragment key={line.char}>
+              <Fragment key={`ln-${line.char}`}>
                 <div className="qy-page-break" style={{ height: gap }} aria-hidden="true" />
                 <ChapterHeading char={line.char} plate={plate} />
               </Fragment>
@@ -1153,7 +1156,7 @@ function LazyBlock({
           }
           return (
             <AnnotatedLine
-              key={li}
+              key={`ln-${line.char}`}
               text={line.text}
               char={line.char}
               onNote={(marker, anchor, at) => {

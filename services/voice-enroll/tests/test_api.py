@@ -33,6 +33,20 @@ def build(tmp_path: Path, admin: str | None = "admin-secret"):
     return TestClient(app), clock, tmp_path / "uploads"
 
 
+def test_login_preflight_is_allowed(tmp_path: Path):
+    client, _, _ = build(tmp_path)
+    response = client.options(
+        "/v1/auth/login",
+        headers={
+            "Origin": "http://tauri.localhost",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "*"
+
+
 def test_register_login_and_duplicate(tmp_path: Path):
     client, _, _ = build(tmp_path)
     created = client.post("/v1/auth/register", json={"username": "Reader_1", "password": "password1"})

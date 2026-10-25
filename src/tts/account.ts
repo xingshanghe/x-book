@@ -66,11 +66,21 @@ export function createAccountClient(opts: {
     if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json');
     }
-    const response = await fetchImpl(`${opts.endpoint.replace(/\/$/, '')}${path}`, {
-      ...init,
-      headers,
-    });
-    const body = (await response.json()) as { success?: boolean; message?: string; data?: T };
+    let response: Response;
+    try {
+      response = await fetchImpl(`${opts.endpoint.replace(/\/$/, '')}${path}`, {
+        ...init,
+        headers,
+      });
+    } catch {
+      return { ok: false, status: 0, message: '连不上账号服务', data: null };
+    }
+    let body: { success?: boolean; message?: string; data?: T };
+    try {
+      body = (await response.json()) as { success?: boolean; message?: string; data?: T };
+    } catch {
+      return { ok: false, status: response.status, message: '账号服务没有返回结果', data: null };
+    }
     return {
       ok: response.ok && body.success !== false,
       status: response.status,

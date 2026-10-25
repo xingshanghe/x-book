@@ -193,11 +193,17 @@ fn unpack_archive(dir: &Path, file: &EngineFileSpec, dest: &Path) -> Result<(), 
         .current_dir(dir)
         .status()
         .map_err(|err| err.to_string())?;
-    if unpacked.success() {
-        Ok(())
-    } else {
-        Err("解压引擎包失败".into())
+    if !unpacked.success() {
+        return Err("解压引擎包失败".into());
     }
+    let _ = Command::new("xattr")
+        .args(["-dr", "com.apple.quarantine"])
+        .arg(dir)
+        .status();
+    if let Some(binary) = find_binary(dir) {
+        let _ = Command::new("chmod").args(["a+x"]).arg(&binary).status();
+    }
+    Ok(())
 }
 
 fn emit_progress(app: &AppHandle, file: &EngineFileSpec, index: usize, count: usize, received: u64, total: u64, stage: &str) {
@@ -228,7 +234,13 @@ pub fn tts_delete_engine(app: AppHandle, version: String) -> Result<(), String> 
 }
 
 #[tauri::command]
-pub fn tts_speak(app: AppHandle, request: SpeakRequest) -> Result<Vec<u8>, String> {
+pub async fn tts_speak(app: AppHandle, request: SpeakRequest) -> Result<Vec<u8>, String> {
+    tauri::async_runtime::spawn_blocking(move || speak_blocking(app, request))
+        .await
+        .map_err(|err| format!("朗读任务中断：{err}"))?
+}
+
+fn speak_blocking(app: AppHandle, request: SpeakRequest) -> Result<Vec<u8>, String> {
     let dir = engine_dir(&app, &request.version)?;
     if !dir.join("installed.json").exists() {
         return Err("请先下载朗读引擎".into());
@@ -252,11 +264,9 @@ pub fn tts_speak(app: AppHandle, request: SpeakRequest) -> Result<Vec<u8>, Strin
     let vocoder = find_file(&dir, "vocos_24khz.onnx").ok_or("缺少 vocos_24khz.onnx")?;
     let lexicon = find_file(&dir, "lexicon.txt").ok_or("缺少 lexicon.txt")?;
     let tokens = find_file(&dir, "tokens.txt").ok_or("缺少 tokens.txt")?;
-    let data_dir = find_dir(&dir, "espeak-ng-data").ok_or("缺少 espeak-ng-data")?;
-    let status = Command::new(&binary)
-        .arg(format!("--zipvoice-encoder={}", encoder.display()))
+    let mut cmd = Command::new(&binary);
+    cmd.arg(format!("--zipvoice-encoder={}", encoder.display()))
         .arg(format!("--zipvoice-decoder={}", decoder.display()))
-        .arg(format!("--zipvoice-data-dir={}", data_dir.display()))
         .arg(format!("--zipvoice-lexicon={}", lexicon.display()))
         .arg(format!("--zipvoice-tokens={}", tokens.display()))
         .arg(format!("--zipvoice-vocoder={}", vocoder.display()))
@@ -264,11 +274,19 @@ pub fn tts_speak(app: AppHandle, request: SpeakRequest) -> Result<Vec<u8>, Strin
         .arg(format!("--reference-text={}", request.ref_text))
         .arg("--num-steps=4")
         .arg(format!("--output-filename={}", out.display()))
-        .arg(&request.text)
-        .status()
-        .map_err(|err| format!("无法启动朗读引擎：{err}"))?;
-    if !status.success() {
-        return Err("这一句没有合成出来".into());
+        .arg(&request.text);
+    if let Some(lib) = find_file(&dir, "libonnxruntime.dylib").and_then(|path| path.parent().map(Path::to_path_buf)) {
+        cmd.env("DYLD_LIBRARY_PATH", lib);
+    }
+    let output = cmd.output().map_err(|err| format!("无法启动朗读引擎：{err}"))?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr);
+        let detail = detail.trim();
+        if detail.is_empty() {
+            return Err("这一句没有合成出来".into());
+        }
+        let clipped = detail.chars().rev().take(160).collect::<String>().chars().rev().collect::<String>();
+        return Err(format!("这一句没有合成出来：{clipped}"));
     }
     fs::read(&out).map_err(|err| err.to_string())
 }
@@ -316,25 +334,6 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
                 stack.push(path);
             } else if path.file_name().and_then(|item| item.to_str()) == Some(name) {
                 return Some(path);
-            }
-        }
-    }
-    None
-}
-
-fn find_dir(dir: &Path, name: &str) -> Option<PathBuf> {
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(current) = stack.pop() {
-        let Ok(entries) = fs::read_dir(&current) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                if path.file_name().and_then(|item| item.to_str()) == Some(name) {
-                    return Some(path);
-                }
-                stack.push(path);
             }
         }
     }

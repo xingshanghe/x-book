@@ -10,6 +10,7 @@ from pathlib import Path
 
 import jwt
 from fastapi import FastAPI, File, Form, Header, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -55,6 +56,7 @@ class Clock:
 ENGINE_FILES = {
     "sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2",
     "vocos_24khz.onnx",
+    "sherpa-onnx-v2.0.0-osx-arm64-shared.tar.bz2",
 }
 
 
@@ -62,6 +64,12 @@ def create_app(db_path: str, jwt_secret: str, admin_token: str | None = None, cl
     if not jwt_secret.strip():
         raise RuntimeError("JWT_SECRET is required")
     app = FastAPI()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.state.db_path = db_path
     app.state.secret = jwt_secret
     app.state.clock = clock or Clock()

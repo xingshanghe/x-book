@@ -36,19 +36,55 @@
   color: var(--ink-1);
   font-size: 13px;
 }
-.shelf-account-pop {
-  position: absolute;
-  top: calc(100% + 12px);
-  right: 0;
-  width: min(440px, 78vw);
-  max-height: min(72vh, 560px);
+.shelf-account-modal {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.shelf-account-dialog {
+  width: min(440px, 100%);
+  max-height: min(82vh, 640px);
   overflow: auto;
-  padding: 4px 16px 12px;
+  padding: 18px 20px 16px;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--paper-0);
   box-shadow: var(--shadow-lg);
-  z-index: 2;
+}
+.shelf-account-dialog h2 {
+  font-family: var(--font-kai);
+  margin: 0 48px 12px 0;
+}
+.shelf-account-close {
+  float: right;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.shelf-confirm p {
+  margin: 0;
+  color: var(--ink-2);
+  line-height: 1.7;
+}
+.shelf-confirm-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: transparent;
+}
+.shelf-confirm {
+  position: relative;
+  z-index: 1;
+}
+.shelf-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
 }
 .shelf-top::after {
   content: '';
