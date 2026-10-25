@@ -11,7 +11,6 @@ import {
   speakSentence,
   type EngineProgress,
 } from '@/tts/engine';
-import { ENGINE_LICENSE_NOTE } from '@/tts/manifest';
 import { playWavBytes } from '@/tts/playback';
 import { createSentencePlayer, type SentencePlayer } from '@/tts/player';
 import { desktopReadingReady } from '@/tts/support';
@@ -79,16 +78,20 @@ export function ReadAloud({ passage, onClose }: { passage: string; onClose: () =
       <p>{snapshot?.sentence || '从当前这一屏开始朗读。'}</p>
       {snapshot?.gapNote && <p className="tts-note">{snapshot.gapNote}</p>}
       {note && <p className="tts-note">{note}</p>}
-      {confirming && !downloading && (
-        <p className="tts-note">
-          {engineDownloadLabel()} {ENGINE_LICENSE_NOTE}
-        </p>
-      )}
-      {downloading && progress && (
+      {confirming && !downloading && <p className="tts-note">{engineDownloadLabel()}</p>}
+      {downloading && (
         <div className="tts-progress-wrap">
-          <p className="tts-note">{engineProgressLabel(progress)}，中断后可以继续</p>
-          <div className="tts-progress" aria-valuenow={progressPercent(progress)} aria-valuemin={0} aria-valuemax={100} role="progressbar">
-            <span style={{ width: `${progressPercent(progress)}%` }} />
+          <p className="tts-note">
+            {progress ? `${engineProgressLabel(progress)}，中断后可以继续` : '正在开始下载，中断后可以继续'}
+          </p>
+          <div
+            className="tts-progress"
+            aria-valuenow={progress ? progressPercent(progress) : 0}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            role="progressbar"
+          >
+            <span style={{ width: `${progress ? progressPercent(progress) : 0}%` }} />
           </div>
         </div>
       )}

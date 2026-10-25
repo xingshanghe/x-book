@@ -10,7 +10,6 @@ import {
   readEnginePhase,
 } from '@/tts/engine';
 import { enrollBlockReason, GUIDE_TEXT } from '@/tts/enroll';
-import { ENGINE_LICENSE_NOTE } from '@/tts/manifest';
 import { desktopReadingReady } from '@/tts/support';
 import type { VoicePack } from '@/tts/types';
 import { encodeWavPcm16, mixToMono } from '@/tts/wav';
@@ -48,8 +47,7 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
     <>
       <h2>朗读</h2>
       <p className="desc">
-        {ready ? engineDownloadLabel() : '朗读即将支持。当前只有 macOS 桌面版可以下载引擎。'}{' '}
-        {ENGINE_LICENSE_NOTE}
+        {ready ? engineDownloadLabel() : '朗读即将支持。当前只有 macOS 桌面版可以下载引擎。'}
       </p>
       <p className="desc">
         引擎状态：{readEnginePhase() === 'installed' ? '已下载' : '未下载'}
@@ -60,7 +58,7 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
           <Button
             size="sm"
             onClick={() => {
-              if (!window.confirm(`${engineDownloadLabel()}\n${ENGINE_LICENSE_NOTE}`)) return;
+              if (!window.confirm(engineDownloadLabel())) return;
               setProgress(null);
               void downloadDesktopEngine(setProgress).then((error) => {
                 setProgress(null);

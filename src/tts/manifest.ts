@@ -35,9 +35,6 @@ export const BUILTIN_VOICE = {
   file: 'sherpa-onnx-zipvoice-distill-int8-zh-en-emilia/test_wavs/leijun-1.wav',
 } as const;
 
-export const ENGINE_LICENSE_NOTE =
-  '当前 ZipVoice 权重按发布方说明为 CC-BY-NC，不能作为收费功能对外提供。内置示例音色只供本机试听。';
-
 export function manifestReady(manifest: EngineManifest = ENGINE_MANIFEST): boolean {
   return (
     manifest.files.length > 0 && manifest.files.every((file) => /^[a-f0-9]{64}$/i.test(file.sha256))

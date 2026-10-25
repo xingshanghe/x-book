@@ -66,7 +66,18 @@ pub fn tts_cancel_download() {
 }
 
 #[tauri::command]
-pub fn tts_download_engine(app: AppHandle, version: String, files: Vec<EngineFileSpec>) -> Result<(), String> {
+pub async fn tts_download_engine(
+    app: AppHandle,
+    version: String,
+    files: Vec<EngineFileSpec>,
+) -> Result<(), String> {
+    // 命令本身立刻返回，真正的下载、校验和等待都在阻塞线程池里，不占主线程。
+    tauri::async_runtime::spawn_blocking(move || run_download(app, version, files))
+        .await
+        .map_err(|err| format!("下载任务中断：{err}"))?
+}
+
+fn run_download(app: AppHandle, version: String, files: Vec<EngineFileSpec>) -> Result<(), String> {
     if files.is_empty() {
         return Err("引擎清单是空的".into());
     }
@@ -80,7 +91,11 @@ pub fn tts_download_engine(app: AppHandle, version: String, files: Vec<EngineFil
         download_file(&app, &dir, file, index, files.len(), done_before, grand)?;
         done_before = done_before.saturating_add(file.bytes);
     }
-    fs::write(dir.join("installed.json"), format!(r#"{{"version":"{version}"}}"#)).map_err(|err| err.to_string())?;
+    fs::write(
+        dir.join("installed.json"),
+        format!(r#"{{"version":"{version}"}}"#),
+    )
+    .map_err(|err| err.to_string())?;
     Ok(())
 }
 
