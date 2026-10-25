@@ -10,7 +10,7 @@
  */
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { takeHeadingPlate } from '@/core/parser/chapters';
+import { headingRepeat, takeHeadingPlate } from '@/core/parser/chapters';
 import { collectNotes } from '@/core/parser/footnotes';
 import type { BlockReader } from '@/core/reader/blockReader';
 import type { BlockIndexView } from '@/core/reader/progress';
@@ -157,6 +157,7 @@ function FlowBody({
 }) {
   const seen = new Set<string>();
   return lines.map((line) => {
+    if (headingRepeat(line.text, seen)) return null;
     const plate = takeHeadingPlate(line.text, headingTitles, seen, line.role);
     if (plate) {
       const push = pushes.get(line.char) ?? 0;

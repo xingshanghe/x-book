@@ -281,8 +281,12 @@ export interface HeadingPlate {
 
 const headingDetector = new ChapterDetector();
 
+/** 比较章名时去掉空白和分隔符，让「一、童年」和「一，童年」算同一行。 */
 export function headingKey(value: string): string {
-  return value.trim().replace(/\s+/g, '');
+  return value
+    .trim()
+    .replace(/[\s\u3000]+/g, '')
+    .replace(/[、，,．.。:：·・]/g, '');
 }
 
 function buildPlate(full: string, role: ChapterRole): HeadingPlate {
@@ -332,8 +336,14 @@ export function takeHeadingPlate(
 ): HeadingPlate | null {
   const plate = plateForLine(line, roleHint) ?? plateForStoredTitle(line, storedTitles);
   if (!plate) return null;
-  const key = headingKey(plate.full);
-  if (!key || seen.has(key)) return null;
-  seen.add(key);
+  const keys = [headingKey(plate.full), headingKey(plate.title)].filter((key) => key.length > 0);
+  if (keys.length === 0 || keys.some((key) => seen.has(key))) return null;
+  for (const key of keys) seen.add(key);
   return plate;
+}
+
+/** 这一行和已经显示过的章名是同一句，正文里不要再排一次。 */
+export function headingRepeat(line: string, seen: ReadonlySet<string>): boolean {
+  const key = headingKey(line);
+  return key.length > 0 && seen.has(key);
 }

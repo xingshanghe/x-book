@@ -2,7 +2,7 @@ import type { EngineManifest } from './types';
 
 /**
  * 引擎文件清单。只放常量。
- * sha256 留空时下载器拒绝开始，避免把未校验的权重当成已安装。
+ * sha256 来自 GitHub 发布资源的摘要。缺校验值时下载器拒绝开始。
  * 模型不进安装包，URL 仅在用户确认下载后才会被请求。
  *
  * 权重来自 Emilia 训练的 ZipVoice，发布方标明 CC-BY-NC，不能用于对外收费。
@@ -14,13 +14,13 @@ export const ENGINE_MANIFEST: EngineManifest = {
       name: 'sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2',
       url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2',
       bytes: 109_162_785,
-      sha256: '',
+      sha256: '77219c8b40f4ee8d73a7f902305ff6c1128ef9b54461c41b4ca6ed890b6c2803',
     },
     {
       name: 'vocos_24khz.onnx',
       url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx',
-      bytes: 0,
-      sha256: '',
+      bytes: 54_157_409,
+      sha256: 'bcb3b970e384161c4d634f0bb9e999ff1c471b34c9bc0b1049a5014065ed3cc0',
     },
   ],
 };

@@ -14,7 +14,7 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
 
 describe('引擎下载', () => {
   it('加载清单本身不发请求，未确认时也不发请求', async () => {
-    expect(manifestReady(ENGINE_MANIFEST)).toBe(false);
+    expect(manifestReady(ENGINE_MANIFEST)).toBe(true);
     let calls = 0;
     const fetchImpl: typeof fetch = async () => {
       calls += 1;

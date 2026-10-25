@@ -22,7 +22,6 @@ export function UserCenterSection({ toast }: { toast: (text: string) => void }) 
   return (
     <>
       <h2>账号</h2>
-      <p className="desc">登录只用于建档和换机找回音色。阅读、书架和进度都不使用这个账号。</p>
       <label className="qy-row">
         <span className="qy-row-label">服务地址</span>
         <input

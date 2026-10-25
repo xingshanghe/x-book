@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { detectEncoding } from '@/core/encoding/detect';
-import { ChapterDetector, takeHeadingPlate } from '@/core/parser/chapters';
+import { ChapterDetector, headingRepeat, takeHeadingPlate } from '@/core/parser/chapters';
 import { Cleaner } from '@/core/parser/cleaner';
 import {
   collectNotes,
@@ -129,6 +129,15 @@ describe('章回标题牌', () => {
     const seen = new Set<string>();
     expect(takeHeadingPlate('第一章 开端', [], seen)?.kicker).toBe('第一章');
     expect(takeHeadingPlate('第一章 开端', [], seen)).toBeNull();
+  });
+
+  it('章名紧挨着重复时，第二次不再成牌，也不再当正文', () => {
+    const seen = new Set<string>();
+    expect(takeHeadingPlate('一、童年', [], seen)?.title).toBe('一、童年');
+    expect(takeHeadingPlate('一、童年', [], seen)).toBeNull();
+    expect(headingRepeat('一、童年', seen)).toBe(true);
+    expect(takeHeadingPlate('一，童年', [], seen)).toBeNull();
+    expect(headingRepeat('一，童年', seen)).toBe(true);
   });
 
   it('短的卷前标题拉开字距', () => {

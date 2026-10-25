@@ -20,7 +20,7 @@ import {
 } from 'react';
 import { useLocation } from 'wouter';
 import { useSettings } from '@/app/store';
-import { takeHeadingPlate } from '@/core/parser/chapters';
+import { headingRepeat, takeHeadingPlate } from '@/core/parser/chapters';
 import { type CollectedNote, collectNotes } from '@/core/parser/footnotes';
 import { isPageBreakLine } from '@/core/parser/reformat';
 import { BlockReader } from '@/core/reader/blockReader';
@@ -1140,6 +1140,7 @@ function LazyBlock({
       ) : (
         positioned.map((line, li) => {
           if (!line.text) return null;
+          if (headingRepeat(line.text, seen)) return null;
           const plate = takeHeadingPlate(line.text, headings, seen);
           if (plate) {
             const gap = chapterBreaks.get(line.char) ?? 0;
