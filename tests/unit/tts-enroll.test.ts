@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createAccountSession } from '@/account/session';
 import { voiceDraftError } from '@/storage/voiceStore';
-import { createAccountClient } from '@/tts/account';
+import { createAccountClient, enrollQuotaLabel } from '@/tts/account';
 import { canSubmitEnroll } from '@/tts/enroll';
 
 describe('建档与账号', () => {
@@ -10,6 +10,15 @@ describe('建档与账号', () => {
     expect(canSubmitEnroll({ loggedIn: true, consent: false, durationMs: 10_000 })).toBe(false);
     expect(canSubmitEnroll({ loggedIn: true, consent: true, durationMs: 10_000 })).toBe(true);
     expect(canSubmitEnroll({ loggedIn: true, consent: true, durationMs: 30_000 })).toBe(false);
+  });
+
+  it('不扣次数时账号页不再显示剩余 0 次', () => {
+    expect(enrollQuotaLabel({ id: '1', username: 'reader', enrollCredits: 0, chargeCredits: false })).toBe(
+      'reader · 建档暂不限次数',
+    );
+    expect(enrollQuotaLabel({ id: '1', username: 'reader', enrollCredits: 2, chargeCredits: true })).toBe(
+      'reader · 剩余建档次数 2',
+    );
   });
 
   it('对齐文本为空时拒绝写入音色包', () => {

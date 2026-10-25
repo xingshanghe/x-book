@@ -18,6 +18,13 @@ export interface AccountProfile {
   id: string;
   username: string;
   enrollCredits: number;
+  /** 服务端为 false 时不扣建档次数。旧服务没这个字段时仍按次数显示。 */
+  chargeCredits?: boolean;
+}
+
+export function enrollQuotaLabel(profile: AccountProfile): string {
+  const quota = profile.chargeCredits === false ? '建档暂不限次数' : `剩余建档次数 ${profile.enrollCredits}`;
+  return `${profile.username} · ${quota}`;
 }
 
 export interface AccountResult<T> {

@@ -101,6 +101,34 @@ def test_lockout_and_refresh_rotation(tmp_path: Path):
     assert denied.status_code == 401
 
 
+def test_enroll_skips_credits_when_charging_is_off(tmp_path: Path):
+    clock = Clock()
+    app = create_app(
+        str(tmp_path / "enroll.db"),
+        "test-secret",
+        None,
+        clock,
+        str(tmp_path / "uploads"),
+        charge_credits=False,
+    )
+    client = TestClient(app)
+    health = client.get("/v1/health")
+    assert health.json()["data"]["chargeCredits"] is False
+    created = client.post("/v1/auth/register", json={"username": "reader", "password": "password1"})
+    token = created.json()["data"]["accessToken"]
+    made = client.post(
+        "/v1/voices/enroll",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"audio": ("a.wav", wav_bytes(6), "audio/wav")},
+        data={"transcript": "今天把这一小段念完。", "consent": "true"},
+    )
+    assert made.status_code == 200
+    me = client.get("/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.json()["data"]["enrollCredits"] == 0
+    assert me.json()["data"]["chargeCredits"] is False
+    assert list((tmp_path / "uploads").iterdir()) == []
+
+
 def test_enroll_debits_credits_and_hides_other_accounts(tmp_path: Path):
     client, _, uploads = build(tmp_path)
     client.post("/v1/auth/register", json={"username": "reader", "password": "password1"})

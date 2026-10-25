@@ -69,7 +69,15 @@ ENGINE_FILES = {
 }
 
 
-def create_app(db_path: str, jwt_secret: str, admin_token: str | None = None, clock: Clock | None = None, upload_dir: str | None = None, tts_dir: str | None = None) -> FastAPI:
+def create_app(
+    db_path: str,
+    jwt_secret: str,
+    admin_token: str | None = None,
+    clock: Clock | None = None,
+    upload_dir: str | None = None,
+    tts_dir: str | None = None,
+    charge_credits: bool = True,
+) -> FastAPI:
     if not jwt_secret.strip():
         raise RuntimeError("JWT_SECRET is required")
     app = FastAPI()
@@ -84,6 +92,7 @@ def create_app(db_path: str, jwt_secret: str, admin_token: str | None = None, cl
     app.state.clock = clock or LiveClock()
     app.state.upload_dir = upload_dir or str(Path(db_path).parent)
     app.state.tts_dir = tts_dir or ""
+    app.state.charge_credits = charge_credits
     Path(app.state.upload_dir).mkdir(parents=True, exist_ok=True)
     _migrate(db_path)
     _routes(app, admin_token)
@@ -100,9 +109,15 @@ def serve() -> None:
     host = os.environ.get("ENROLL_HOST", "127.0.0.1")
     port = int(os.environ.get("ENROLL_PORT", "8787"))
     tts_dir = os.environ.get("ENROLL_TTS_DIR", "").strip() or None
+    # 默认不扣建档次数，方便测试。收费上线时设 ENROLL_CHARGE_CREDITS=1。
+    charge_credits = os.environ.get("ENROLL_CHARGE_CREDITS", "0").strip().lower() in {"1", "true", "yes", "on"}
     import uvicorn
 
-    uvicorn.run(create_app(db_path, secret, admin, tts_dir=tts_dir), host=host, port=port)
+    uvicorn.run(
+        create_app(db_path, secret, admin, tts_dir=tts_dir, charge_credits=charge_credits),
+        host=host,
+        port=port,
+    )
 
 
 def _connect(path: str) -> sqlite3.Connection:
@@ -155,7 +170,7 @@ def _err(status: int, message: str) -> JSONResponse:
 def _routes(app: FastAPI, admin_token: str | None) -> None:
     @app.get("/v1/health")
     def health():
-        return _ok({"ok": True})
+        return _ok({"ok": True, "chargeCredits": app.state.charge_credits})
 
     @app.post("/v1/auth/register")
     def register(body: AuthBody):
@@ -246,7 +261,14 @@ def _routes(app: FastAPI, admin_token: str | None) -> None:
         account = _account_from_access(app, authorization)
         if isinstance(account, JSONResponse):
             return account
-        return _ok({"id": account["id"], "username": account["username"], "enrollCredits": account["enroll_credits"]})
+        return _ok(
+            {
+                "id": account["id"],
+                "username": account["username"],
+                "enrollCredits": account["enroll_credits"],
+                "chargeCredits": app.state.charge_credits,
+            }
+        )
 
     @app.post("/v1/auth/password")
     def change_password(body: PasswordBody, authorization: str = Header(default="")):
@@ -279,7 +301,7 @@ def _routes(app: FastAPI, admin_token: str | None) -> None:
             return account
         if consent != "true":
             return _err(400, "请先确认已获授权")
-        if account["enroll_credits"] <= 0:
+        if app.state.charge_credits and account["enroll_credits"] <= 0:
             return _err(402, "建档次数已用完")
         raw = await audio.read()
         if len(raw) > 3_000_000:
@@ -294,17 +316,19 @@ def _routes(app: FastAPI, admin_token: str | None) -> None:
             voice_id = uuid.uuid4().hex
             now = app.state.clock.now()
             with _connect(app.state.db_path) as conn:
-                fresh = conn.execute("SELECT enroll_credits FROM accounts WHERE id = ?", (account["id"],)).fetchone()
-                if fresh is None or fresh["enroll_credits"] <= 0:
-                    return _err(402, "建档次数已用完")
+                if app.state.charge_credits:
+                    fresh = conn.execute("SELECT enroll_credits FROM accounts WHERE id = ?", (account["id"],)).fetchone()
+                    if fresh is None or fresh["enroll_credits"] <= 0:
+                        return _err(402, "建档次数已用完")
                 conn.execute(
                     "INSERT INTO voices (id, account_id, ref_text, quality, wav, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                     (voice_id, account["id"], ref_text, quality, wav, now),
                 )
-                conn.execute(
-                    "UPDATE accounts SET enroll_credits = enroll_credits - 1 WHERE id = ?",
-                    (account["id"],),
-                )
+                if app.state.charge_credits:
+                    conn.execute(
+                        "UPDATE accounts SET enroll_credits = enroll_credits - 1 WHERE id = ?",
+                        (account["id"],),
+                    )
             return _ok({"id": voice_id, "refText": ref_text, "quality": quality})
         finally:
             target.unlink(missing_ok=True)

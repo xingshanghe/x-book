@@ -9,6 +9,7 @@ import {
   engineProgressLabel,
   readEnginePhase,
 } from '@/tts/engine';
+import { enrollQuotaLabel } from '@/tts/account';
 import { enrollBlockReason, GUIDE_TEXT } from '@/tts/enroll';
 import { desktopReadingReady } from '@/tts/support';
 import type { VoicePack } from '@/tts/types';
@@ -81,7 +82,7 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
 
       <p className="desc">
         {profile
-          ? `${profile.username} · 剩余建档次数 ${profile.enrollCredits}`
+          ? enrollQuotaLabel(profile)
           : '建档需要先在书架右上角的「账号」里登录。未登录时，已在本机的音色仍可朗读。'}
       </p>
 

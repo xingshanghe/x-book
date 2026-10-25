@@ -31,6 +31,7 @@ ENROLL_ADMIN_TOKEN=${admin}
 ENROLL_DB=/data/enroll.db
 ENROLL_HOST=0.0.0.0
 ENROLL_PORT=8787
+ENROLL_CHARGE_CREDITS=0
 ENV
   echo "已生成 /opt/qingyue-enroll/.env（口令只留在服务器上）"
 fi

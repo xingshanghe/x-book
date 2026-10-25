@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { accountSession, DEFAULT_ENROLL_ENDPOINT } from '@/account/session';
+import { enrollQuotaLabel } from '@/tts/account';
 import { Button } from '@/ui';
 import { useAccountProfile } from './useAccountProfile';
 
@@ -34,7 +35,7 @@ export function UserCenterSection({ toast }: { toast: (text: string) => void }) 
       {profile ? (
         <>
           <p className="desc">
-            {profile.username} · 剩余建档次数 {profile.enrollCredits}
+            {enrollQuotaLabel(profile)}
           </p>
           <h3>修改口令</h3>
           <label className="qy-row">
