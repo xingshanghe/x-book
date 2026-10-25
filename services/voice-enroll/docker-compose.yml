@@ -9,6 +9,7 @@ services:
     env_file: .env
     volumes:
       - enroll-data:/data
+      - /opt/qingyue-tts:/tts:ro
 
 volumes:
   enroll-data:

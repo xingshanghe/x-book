@@ -2,16 +2,35 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::thread;
+use std::time::Duration;
 
-use serde::Deserialize;
-use tauri::{AppHandle, Manager};
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, Manager};
+
+static CANCELLED: AtomicBool = AtomicBool::new(false);
+static DOWNLOAD_PID: AtomicU32 = AtomicU32::new(0);
 
 #[derive(Deserialize)]
 pub(crate) struct EngineFileSpec {
     name: String,
     url: String,
     sha256: String,
+    #[serde(default)]
+    bytes: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DownloadProgress {
+    name: String,
+    received: u64,
+    total: u64,
+    index: usize,
+    count: usize,
+    stage: String,
 }
 
 #[derive(Deserialize)]
@@ -38,53 +57,150 @@ fn engine_dir(app: &AppHandle, version: &str) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
+pub fn tts_cancel_download() {
+    CANCELLED.store(true, Ordering::SeqCst);
+    let pid = DOWNLOAD_PID.swap(0, Ordering::SeqCst);
+    if pid > 0 {
+        let _ = Command::new("kill").arg(pid.to_string()).status();
+    }
+}
+
+#[tauri::command]
 pub fn tts_download_engine(app: AppHandle, version: String, files: Vec<EngineFileSpec>) -> Result<(), String> {
     if files.is_empty() {
         return Err("引擎清单是空的".into());
     }
+    CANCELLED.store(false, Ordering::SeqCst);
     let dir = engine_dir(&app, &version)?;
     fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
-    for file in &files {
-        if file.sha256.len() != 64 || !file.sha256.chars().all(|ch| ch.is_ascii_hexdigit()) {
-            return Err("引擎清单还没有校验值，暂不能下载".into());
-        }
-        if file.name.contains("..") || file.name.contains('/') || file.name.contains('\\') {
-            return Err("文件名不合法".into());
-        }
-        if !allowed_download_url(&file.url) {
-            return Err("下载地址不在允许的发布源里".into());
-        }
-        let part = dir.join(format!("{}.part", file.name));
-        let dest = dir.join(&file.name);
-        let status = Command::new("curl")
-            .args(["-L", "--fail", "--continue-at", "-", "-o"])
-            .arg(&part)
-            .arg(&file.url)
-            .status()
-            .map_err(|err| format!("无法启动下载：{err}"))?;
-        if !status.success() {
-            return Err("下载没有完成".into());
-        }
-        let sum = sha256_file(&part)?;
-        if !sum.eq_ignore_ascii_case(&file.sha256) {
-            let _ = fs::remove_file(&part);
-            return Err("校验不一致，已删除未完成的文件".into());
-        }
-        fs::rename(&part, &dest).map_err(|err| err.to_string())?;
-        if file.name.ends_with(".tar.bz2") {
-            let unpacked = Command::new("tar")
-                .arg("-xf")
-                .arg(&dest)
-                .current_dir(&dir)
-                .status()
-                .map_err(|err| err.to_string())?;
-            if !unpacked.success() {
-                return Err("解压引擎包失败".into());
-            }
-        }
+    let grand = files.iter().map(|file| file.bytes).sum::<u64>().max(1);
+    let mut done_before = 0u64;
+    for (index, file) in files.iter().enumerate() {
+        validate_file(file)?;
+        download_file(&app, &dir, file, index, files.len(), done_before, grand)?;
+        done_before = done_before.saturating_add(file.bytes);
     }
     fs::write(dir.join("installed.json"), format!(r#"{{"version":"{version}"}}"#)).map_err(|err| err.to_string())?;
     Ok(())
+}
+
+fn validate_file(file: &EngineFileSpec) -> Result<(), String> {
+    if file.sha256.len() != 64 || !file.sha256.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Err("引擎清单还没有校验值，暂不能下载".into());
+    }
+    if file.name.contains("..") || file.name.contains('/') || file.name.contains('\\') {
+        return Err("文件名不合法".into());
+    }
+    if !allowed_download_url(&file.url) {
+        return Err("下载地址不在允许的发布源里".into());
+    }
+    Ok(())
+}
+
+fn download_file(
+    app: &AppHandle,
+    dir: &Path,
+    file: &EngineFileSpec,
+    index: usize,
+    count: usize,
+    done_before: u64,
+    grand: u64,
+) -> Result<(), String> {
+    let part = dir.join(format!("{}.part", file.name));
+    let dest = dir.join(&file.name);
+    if dest.is_file() && sha256_file(&dest)?.eq_ignore_ascii_case(&file.sha256) {
+        unpack_archive(dir, file, &dest)?;
+        emit_progress(app, file, index, count, done_before.saturating_add(file.bytes), grand, "verifying");
+        return Ok(());
+    }
+    let _ = fs::remove_file(&dest);
+    if cancelled() {
+        return Err("已取消".into());
+    }
+    let mut child = Command::new("curl")
+        .args(["-L", "--fail", "--retry", "3", "--retry-delay", "1", "--continue-at", "-", "-o"])
+        .arg(&part)
+        .arg(&file.url)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|err| format!("无法启动下载：{err}"))?;
+    DOWNLOAD_PID.store(child.id(), Ordering::SeqCst);
+    let status = loop {
+        let received = fs::metadata(&part).map(|meta| meta.len()).unwrap_or(0);
+        emit_progress(app, file, index, count, done_before.saturating_add(received), grand, "downloading");
+        if cancelled() {
+            let _ = child.kill();
+            let _ = child.wait();
+            DOWNLOAD_PID.store(0, Ordering::SeqCst);
+            return Err("已取消".into());
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => thread::sleep(Duration::from_millis(200)),
+            Err(err) => {
+                DOWNLOAD_PID.store(0, Ordering::SeqCst);
+                return Err(err.to_string());
+            }
+        }
+    };
+    DOWNLOAD_PID.store(0, Ordering::SeqCst);
+    if cancelled() {
+        return Err("已取消".into());
+    }
+    if !status.success() {
+        let len = fs::metadata(&part).map(|meta| meta.len()).unwrap_or(0);
+        if file.bytes > 0 && len >= file.bytes {
+            let _ = fs::remove_file(&part);
+            return Err("下载不完整，请再试一次".into());
+        }
+        return Err("下载没有完成，已保留进度，可以继续".into());
+    }
+    emit_progress(app, file, index, count, done_before.saturating_add(file.bytes.max(1)), grand, "verifying");
+    let sum = sha256_file(&part)?;
+    if !sum.eq_ignore_ascii_case(&file.sha256) {
+        let _ = fs::remove_file(&part);
+        return Err("校验不一致，已删除未完成的文件".into());
+    }
+    fs::rename(&part, &dest).map_err(|err| err.to_string())?;
+    unpack_archive(dir, file, &dest)?;
+    Ok(())
+}
+
+fn unpack_archive(dir: &Path, file: &EngineFileSpec, dest: &Path) -> Result<(), String> {
+    if !file.name.ends_with(".tar.bz2") {
+        return Ok(());
+    }
+    let unpacked = Command::new("tar")
+        .arg("-xf")
+        .arg(dest)
+        .current_dir(dir)
+        .status()
+        .map_err(|err| err.to_string())?;
+    if unpacked.success() {
+        Ok(())
+    } else {
+        Err("解压引擎包失败".into())
+    }
+}
+
+fn emit_progress(app: &AppHandle, file: &EngineFileSpec, index: usize, count: usize, received: u64, total: u64, stage: &str) {
+    let _ = app.emit(
+        "tts-download-progress",
+        DownloadProgress {
+            name: file.name.clone(),
+            received: received.min(total),
+            total,
+            index,
+            count,
+            stage: stage.to_string(),
+        },
+    );
+}
+
+fn cancelled() -> bool {
+    CANCELLED.load(Ordering::SeqCst)
 }
 
 #[tauri::command]
@@ -143,7 +259,8 @@ pub fn tts_speak(app: AppHandle, request: SpeakRequest) -> Result<Vec<u8>, Strin
 }
 
 fn allowed_download_url(url: &str) -> bool {
-    const HOSTS: [&str; 4] = [
+    const HOSTS: [&str; 5] = [
+        "http://118.25.79.136/",
         "https://github.com/",
         "https://objects.githubusercontent.com/",
         "https://release-assets.githubusercontent.com/",

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import jwt
 from fastapi import FastAPI, File, Form, Header, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 
@@ -52,7 +52,13 @@ class Clock:
         self._now += seconds
 
 
-def create_app(db_path: str, jwt_secret: str, admin_token: str | None = None, clock: Clock | None = None, upload_dir: str | None = None) -> FastAPI:
+ENGINE_FILES = {
+    "sherpa-onnx-zipvoice-distill-int8-zh-en-emilia.tar.bz2",
+    "vocos_24khz.onnx",
+}
+
+
+def create_app(db_path: str, jwt_secret: str, admin_token: str | None = None, clock: Clock | None = None, upload_dir: str | None = None, tts_dir: str | None = None) -> FastAPI:
     if not jwt_secret.strip():
         raise RuntimeError("JWT_SECRET is required")
     app = FastAPI()
@@ -60,6 +66,7 @@ def create_app(db_path: str, jwt_secret: str, admin_token: str | None = None, cl
     app.state.secret = jwt_secret
     app.state.clock = clock or Clock()
     app.state.upload_dir = upload_dir or str(Path(db_path).parent)
+    app.state.tts_dir = tts_dir or ""
     Path(app.state.upload_dir).mkdir(parents=True, exist_ok=True)
     _migrate(db_path)
     _routes(app, admin_token)
@@ -75,9 +82,10 @@ def serve() -> None:
     db_path = os.environ.get("ENROLL_DB", "enroll.db")
     host = os.environ.get("ENROLL_HOST", "127.0.0.1")
     port = int(os.environ.get("ENROLL_PORT", "8787"))
+    tts_dir = os.environ.get("ENROLL_TTS_DIR", "").strip() or None
     import uvicorn
 
-    uvicorn.run(create_app(db_path, secret, admin), host=host, port=port)
+    uvicorn.run(create_app(db_path, secret, admin, tts_dir=tts_dir), host=host, port=port)
 
 
 def _connect(path: str) -> sqlite3.Connection:
@@ -335,6 +343,16 @@ def _routes(app: FastAPI, admin_token: str | None) -> None:
                 if cur.rowcount == 0:
                     return _err(404, "找不到")
             return _ok({"username": username})
+
+    @app.get("/tts/{name}")
+    def engine_file(name: str):
+        root = Path(app.state.tts_dir) if app.state.tts_dir else None
+        if root is None or name not in ENGINE_FILES:
+            return _err(404, "没有这个引擎文件")
+        path = (root / name).resolve()
+        if not path.is_relative_to(root.resolve()) or not path.is_file():
+            return _err(404, "没有这个引擎文件")
+        return FileResponse(path)
 
 
 def _issue(app: FastAPI, username: str):

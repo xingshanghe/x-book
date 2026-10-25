@@ -180,6 +180,29 @@ def test_change_password_revokes_refresh_tokens(tmp_path: Path):
     assert missing.status_code == 401
 
 
+def test_engine_file_can_be_fetched_in_ranges(tmp_path: Path):
+    engine = tmp_path / "tts"
+    engine.mkdir()
+    name = "vocos_24khz.onnx"
+    (engine / name).write_bytes(b"abcdef")
+    app = create_app(
+        str(tmp_path / "enroll.db"),
+        "test-secret",
+        None,
+        Clock(),
+        str(tmp_path / "uploads"),
+        str(engine),
+    )
+    client = TestClient(app)
+    whole = client.get(f"/tts/{name}")
+    assert whole.status_code == 200
+    assert whole.content == b"abcdef"
+    partial = client.get(f"/tts/{name}", headers={"Range": "bytes=1-2"})
+    assert partial.status_code == 206
+    assert partial.content == b"bc"
+    assert client.get("/tts/other.bin").status_code == 404
+
+
 def test_no_synthesis_route(tmp_path: Path):
     client, _, _ = build(tmp_path, admin=None)
     paths = {getattr(route, "path", "") for route in client.app.routes}

@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react';
 import { splitSentences } from '@/core/text/sentences';
 import { listVoices } from '@/storage/voiceStore';
 import {
+  cancelEngineDownload,
   deleteInstalledEngine,
   downloadDesktopEngine,
   engineDownloadLabel,
+  engineProgressLabel,
   readEnginePhase,
   speakSentence,
+  type EngineProgress,
 } from '@/tts/engine';
 import { ENGINE_LICENSE_NOTE } from '@/tts/manifest';
 import { playWavBytes } from '@/tts/playback';
@@ -22,6 +25,8 @@ export function ReadAloud({ passage, onClose }: { passage: string; onClose: () =
   const [snapshot, setSnapshot] = useState<PlayerSnapshot | null>(null);
   const [player, setPlayer] = useState<SentencePlayer | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [progress, setProgress] = useState<EngineProgress | null>(null);
 
   useEffect(() => {
     const sentence = snapshot?.sentence;
@@ -74,27 +79,48 @@ export function ReadAloud({ passage, onClose }: { passage: string; onClose: () =
       <p>{snapshot?.sentence || '从当前这一屏开始朗读。'}</p>
       {snapshot?.gapNote && <p className="tts-note">{snapshot.gapNote}</p>}
       {note && <p className="tts-note">{note}</p>}
-      {confirming && (
+      {confirming && !downloading && (
         <p className="tts-note">
           {engineDownloadLabel()} {ENGINE_LICENSE_NOTE}
         </p>
+      )}
+      {downloading && progress && (
+        <div className="tts-progress-wrap">
+          <p className="tts-note">{engineProgressLabel(progress)}，中断后可以继续</p>
+          <div className="tts-progress" aria-valuenow={progressPercent(progress)} aria-valuemin={0} aria-valuemax={100} role="progressbar">
+            <span style={{ width: `${progressPercent(progress)}%` }} />
+          </div>
+        </div>
       )}
       <div className="tts-actions">
         {confirming ? (
           <>
             <Button
               size="sm"
+              disabled={downloading}
               onClick={() => {
-                void downloadDesktopEngine().then((error) => {
+                setDownloading(true);
+                setProgress(null);
+                void downloadDesktopEngine(setProgress).then((error) => {
+                  setDownloading(false);
                   setPhase(readEnginePhase());
                   setConfirming(false);
                   setNote(error);
                 });
               }}
             >
-              开始下载
+              {downloading ? '下载中' : '开始下载'}
             </Button>
-            <Button size="sm" onClick={() => setConfirming(false)}>
+            <Button
+              size="sm"
+              onClick={() => {
+                if (downloading) {
+                  void cancelEngineDownload();
+                  return;
+                }
+                setConfirming(false);
+              }}
+            >
               取消
             </Button>
           </>
@@ -133,4 +159,9 @@ export function ReadAloud({ passage, onClose }: { passage: string; onClose: () =
       </div>
     </section>
   );
+}
+
+function progressPercent(progress: EngineProgress): number {
+  if (progress.total <= 0) return 0;
+  return Math.min(100, Math.round((progress.received / progress.total) * 100));
 }

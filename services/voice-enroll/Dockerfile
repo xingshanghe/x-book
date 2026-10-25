@@ -8,6 +8,7 @@ COPY app ./app
 ENV ENROLL_HOST=0.0.0.0
 ENV ENROLL_PORT=8787
 ENV ENROLL_DB=/data/enroll.db
+ENV ENROLL_TTS_DIR=/tts
 
 EXPOSE 8787
 CMD ["python", "-m", "app.main"]

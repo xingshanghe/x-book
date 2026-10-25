@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { accountSession } from '@/account/session';
 import { listVoices, removeVoice, renameVoice, saveVoice } from '@/storage/voiceStore';
 import {
+  type EngineProgress,
   deleteInstalledEngine,
   downloadDesktopEngine,
   engineDownloadLabel,
+  engineProgressLabel,
   readEnginePhase,
 } from '@/tts/engine';
 import { enrollBlockReason, GUIDE_TEXT } from '@/tts/enroll';
@@ -28,6 +30,7 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
   const recorderRef = useRef<MediaRecorder | null>(null);
   const startedRef = useRef(0);
   const ready = desktopReadingReady();
+  const [progress, setProgress] = useState<EngineProgress | null>(null);
 
   useEffect(() => {
     void listVoices()
@@ -48,14 +51,21 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
         {ready ? engineDownloadLabel() : '朗读即将支持。当前只有 macOS 桌面版可以下载引擎。'}{' '}
         {ENGINE_LICENSE_NOTE}
       </p>
-      <p className="desc">引擎状态：{readEnginePhase() === 'installed' ? '已下载' : '未下载'}</p>
+      <p className="desc">
+        引擎状态：{readEnginePhase() === 'installed' ? '已下载' : '未下载'}
+        {progress ? ` · ${engineProgressLabel(progress)}` : ''}
+      </p>
       {ready && (
         <div className="tts-actions">
           <Button
             size="sm"
             onClick={() => {
               if (!window.confirm(`${engineDownloadLabel()}\n${ENGINE_LICENSE_NOTE}`)) return;
-              void downloadDesktopEngine().then((error) => toast(error ?? '引擎已下载'));
+              setProgress(null);
+              void downloadDesktopEngine(setProgress).then((error) => {
+                setProgress(null);
+                toast(error ?? '引擎已下载');
+              });
             }}
           >
             下载引擎

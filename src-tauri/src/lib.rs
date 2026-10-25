@@ -22,6 +22,7 @@ pub fn run() {
     #[cfg(desktop)]
     let builder = builder.invoke_handler(tauri::generate_handler![
         tts::tts_download_engine,
+        tts::tts_cancel_download,
         tts::tts_delete_engine,
         tts::tts_speak,
     ]);

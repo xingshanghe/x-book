@@ -7,6 +7,7 @@
     "core:default",
     "core:window:allow-start-dragging",
     "allow-tts-download-engine",
+    "allow-tts-cancel-download",
     "allow-tts-delete-engine",
     "allow-tts-speak"
   ]

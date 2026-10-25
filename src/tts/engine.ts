@@ -5,6 +5,15 @@ import type { EnginePhase, VoicePack } from './types';
 
 const PHASE_KEY = 'qingyue.tts.engine-phase';
 
+export interface EngineProgress {
+  name: string;
+  received: number;
+  total: number;
+  index: number;
+  count: number;
+  stage: 'downloading' | 'verifying';
+}
+
 export function readEnginePhase(): EnginePhase {
   if (typeof localStorage === 'undefined') return 'absent';
   const raw = localStorage.getItem(PHASE_KEY);
@@ -19,10 +28,16 @@ function writePhase(phase: EnginePhase): void {
 }
 
 /** 只有 macOS 桌面壳、且用户已经确认时才调用。其他端直接返回说明，不发下载。 */
-export async function downloadDesktopEngine(): Promise<string | null> {
+export async function downloadDesktopEngine(
+  onProgress?: (progress: EngineProgress) => void,
+): Promise<string | null> {
   if (!desktopReadingReady()) return '朗读即将支持';
   if (!manifestReady()) return '引擎清单还没有校验值，暂不能下载';
   writePhase('downloading');
+  const { listen } = await import('@tauri-apps/api/event');
+  const unlisten = await listen<EngineProgress>('tts-download-progress', (event) => {
+    onProgress?.(event.payload);
+  });
   try {
     await invoke('tts_download_engine', {
       version: ENGINE_MANIFEST.version,
@@ -30,6 +45,7 @@ export async function downloadDesktopEngine(): Promise<string | null> {
         name: file.name,
         url: file.url,
         sha256: file.sha256,
+        bytes: file.bytes,
       })),
     });
     writePhase('installed');
@@ -37,7 +53,22 @@ export async function downloadDesktopEngine(): Promise<string | null> {
   } catch (error) {
     writePhase('absent');
     return messageOf(error, '下载没有完成');
+  } finally {
+    unlisten();
   }
+}
+
+export async function cancelEngineDownload(): Promise<void> {
+  if (!desktopReadingReady()) return;
+  await invoke('tts_cancel_download');
+}
+
+export function engineProgressLabel(progress: EngineProgress): string {
+  const pct = progress.total > 0 ? Math.min(100, Math.round((progress.received / progress.total) * 100)) : 0;
+  const got = (progress.received / (1024 * 1024)).toFixed(1);
+  const all = (progress.total / (1024 * 1024)).toFixed(0);
+  if (progress.stage === 'verifying') return `正在校验 ${pct}%`;
+  return `正在下载 ${progress.index + 1}/${progress.count} · ${pct}% · ${got}/${all} MB`;
 }
 
 export async function deleteInstalledEngine(): Promise<void> {

@@ -4,6 +4,11 @@ description = "确认后把朗读引擎下载到应用数据目录。"
 commands.allow = ["tts_download_engine"]
 
 [[permission]]
+identifier = "allow-tts-cancel-download"
+description = "取消正在进行的朗读引擎下载，已下载的部分保留。"
+commands.allow = ["tts_cancel_download"]
+
+[[permission]]
 identifier = "allow-tts-delete-engine"
 description = "删除已下载的朗读引擎。"
 commands.allow = ["tts_delete_engine"]
