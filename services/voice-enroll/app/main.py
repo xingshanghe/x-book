@@ -43,6 +43,8 @@ LOCK_SECONDS = 15 * 60
 
 
 class Clock:
+    """停表。测试用 advance 推时间，生产环境不要用它签发令牌。"""
+
     def __init__(self) -> None:
         self._now = int(time.time())
 
@@ -51,6 +53,13 @@ class Clock:
 
     def advance(self, seconds: int) -> None:
         self._now += seconds
+
+
+class LiveClock:
+    """每次读取当前时间。访问令牌只有一小时，时钟停在进程启动时会一签发就过期。"""
+
+    def now(self) -> int:
+        return int(time.time())
 
 
 ENGINE_FILES = {
@@ -72,7 +81,7 @@ def create_app(db_path: str, jwt_secret: str, admin_token: str | None = None, cl
     )
     app.state.db_path = db_path
     app.state.secret = jwt_secret
-    app.state.clock = clock or Clock()
+    app.state.clock = clock or LiveClock()
     app.state.upload_dir = upload_dir or str(Path(db_path).parent)
     app.state.tts_dir = tts_dir or ""
     Path(app.state.upload_dir).mkdir(parents=True, exist_ok=True)

@@ -142,6 +142,18 @@ function sameOffsets(a: readonly (number | null)[], b: readonly (number | null)[
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
+/**
+ * 程序改完位移后把裁切层标脏。
+ * WebKit 否则会把这一屏留白，直到下一次鼠标移动或按键。
+ */
+function revealLayer(node: HTMLElement) {
+  const prev = node.style.visibility;
+  node.style.visibility = 'hidden';
+  void node.offsetHeight;
+  node.style.visibility = prev;
+  void node.offsetHeight;
+}
+
 function FlowBody({
   lines,
   headingTitles,
@@ -428,6 +440,13 @@ export function PagedView({
     };
   }, [lines, metricsKey, metrics, seekGen, showScreen, reportPosition, pushes]);
 
+  // top 写入 DOM 之后再标脏。写在 settle 里太早，那时位移还是上一帧的。
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    if (!view || offsets.every((value) => value == null)) return;
+    for (const col of view.querySelectorAll<HTMLElement>('.paged-col')) revealLayer(col);
+  }, [offsets]);
+
   useEffect(() => {
     if (seeking.current || !lines?.length) return;
     reportPosition(pageIndex, pageCount);
@@ -549,7 +568,7 @@ export function PagedView({
                 ref={slot === 0 ? flowRef : undefined}
                 style={{
                   ...flowStyle,
-                  transform: offset == null ? undefined : `translateY(${-offset}px)`,
+                  top: offset == null ? undefined : -offset,
                   visibility: offset == null ? 'hidden' : 'visible',
                 }}
               >

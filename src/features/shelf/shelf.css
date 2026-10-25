@@ -55,6 +55,16 @@
   font-family: var(--font-kai);
   margin: 0 48px 12px 0;
 }
+.shelf-account-dialog .qy-row input {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+}
+.shelf-account-dialog input:focus,
+.shelf-account-dialog input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
 .shelf-account-close {
   float: right;
   height: 28px;

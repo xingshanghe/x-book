@@ -50,7 +50,9 @@
 
 /* ---------- 块与行 ---------- */
 .qy-block {
-  contain: content;
+  /* 不要带 paint：程序滚到书的中段时，paint containment 会让这一帧留白，
+     直到鼠标移动或按键才补画。 */
+  contain: layout style;
 }
 
 .qy-line {
@@ -590,8 +592,9 @@
   display: none;
 }
 
-/* 一屏一栏或两栏。每栏裁切到整数行，正文用 translateY 对齐到该栏的第一行。
-   不用过渡：滑动会把下一栏的行从这一栏滑过去，看起来像重叠。 */
+/* 一屏一栏或两栏。每栏裁切到整数行，正文用 top 对齐到该栏的第一行。
+   不用 transform：WebKit 在 overflow:hidden 里做大位移时，首帧经常不画字，
+   要等鼠标移动或按方向键才出现。不用过渡：滑动会把下一栏的行从这一栏滑过去。 */
 .paged-cols {
   display: flex;
   align-items: stretch;
@@ -601,6 +604,9 @@
   overflow: hidden;
   min-width: 0;
   height: 100%;
+}
+.paged-flow {
+  position: relative;
 }
 .paged-view.double .paged-col + .paged-col {
   box-shadow: -1px 0 0 var(--line-soft);
@@ -776,8 +782,8 @@
   left: 12px;
   right: 12px;
   bottom: calc(100% + 8px);
-  max-height: 14em;
-  overflow: hidden;
+  max-height: min(58vh, 32rem);
+  overflow: auto;
   padding: 8px 12px 4px;
   border: 1px solid var(--line-soft);
   border-radius: 10px;
@@ -807,6 +813,28 @@
   height: 100%;
   background: var(--seal);
   transition: width 0.2s linear;
+}
+.tts-prefs {
+  margin-top: 4px;
+}
+.tts-prefs summary {
+  cursor: pointer;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.tts-panel .qy-row {
+  min-height: 0;
+  padding: 4px 0;
+}
+.tts-voice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+}
+.tts-voice select {
+  max-width: 68%;
 }
 .tts-actions {
   display: flex;

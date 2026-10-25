@@ -125,6 +125,10 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const pendingSeek = useRef<number | null>(null);
+  /** 上一帧把目标行放到的 scrollTop。连续两次一样才算落稳，避免章前空白把行顶出视口。 */
+  const placedTop = useRef<number | null>(null);
+  const seekConfirm = useRef(false);
+  const pageModeRef = useRef(settings.pageMode);
   const pagedRef = useRef<PagedHandle | null>(null);
   const [currentChar, setCurrentChar] = useState(0);
   const [pageInfo, setPageInfo] = useState({ index: 0, count: 1 });
@@ -143,7 +147,11 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   const [barsVisible, setBarsVisible] = useState(true);
   const [aloudNote, setAloudNote] = useState<string | null>(null);
   const [Aloud, setAloud] = useState<ComponentType<{
-    passage: string;
+    bookId: string;
+    anchorChar: number;
+    index: BlockIndexView;
+    readLines: (block: number) => Promise<string[]>;
+    onFollow: (charOffset: number) => void;
     onClose: () => void;
   }> | null>(null);
   const bookmarksRef = useRef<Bookmark[]>([]);
@@ -202,6 +210,11 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
       if (!alive) return;
       pendingSeek.current = idx.charOffsets[pos.blockIndex] + pos.charTarget;
       setCurrentChar(pendingSeek.current);
+      // 分页模式由 PagedView 自己落页。滚动模式先把窗口放到进度所在的块，
+      // 否则 scrollTop 拉到中段时视口对着空白占位，要等下一次滚动才挂上正文。
+      if (useSettings.getState().settings.pageMode !== 'page') {
+        setWin(windowAround(pos.blockIndex, idx.count));
+      }
       // 先把正文交出去：扉页摘要要额外解码几块，
       // 之前它是 await 在 setData 之前的，首屏就白白多等一段。
       setData({
@@ -285,8 +298,9 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     [tops],
   );
 
-  // 滚动 → 更新渲染窗口
+  // 滚动 → 更新渲染窗口。pageMode 在依赖里：从分页切回来时滚动容器才挂上。
   useEffect(() => {
+    if (settings.pageMode === 'page') return;
     const el = scrollRef.current;
     if (!el || !data) return;
     let raf = 0;
@@ -294,6 +308,8 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
+        // 落位还没完成时滚动条可能被夹在 0，这时跟着改窗口会和落位来回抢。
+        if (pendingSeek.current != null) return;
         const y = el.scrollTop;
         const bottomY = y + el.clientHeight;
         const first = blockAtY(Math.max(0, y - linePx * 4));
@@ -307,13 +323,14 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
         if (ch != null) setCurrentChar(ch);
       });
     };
+    onScroll();
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => {
       el.removeEventListener('scroll', onScroll);
       if (raf) cancelAnimationFrame(raf);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, blockAtY, linePx]);
+  }, [data, blockAtY, linePx, settings.pageMode]);
 
   // 块实测高度变化 → 修正上方偏移，防止滚动跳动
   useEffect(() => {
@@ -452,32 +469,96 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     return null;
   }, [linePx]);
 
-  // 窗口渲染后应用精确跳转
-  useEffect(() => {
+  // 窗口渲染后应用精确跳转。必须在绘制前做完，否则中段进度的第一帧是空白占位。
+  useLayoutEffect(() => {
+    let raf = 0;
+    const cleanup = () => {
+      if (raf) cancelAnimationFrame(raf);
+    };
+    const prevMode = pageModeRef.current;
+    pageModeRef.current = settings.pageMode;
+    if (settings.pageMode === 'page') return cleanup;
     const root = scrollRef.current;
-    if (!root || !data) return;
+    if (!root || !data) return cleanup;
+    // 行挂上、块高或章前空白变了都要再对一次位。
+    void heightVersion;
+    void layoutTick;
+    void chapterBreaks;
+
+    // 从分页切回来时，滚动容器是新建的，scrollTop 为 0。按当前进度重新落位，
+    // 不能沿用打开时的 pending，也不能把 0 当成读者的位置写回进度。
+    if (prevMode === 'page') {
+      pendingSeek.current = currentChar;
+      placedTop.current = null;
+      seekConfirm.current = false;
+      const block = blockAtCharOffset(data.idx, currentChar);
+      const next = windowAround(block, data.idx.count);
+      if (win.start !== next.start || win.end !== next.end) {
+        setWin(next);
+        return cleanup;
+      }
+    }
+
     const target = pendingSeek.current;
-    if (target == null) return;
+    if (target == null) return cleanup;
+    const block = blockAtCharOffset(data.idx, target);
+    const next = windowAround(block, data.idx.count);
+    if (win.start > block || win.end <= block) {
+      setWin(next);
+      placeScroll(root, Math.max(0, (tops[block] ?? 0) - linePx));
+      return cleanup;
+    }
     const el = contentRef.current;
-    if (!el) return;
-    const lines = el.querySelectorAll<HTMLElement>('.qy-line[data-char]');
-    if (lines.length === 0) return;
-    const rootTop = root.getBoundingClientRect().top;
+    const lines = el?.querySelectorAll<HTMLElement>('.qy-line[data-char]');
+    const rough = Math.max(0, (tops[block] ?? 0) - linePx);
+    if (!lines || lines.length === 0) {
+      placeScroll(root, rough);
+      return cleanup;
+    }
     let hit: HTMLElement | null = null;
-    for (const l of lines) {
-      const cs = Number(l.dataset.char);
-      if (cs >= target) {
-        hit = l;
+    for (const line of lines) {
+      if (Number(line.dataset.char) >= target) {
+        hit = line;
         break;
       }
     }
-    if (hit) {
-      const top = hit.getBoundingClientRect().top - rootTop + root.scrollTop;
-      root.scrollTop = Math.max(0, top - 8);
+    if (!hit) {
+      placeScroll(root, rough);
+      for (let i = block; i < win.end; i++) {
+        const node = el?.querySelector(`.qy-block[data-block="${i}"]`);
+        if (!node?.querySelector('.qy-line[data-char]')) return cleanup;
+      }
+      pendingSeek.current = null;
+      placedTop.current = null;
+      return cleanup;
+    }
+    const rootTop = root.getBoundingClientRect().top;
+    const landed = Math.max(0, hit.getBoundingClientRect().top - rootTop + root.scrollTop - 8);
+    placeScroll(root, landed);
+    const stable = placedTop.current != null && Math.abs(placedTop.current - landed) <= 1;
+    placedTop.current = landed;
+    // 第一次只记下位置。章前空白往往在下一帧才撑开，确认过再交还滚动。
+    if (stable || seekConfirm.current) {
       setCurrentChar(target);
       pendingSeek.current = null;
+      placedTop.current = null;
+      seekConfirm.current = false;
+      return cleanup;
     }
-  }, [win, data, tops, heightVersion]);
+    seekConfirm.current = true;
+    raf = requestAnimationFrame(() => setLayoutTick((n) => n + 1));
+    return cleanup;
+  }, [
+    win,
+    data,
+    tops,
+    heightVersion,
+    layoutTick,
+    linePx,
+    settings.pageMode,
+    chapterBreaks,
+    currentChar,
+  ]);
 
   const seekToChar = useCallback(
     (charOffset: number, blockHint?: number) => {
@@ -495,7 +576,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
       });
       const y = tops[b] ?? 0;
       const root = scrollRef.current;
-      if (root) root.scrollTop = Math.max(0, y - linePx);
+      if (root) placeScroll(root, Math.max(0, y - linePx));
     },
     [data, tops, linePx],
   );
@@ -1018,7 +1099,16 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
             </button>
           </div>
           {aloudNote && <span className="hint">{aloudNote}</span>}
-          {Aloud && <Aloud passage={currentText} onClose={() => setAloud(null)} />}
+          {Aloud && (
+            <Aloud
+              bookId={book.id}
+              anchorChar={currentChar}
+              index={idx}
+              readLines={(block) => reader.readLines(block)}
+              onFollow={seek}
+              onClose={() => setAloud(null)}
+            />
+          )}
           {settings.showProgressHints && percent > 0.9 && percent < 1 && (
             <span className="hint">快读完啦，还剩 {formatRemaining(totalChars - currentChar)}</span>
           )}
@@ -1169,6 +1259,23 @@ function LazyBlock({
       )}
     </section>
   );
+}
+
+function windowAround(block: number, count: number): { start: number; end: number } {
+  const start = Math.max(0, block - 2);
+  const end = Math.min(count, Math.max(block + 6, start + 8));
+  return { start, end };
+}
+
+/** 程序改完 scrollTop 后把滚动层标脏，否则 WebKit 要等鼠标或按键才画出新位置。 */
+function placeScroll(node: HTMLElement, y: number) {
+  const next = Math.max(0, y);
+  node.scrollTop = next;
+  if (Math.abs(node.scrollTop - next) > 1) return;
+  // 一次写到位时，有的 WebKit 不画新视口。再脏 1px 才补上这一帧。
+  node.scrollTop = next + 1;
+  node.scrollTop = next;
+  void node.getBoundingClientRect();
 }
 
 function applyMeasuredBreaks(

@@ -45,6 +45,56 @@ describe('朗读状态机', () => {
     expect(player.state.status).toBe('idle');
   });
 
+  it('播放第一句时会再提前合成两句', async () => {
+    const started: string[] = [];
+    const gate: { open: (() => void) | null } = { open: null };
+    const player = createSentencePlayer({
+      sentences: ['甲。', '乙。', '丙。', '丁。'],
+      synth: async (sentence) => {
+        started.push(sentence);
+        return new Uint8Array([1]);
+      },
+      play: () =>
+        new Promise((resolve) => {
+          gate.open = () => resolve(10);
+        }),
+    });
+    const pending = player.start();
+    await waitUntil(() => started.length >= 3);
+    expect(started.slice(0, 3)).toEqual(['甲。', '乙。', '丙。']);
+    expect(started).not.toContain('丁。');
+    player.stop();
+    gate.open?.();
+    await pending;
+  });
+
+  it('合成已经完成时，句后留出停顿', async () => {
+    const player = createSentencePlayer({
+      sentences: ['甲。'],
+      synth: async () => new Uint8Array([1]),
+      play: async () => 1,
+      pauseAfter: () => 70,
+    });
+    const started = Date.now();
+    await player.start();
+    expect(Date.now() - started).toBeGreaterThanOrEqual(60);
+  });
+
+  it('合成本身已经等得够久时，不再额外停顿', async () => {
+    const player = createSentencePlayer({
+      sentences: ['甲。'],
+      synth: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        return new Uint8Array([1]);
+      },
+      play: async () => 1,
+      pauseAfter: () => 10,
+    });
+    const started = Date.now();
+    await player.start();
+    expect(Date.now() - started).toBeLessThan(200);
+  });
+
   it('播放当前句时已经开始合成下一句', async () => {
     const started: string[] = [];
     const gate: { open: (() => void) | null } = { open: null };
@@ -65,6 +115,61 @@ describe('朗读状态机', () => {
     player.stop();
     gate.open?.();
     await pending;
+  });
+
+  it('读完已有的句子后继续读补进来的句子', async () => {
+    const seen: string[] = [];
+    let pulled = false;
+    const player = createSentencePlayer({
+      sentences: ['甲。'],
+      synth: async (sentence) => {
+        seen.push(sentence);
+        return new Uint8Array([1]);
+      },
+      play: async () => 1,
+      pull: async () => {
+        if (pulled) return [];
+        pulled = true;
+        return ['乙。', '丙。'];
+      },
+    });
+    await player.start();
+    expect(seen).toEqual(['甲。', '乙。', '丙。']);
+    expect(player.state.status).toBe('idle');
+  });
+
+  it('后面没有句子时读完当前这句就停', async () => {
+    const player = createSentencePlayer({
+      sentences: ['甲。'],
+      synth: async () => new Uint8Array([1]),
+      play: async () => 1,
+      pull: async () => [],
+    });
+    await player.start();
+    expect(player.state.status).toBe('idle');
+    expect(player.state.index).toBe(-1);
+  });
+
+  it('停止时中断当前这句，不再往下读', async () => {
+    const played: number[] = [];
+    let signal: AbortSignal | undefined;
+    const player = createSentencePlayer({
+      sentences: ['甲。', '乙。'],
+      synth: async () => new Uint8Array([1]),
+      play: (_audio, next) =>
+        new Promise((resolve) => {
+          played.push(played.length);
+          signal = next;
+          next?.addEventListener('abort', () => resolve(0));
+        }),
+    });
+    const pending = player.start();
+    await waitUntil(() => signal != null);
+    player.stop();
+    await pending;
+    expect(signal?.aborted).toBe(true);
+    expect(played).toEqual([0]);
+    expect(player.state.status).toBe('idle');
   });
 
   it('合成明显慢于音频时长时记下句间停顿', async () => {

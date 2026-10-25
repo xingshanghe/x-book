@@ -21,7 +21,11 @@ export function primePlayback(): void {
   }
 }
 
-export async function playWavBytes(bytes: Uint8Array, signal?: AbortSignal): Promise<number> {
+export async function playWavBytes(
+  bytes: Uint8Array,
+  signal?: AbortSignal,
+  speed = 1,
+): Promise<number> {
   const ctx = audioContext();
   if (ctx.state === 'suspended') await ctx.resume();
   if (ctx.state === 'suspended') throw new Error('系统没有允许播放');
@@ -31,10 +35,12 @@ export async function playWavBytes(bytes: Uint8Array, signal?: AbortSignal): Pro
   ) as ArrayBuffer;
   const audio = await ctx.decodeAudioData(copy);
   if (signal?.aborted) return 0;
+  const rate = Math.min(1.15, Math.max(0.85, speed));
   const source = ctx.createBufferSource();
   source.buffer = audio;
+  source.playbackRate.value = rate;
   source.connect(ctx.destination);
-  const durationMs = Math.round(audio.duration * 1000);
+  const durationMs = Math.round((audio.duration * 1000) / rate);
   await new Promise<void>((resolve) => {
     const finish = () => resolve();
     source.onended = finish;

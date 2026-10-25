@@ -9,6 +9,7 @@
     "allow-tts-download-engine",
     "allow-tts-cancel-download",
     "allow-tts-delete-engine",
-    "allow-tts-speak"
+    "allow-tts-speak",
+    "allow-account-http"
   ]
 }

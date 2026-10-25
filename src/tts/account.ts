@@ -3,6 +3,9 @@
  * 只有 register / login / refresh / logout / me / changePassword / enroll / listVoices 会。
  */
 
+import { isTauri } from '@/lib/platform';
+import { accountFetch } from './accountTransport';
+
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
@@ -48,7 +51,7 @@ export function createAccountClient(opts: {
   fetchImpl?: typeof fetch;
   storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 }): AccountClient {
-  const fetchImpl = opts.fetchImpl ?? fetch;
+  const fetchImpl = opts.fetchImpl ?? desktopOrWebFetch;
   const storage = opts.storage;
   let access: string | null = null;
   let requests = 0;
@@ -72,8 +75,8 @@ export function createAccountClient(opts: {
         ...init,
         headers,
       });
-    } catch {
-      return { ok: false, status: 0, message: '连不上账号服务', data: null };
+    } catch (error) {
+      return { ok: false, status: 0, message: failureText(error), data: null };
     }
     let body: { success?: boolean; message?: string; data?: T };
     try {
@@ -192,4 +195,15 @@ export function createAccountClient(opts: {
       );
     },
   };
+}
+
+function desktopOrWebFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  if (isTauri()) return accountFetch(input, init);
+  return fetch(input, init);
+}
+
+function failureText(error: unknown): string {
+  if (typeof error === 'string' && error.trim()) return error;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return '连不上账号服务';
 }

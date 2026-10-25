@@ -80,6 +80,7 @@ export async function deleteInstalledEngine(): Promise<void> {
 export async function speakSentence(
   text: string,
   pack: VoicePack | 'builtin',
+  options?: { silenceScale?: number },
 ): Promise<Uint8Array> {
   if (!desktopReadingReady()) throw new Error('朗读即将支持');
   if (readEnginePhase() !== 'installed') throw new Error('请先下载朗读引擎');
@@ -91,6 +92,7 @@ export async function speakSentence(
       refText: builtin ? BUILTIN_VOICE.refText : pack.refText,
       builtinFile: builtin ? BUILTIN_VOICE.file : null,
       refWav: builtin ? null : Array.from(new Uint8Array(await pack.refAudio.arrayBuffer())),
+      silenceScale: options?.silenceScale ?? 1,
     },
   });
   return Uint8Array.from(wav);

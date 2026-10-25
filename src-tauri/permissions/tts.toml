@@ -17,3 +17,8 @@ commands.allow = ["tts_delete_engine"]
 identifier = "allow-tts-speak"
 description = "用本机引擎合成一句。"
 commands.allow = ["tts_speak"]
+
+[[permission]]
+identifier = "allow-account-http"
+description = "由本机代替窗口访问账号服务。"
+commands.allow = ["account_http"]

@@ -1,9 +1,10 @@
 //! 朗读引擎只在用户确认后下载到应用数据目录，不打进安装包。
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -12,6 +13,9 @@ use tauri::{AppHandle, Emitter, Manager};
 
 static CANCELLED: AtomicBool = AtomicBool::new(false);
 static DOWNLOAD_PID: AtomicU32 = AtomicU32::new(0);
+static SPEAKING: AtomicU32 = AtomicU32::new(0);
+static FILE_SEQ: AtomicU64 = AtomicU64::new(1);
+const SPEAK_LIMIT: u32 = 2;
 
 #[derive(Deserialize)]
 pub(crate) struct EngineFileSpec {
@@ -41,6 +45,8 @@ pub(crate) struct SpeakRequest {
     ref_text: String,
     builtin_file: Option<String>,
     ref_wav: Option<Vec<u8>>,
+    #[serde(default)]
+    silence_scale: f32,
 }
 
 fn safe_version(version: &str) -> Result<(), String> {
@@ -241,29 +247,41 @@ pub async fn tts_speak(app: AppHandle, request: SpeakRequest) -> Result<Vec<u8>,
 }
 
 fn speak_blocking(app: AppHandle, request: SpeakRequest) -> Result<Vec<u8>, String> {
+    let _slot = SpeakSlot::enter();
     let dir = engine_dir(&app, &request.version)?;
     if !dir.join("installed.json").exists() {
         return Err("请先下载朗读引擎".into());
     }
     let binary = find_binary(&dir).ok_or("引擎包里还没有 sherpa-onnx-offline-tts")?;
-    let ref_path = if let Some(rel) = request.builtin_file.as_deref() {
+    let seq = FILE_SEQ.fetch_add(1, Ordering::Relaxed);
+    let owned_ref = if let Some(rel) = request.builtin_file.as_deref() {
         let path = dir.join(rel);
         if !path.starts_with(&dir) {
             return Err("示例音色路径不合法".into());
         }
-        path
+        None
     } else {
         let bytes = request.ref_wav.ok_or("缺少参考音频")?;
-        let path = dir.join("ref-user.wav");
+        let path = dir.join(format!("ref-{seq}.wav"));
         fs::write(&path, bytes).map_err(|err| err.to_string())?;
-        path
+        Some(RemoveOnDrop(path))
     };
-    let out = dir.join("last-sentence.wav");
+    let ref_path = match &owned_ref {
+        Some(path) => path.path().to_path_buf(),
+        None => dir.join(request.builtin_file.as_deref().unwrap_or("")),
+    };
+    let out = RemoveOnDrop(dir.join(format!("sentence-{seq}.wav")));
     let encoder = find_file(&dir, "encoder.int8.onnx").ok_or("缺少 encoder.int8.onnx")?;
     let decoder = find_file(&dir, "decoder.int8.onnx").ok_or("缺少 decoder.int8.onnx")?;
     let vocoder = find_file(&dir, "vocos_24khz.onnx").ok_or("缺少 vocos_24khz.onnx")?;
     let lexicon = find_file(&dir, "lexicon.txt").ok_or("缺少 lexicon.txt")?;
     let tokens = find_file(&dir, "tokens.txt").ok_or("缺少 tokens.txt")?;
+    let scale = if request.silence_scale > 0.0 {
+        request.silence_scale
+    } else {
+        1.0
+    };
+    let scale = scale.clamp(0.2, 1.8);
     let mut cmd = Command::new(&binary);
     cmd.arg(format!("--zipvoice-encoder={}", encoder.display()))
         .arg(format!("--zipvoice-decoder={}", decoder.display()))
@@ -273,7 +291,9 @@ fn speak_blocking(app: AppHandle, request: SpeakRequest) -> Result<Vec<u8>, Stri
         .arg(format!("--reference-audio={}", ref_path.display()))
         .arg(format!("--reference-text={}", request.ref_text))
         .arg("--num-steps=4")
-        .arg(format!("--output-filename={}", out.display()))
+        .arg(format!("--num-threads={}", synth_threads()))
+        .arg(format!("--tts-silence-scale={scale:.2}"))
+        .arg(format!("--output-filename={}", out.path().display()))
         .arg(&request.text);
     if let Some(lib) = find_file(&dir, "libonnxruntime.dylib").and_then(|path| path.parent().map(Path::to_path_buf)) {
         cmd.env("DYLD_LIBRARY_PATH", lib);
@@ -288,7 +308,197 @@ fn speak_blocking(app: AppHandle, request: SpeakRequest) -> Result<Vec<u8>, Stri
         let clipped = detail.chars().rev().take(160).collect::<String>().chars().rev().collect::<String>();
         return Err(format!("这一句没有合成出来：{clipped}"));
     }
-    fs::read(&out).map_err(|err| err.to_string())
+    fs::read(out.path()).map_err(|err| err.to_string())
+}
+
+fn synth_threads() -> usize {
+    let cores = std::thread::available_parallelism().map(|count| count.get()).unwrap_or(4);
+    (cores / SPEAK_LIMIT as usize).clamp(2, 4)
+}
+
+struct SpeakSlot;
+
+impl SpeakSlot {
+    fn enter() -> Self {
+        loop {
+            let now = SPEAKING.load(Ordering::SeqCst);
+            if now >= SPEAK_LIMIT {
+                thread::sleep(Duration::from_millis(12));
+                continue;
+            }
+            if SPEAKING
+                .compare_exchange(now, now + 1, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                return Self;
+            }
+        }
+    }
+}
+
+impl Drop for SpeakSlot {
+    fn drop(&mut self) {
+        SPEAKING.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+struct RemoveOnDrop(PathBuf);
+
+impl RemoveOnDrop {
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for RemoveOnDrop {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AccountHttpRequest {
+    method: String,
+    url: String,
+    body_base64: Option<String>,
+    headers: HashMap<String, String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AccountHttpResponse {
+    status: u16,
+    body: String,
+}
+
+#[tauri::command]
+pub async fn account_http(request: AccountHttpRequest) -> Result<AccountHttpResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || account_http_blocking(request))
+        .await
+        .map_err(|err| format!("连不上账号服务：{err}"))?
+}
+
+fn account_http_blocking(request: AccountHttpRequest) -> Result<AccountHttpResponse, String> {
+    let method = request.method.to_ascii_uppercase();
+    if method != "GET" && method != "POST" && method != "DELETE" {
+        return Err("不支持的账号请求".into());
+    }
+    if !account_url_allowed(&request.url) {
+        return Err("账号服务地址不正确".into());
+    }
+    let body = match request.body_base64.as_deref() {
+        Some(raw) if !raw.is_empty() => Some(decode_base64(raw)?),
+        _ => None,
+    };
+    if body.as_ref().is_some_and(|bytes| bytes.len() > 8 * 1024 * 1024) {
+        return Err("上传内容太大".into());
+    }
+    let seq = FILE_SEQ.fetch_add(1, Ordering::Relaxed);
+    let body_file = RemoveOnDrop(std::env::temp_dir().join(format!("qingyue-account-{seq}.bin")));
+    let out_file = RemoveOnDrop(std::env::temp_dir().join(format!("qingyue-account-{seq}.out")));
+    if let Some(bytes) = &body {
+        fs::write(body_file.path(), bytes).map_err(|err| err.to_string())?;
+    }
+    let mut cmd = Command::new("curl");
+    cmd.args([
+        "-sS",
+        "--proto",
+        "=http,https",
+        "--proto-redir",
+        "=http,https",
+        "--max-time",
+        "40",
+        "-o",
+    ])
+    .arg(out_file.path())
+    .args(["-w", "%{http_code}", "-X", &method]);
+    for (name, value) in &request.headers {
+        if !account_header_allowed(name) || value.contains('\n') || value.contains('\r') || value.len() > 4096 {
+            continue;
+        }
+        cmd.arg("-H").arg(format!("{name}: {value}"));
+    }
+    if body.is_some() {
+        cmd.arg("--data-binary").arg(format!("@{}", body_file.path().display()));
+    }
+    cmd.arg(&request.url);
+    let output = cmd.output().map_err(|_| "连不上账号服务".to_string())?;
+    if !output.status.success() {
+        return Err("连不上账号服务".into());
+    }
+    let status = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse::<u16>()
+        .unwrap_or(0);
+    if status == 0 {
+        return Err("连不上账号服务".into());
+    }
+    let payload = fs::read(out_file.path()).unwrap_or_default();
+    let text = String::from_utf8_lossy(&payload).into_owned();
+    Ok(AccountHttpResponse { status, body: text })
+}
+
+fn account_url_allowed(url: &str) -> bool {
+    if url.len() > 2000 || url.starts_with('-') || url.chars().any(|ch| ch.is_control()) {
+        return false;
+    }
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"));
+    matches!(rest, Some(host) if !host.is_empty() && !host.starts_with('/'))
+}
+
+fn account_header_allowed(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    name == "content-type" || name == "authorization"
+}
+
+fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
+    fn value(byte: u8) -> Result<u8, String> {
+        match byte {
+            b'A'..=b'Z' => Ok(byte - b'A'),
+            b'a'..=b'z' => Ok(byte - b'a' + 26),
+            b'0'..=b'9' => Ok(byte - b'0' + 52),
+            b'+' => Ok(62),
+            b'/' => Ok(63),
+            _ => Err("请求内容无法解析".into()),
+        }
+    }
+    let cleaned: Vec<u8> = input.bytes().filter(|byte| !byte.is_ascii_whitespace()).collect();
+    if cleaned.is_empty() || cleaned.len() % 4 != 0 {
+        return Err("请求内容无法解析".into());
+    }
+    let mut out = Vec::with_capacity(cleaned.len() / 4 * 3);
+    for chunk in cleaned.chunks(4) {
+        let mut pad = 0;
+        let mut vals = [0u8; 4];
+        for (index, &byte) in chunk.iter().enumerate() {
+            if byte == b'=' {
+                pad += 1;
+                continue;
+            }
+            if pad > 0 {
+                return Err("请求内容无法解析".into());
+            }
+            vals[index] = value(byte)?;
+        }
+        if pad > 2 {
+            return Err("请求内容无法解析".into());
+        }
+        let packed = ((vals[0] as u32) << 18)
+            | ((vals[1] as u32) << 12)
+            | ((vals[2] as u32) << 6)
+            | (vals[3] as u32);
+        out.push((packed >> 16) as u8);
+        if pad < 2 {
+            out.push((packed >> 8) as u8);
+        }
+        if pad < 1 {
+            out.push(packed as u8);
+        }
+    }
+    Ok(out)
 }
 
 fn allowed_download_url(url: &str) -> bool {
@@ -338,4 +548,31 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{account_header_allowed, account_url_allowed, decode_base64};
+
+    #[test]
+    fn account_url_accepts_the_enroll_host() {
+        assert!(account_url_allowed("http://118.25.79.136/v1/auth/login"));
+        assert!(account_url_allowed("https://enroll.example/v1/auth/me"));
+        assert!(!account_url_allowed("file:///etc/passwd"));
+        assert!(!account_url_allowed("-http://evil"));
+        assert!(!account_url_allowed("http://"));
+    }
+
+    #[test]
+    fn account_headers_stay_on_the_auth_request() {
+        assert!(account_header_allowed("Content-Type"));
+        assert!(account_header_allowed("Authorization"));
+        assert!(!account_header_allowed("Cookie"));
+    }
+
+    #[test]
+    fn base64_roundtrip_matches_login_json() {
+        let decoded = decode_base64("aGVsbG8=").expect("decode");
+        assert_eq!(decoded, b"hello");
+    }
 }

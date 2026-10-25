@@ -25,6 +25,7 @@ pub fn run() {
         tts::tts_cancel_download,
         tts::tts_delete_engine,
         tts::tts_speak,
+        tts::account_http,
     ]);
 
     builder

@@ -7,22 +7,46 @@ const ABBREV = /(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|vs|etc|e\.g|i\.e)$/i;
 
 const CLOSE_QUOTE = new Set(['"', "'", '”', '’', '」', '』', '）', ')']);
 
-export function splitSentences(input: string): string[] {
-  const text = input.replace(/\r\n/g, '\n').trim();
-  if (!text) return [];
+export interface SentenceSpan {
+  text: string;
+  /** 换行归一化之后，按 Unicode 码点计的起点。 */
+  start: number;
+}
 
+/** 切句，并记下每句在原文里的起点，方便从某一句接着读。 */
+export function sentenceSpans(input: string): SentenceSpan[] {
+  const normalized = input.replace(/\r\n/g, '\n');
+  const trimmed = normalized.trim();
+  if (!trimmed) return [];
+  const leading = Array.from(normalized.slice(0, normalized.indexOf(trimmed))).length;
+  return scanSentences(trimmed).map((span) => ({
+    text: span.text,
+    start: span.start + leading,
+  }));
+}
+
+export function splitSentences(input: string): string[] {
+  return sentenceSpans(input).map((span) => span.text);
+}
+
+function scanSentences(text: string): SentenceSpan[] {
   const chars = Array.from(text);
-  const out: string[] = [];
+  const out: SentenceSpan[] = [];
   let buf = '';
+  let bufStart = 0;
 
   const push = () => {
-    const sentence = buf.trim();
+    const raw = buf;
     buf = '';
-    if (sentence) out.push(sentence);
+    const sentence = raw.trim();
+    if (!sentence) return;
+    const skipped = Array.from(raw.slice(0, raw.length - raw.trimStart().length)).length;
+    out.push({ text: sentence, start: bufStart + skipped });
   };
 
   for (let i = 0; i < chars.length; i++) {
     const c = chars[i];
+    if (!buf) bufStart = i;
     buf += c;
 
     if (c === '\n') {
@@ -52,8 +76,7 @@ export function splitSentences(input: string): string[] {
     }
   }
 
-  const tail = buf.trim();
-  if (tail) out.push(tail);
+  push();
   return out;
 }
 

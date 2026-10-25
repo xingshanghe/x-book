@@ -47,6 +47,20 @@ def test_login_preflight_is_allowed(tmp_path: Path):
     assert response.headers["access-control-allow-origin"] == "*"
 
 
+def test_default_clock_follows_wall_time(tmp_path: Path, monkeypatch):
+    ticks = {"n": 1_700_000_000}
+
+    def fake_time():
+        ticks["n"] += 10
+        return ticks["n"]
+
+    monkeypatch.setattr("app.main.time.time", fake_time)
+    app = create_app(str(tmp_path / "enroll.db"), "test-secret")
+    first = app.state.clock.now()
+    second = app.state.clock.now()
+    assert second == first + 10
+
+
 def test_register_login_and_duplicate(tmp_path: Path):
     client, _, _ = build(tmp_path)
     created = client.post("/v1/auth/register", json={"username": "Reader_1", "password": "password1"})
