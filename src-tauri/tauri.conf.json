@@ -26,7 +26,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; font-src 'self' data: blob:; connect-src 'self' blob: data: ipc: http://ipc.localhost; worker-src 'self' blob:"
+      "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; font-src 'self' data: blob:; connect-src 'self' blob: data: ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:* http://118.25.79.136 https://github.com https://objects.githubusercontent.com https://release-assets.githubusercontent.com https://github-releases.githubusercontent.com; media-src 'self' blob:; worker-src 'self' blob:"
     },
     "withGlobalTauri": true
   },

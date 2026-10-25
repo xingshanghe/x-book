@@ -1,0 +1,14 @@
+[[permission]]
+identifier = "allow-tts-download-engine"
+description = "确认后把朗读引擎下载到应用数据目录。"
+commands.allow = ["tts_download_engine"]
+
+[[permission]]
+identifier = "allow-tts-delete-engine"
+description = "删除已下载的朗读引擎。"
+commands.allow = ["tts_delete_engine"]
+
+[[permission]]
+identifier = "allow-tts-speak"
+description = "用本机引擎合成一句。"
+commands.allow = ["tts_speak"]

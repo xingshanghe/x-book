@@ -1,0 +1,14 @@
+services:
+  enroll:
+    build: .
+    image: qingyue-enroll:latest
+    container_name: qingyue-enroll
+    restart: unless-stopped
+    ports:
+      - "80:8787"
+    env_file: .env
+    volumes:
+      - enroll-data:/data
+
+volumes:
+  enroll-data:

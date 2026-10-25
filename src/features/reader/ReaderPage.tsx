@@ -9,6 +9,7 @@
  */
 
 import {
+  type ComponentType,
   Fragment,
   useCallback,
   useEffect,
@@ -41,6 +42,7 @@ import {
   touchBook,
 } from '@/storage/repositories/bookRepo';
 import { getProgress, saveProgress } from '@/storage/repositories/progressRepo';
+import { desktopReadingReady } from '@/tts/support';
 import type { Book, Bookmark, Chapter } from '@/types/models';
 import { Button, EmptyState, useToast } from '@/ui';
 import {
@@ -139,6 +141,11 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   const noteCache = useRef(new Map<number, Map<string, CollectedNote>>());
   const noteOpenedAt = useRef<number | null>(null);
   const [barsVisible, setBarsVisible] = useState(true);
+  const [aloudNote, setAloudNote] = useState<string | null>(null);
+  const [Aloud, setAloud] = useState<ComponentType<{
+    passage: string;
+    onClose: () => void;
+  }> | null>(null);
   const bookmarksRef = useRef<Bookmark[]>([]);
   const [, bumpBookmarks] = useState(0);
   const [currentText, setCurrentText] = useState('');
@@ -987,12 +994,28 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
             <button
               type="button"
               className="qy-icon-btn"
+              aria-label="朗读"
+              onClick={() => {
+                if (!desktopReadingReady()) {
+                  setAloudNote('朗读即将支持');
+                  return;
+                }
+                void import('./ReadAloud').then((mod) => setAloud(() => mod.ReadAloud));
+              }}
+            >
+              读
+            </button>
+            <button
+              type="button"
+              className="qy-icon-btn"
               onClick={() => turn(1)}
               aria-label="下一页"
             >
               <IconChevronRight />
             </button>
           </div>
+          {aloudNote && <span className="hint">{aloudNote}</span>}
+          {Aloud && <Aloud passage={currentText} onClose={() => setAloud(null)} />}
           {settings.showProgressHints && percent > 0.9 && percent < 1 && (
             <span className="hint">快读完啦，还剩 {formatRemaining(totalChars - currentChar)}</span>
           )}

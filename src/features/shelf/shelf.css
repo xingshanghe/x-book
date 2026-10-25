@@ -23,6 +23,33 @@
   -webkit-backdrop-filter: saturate(150%) blur(14px);
   backdrop-filter: saturate(150%) blur(14px);
 }
+.shelf-account {
+  position: relative;
+  flex: 0 0 auto;
+}
+.shelf-account-btn {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-size: 13px;
+}
+.shelf-account-pop {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  width: min(440px, 78vw);
+  max-height: min(72vh, 560px);
+  overflow: auto;
+  padding: 4px 16px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper-0);
+  box-shadow: var(--shadow-lg);
+  z-index: 2;
+}
 .shelf-top::after {
   content: '';
   position: absolute;

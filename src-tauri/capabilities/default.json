@@ -3,5 +3,11 @@
   "identifier": "default",
   "description": "桌面端基础能力。macOS 用 Overlay 标题栏，窗口拖动交给网页里的 data-tauri-drag-region，因此需要 start-dragging 权限。",
   "windows": ["main"],
-  "permissions": ["core:default", "core:window:allow-start-dragging"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "allow-tts-download-engine",
+    "allow-tts-delete-engine",
+    "allow-tts-speak"
+  ]
 }

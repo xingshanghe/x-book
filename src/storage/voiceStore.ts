@@ -1,0 +1,78 @@
+/** 用户音色包：短 wav + 对齐文本，存在 IndexedDB，不进安装包。 */
+
+import { nanoid } from '@/lib/id';
+import type { VoiceOrigin, VoicePack } from '@/tts/types';
+import { wavBlobFromBase64 } from '@/tts/wav';
+import { getDB } from './db';
+
+export function voiceDraftError(name: string, refText: string): string | null {
+  if (!name.trim()) return '请填写音色名称';
+  if (!refText.trim()) return '对齐文本不能为空';
+  return null;
+}
+
+export async function listVoices(): Promise<VoicePack[]> {
+  const db = await getDB();
+  const all = await db.getAll('voices');
+  return all.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export async function saveVoice(input: {
+  name: string;
+  refText: string;
+  refAudio: Blob;
+  origin?: VoiceOrigin;
+  lang?: 'zh' | 'en';
+  consentAt?: number;
+  remoteId?: string;
+}): Promise<VoicePack> {
+  const problem = voiceDraftError(input.name, input.refText);
+  if (problem) throw new Error(problem);
+  const pack: VoicePack = {
+    id: nanoid(8),
+    name: input.name.trim().slice(0, 40),
+    origin: input.origin ?? 'import',
+    refText: input.refText.trim(),
+    lang: input.lang ?? 'zh',
+    refAudio: input.refAudio,
+    consentAt: input.consentAt,
+    remoteId: input.remoteId,
+    createdAt: Date.now(),
+  };
+  const db = await getDB();
+  await db.put('voices', pack);
+  return pack;
+}
+
+/** 换机登录后补上本机还没有的音色。已有 remoteId 的不重复写入。 */
+export async function saveMissingRemoteVoices(
+  items: readonly { id: string; refText: string; wavBase64: string }[],
+): Promise<void> {
+  const existing = await listVoices();
+  const known = new Set(existing.map((voice) => voice.remoteId).filter((id) => id != null));
+  for (const item of items) {
+    if (known.has(item.id) || !item.refText.trim() || !item.wavBase64) continue;
+    await saveVoice({
+      name: '我的音色',
+      refText: item.refText,
+      refAudio: wavBlobFromBase64(item.wavBase64),
+      origin: 'enrolled',
+      remoteId: item.id,
+    });
+    known.add(item.id);
+  }
+}
+
+export async function renameVoice(id: string, name: string): Promise<void> {
+  const next = name.trim();
+  if (!next) throw new Error('请填写音色名称');
+  const db = await getDB();
+  const current = await db.get('voices', id);
+  if (!current) return;
+  await db.put('voices', { ...current, name: next.slice(0, 40) });
+}
+
+export async function removeVoice(id: string): Promise<void> {
+  const db = await getDB();
+  await db.delete('voices', id);
+}

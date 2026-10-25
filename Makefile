@@ -47,6 +47,7 @@ APP_NAME     := 轻阅
 BUNDLE_MACOS = $(CARGO_TARGET)/$(APPLE_TARGET)/release/bundle/macos
 
 .PHONY: help setup check typecheck test lint dev build preview clean distclean pack-web \
+        deploy-enroll \
         rust-init pack-macos pack-macos-app pack-macos-dmg pack-macos-universal \
         pack-windows pack-linux pack-android pack-ios sync-harmony \
         release-tag release-upload publish
@@ -73,6 +74,9 @@ lint: ## Biome 静态检查
 
 dev: ## 浏览器开发模式
 	$(PNPM) dev
+
+deploy-enroll: ## 部署建档账号服务，并清掉目标机上的其他容器
+	bash scripts/deploy-enroll.sh
 
 build: ## 产出 dist/
 	$(PNPM) build

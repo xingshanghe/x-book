@@ -1,17 +1,11 @@
 /**
  * 存储层入口：IndexedDB schema 与迁移。
- * 库名 qingyue，版本 1。所有读写必须经过本文件或 repositories。
+ * 库名 qingyue，版本 2。所有读写必须经过本文件或 repositories。
  */
 
-import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type {
-  BlockIndex,
-  Book,
-  Bookmark,
-  Chapter,
-  FootnoteEntry,
-  Progress,
-} from '@/types/models';
+import { type DBSchema, type IDBPDatabase, openDB } from 'idb';
+import type { VoicePack } from '@/tts/types';
+import type { BlockIndex, Book, Bookmark, Chapter, FootnoteEntry, Progress } from '@/types/models';
 
 export interface QingyueDB extends DBSchema {
   books: {
@@ -26,12 +20,16 @@ export interface QingyueDB extends DBSchema {
   progress: { key: string; value: Progress };
   bookmarks: { key: string; value: Bookmark; indexes: { 'by-book': string } };
   settings: { key: string; value: { key: string; value: unknown } };
-  fonts: { key: string; value: { id: string; name: string; family: string; blob: Blob; addedAt: number } };
+  fonts: {
+    key: string;
+    value: { id: string; name: string; family: string; blob: Blob; addedAt: number };
+  };
   outbox: { key: string; value: { id: string; op: unknown; updatedAt: number } };
+  voices: { key: string; value: VoicePack };
 }
 
 const DB_NAME = 'qingyue';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase<QingyueDB>> | null = null;
 
@@ -44,18 +42,28 @@ export function getDB(): Promise<IDBPDatabase<QingyueDB>> {
           s.createIndex('by-fingerprint', 'fingerprint');
           s.createIndex('by-lastOpened', 'lastOpenedAt');
         }
-        if (!db.objectStoreNames.contains('files')) db.createObjectStore('files', { keyPath: 'id' });
-        if (!db.objectStoreNames.contains('chapters')) db.createObjectStore('chapters', { keyPath: 'bookId' });
-        if (!db.objectStoreNames.contains('blockIndex')) db.createObjectStore('blockIndex', { keyPath: 'bookId' });
-        if (!db.objectStoreNames.contains('footnotes')) db.createObjectStore('footnotes', { keyPath: 'bookId' });
-        if (!db.objectStoreNames.contains('progress')) db.createObjectStore('progress', { keyPath: 'bookId' });
+        if (!db.objectStoreNames.contains('files'))
+          db.createObjectStore('files', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('chapters'))
+          db.createObjectStore('chapters', { keyPath: 'bookId' });
+        if (!db.objectStoreNames.contains('blockIndex'))
+          db.createObjectStore('blockIndex', { keyPath: 'bookId' });
+        if (!db.objectStoreNames.contains('footnotes'))
+          db.createObjectStore('footnotes', { keyPath: 'bookId' });
+        if (!db.objectStoreNames.contains('progress'))
+          db.createObjectStore('progress', { keyPath: 'bookId' });
         if (!db.objectStoreNames.contains('bookmarks')) {
           const s = db.createObjectStore('bookmarks', { keyPath: 'id' });
           s.createIndex('by-book', 'bookId');
         }
-        if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings', { keyPath: 'key' });
-        if (!db.objectStoreNames.contains('fonts')) db.createObjectStore('fonts', { keyPath: 'id' });
-        if (!db.objectStoreNames.contains('outbox')) db.createObjectStore('outbox', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('settings'))
+          db.createObjectStore('settings', { keyPath: 'key' });
+        if (!db.objectStoreNames.contains('fonts'))
+          db.createObjectStore('fonts', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('outbox'))
+          db.createObjectStore('outbox', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('voices'))
+          db.createObjectStore('voices', { keyPath: 'id' });
       },
       blocked() {
         // 另一个标签页持有旧版本连接：提示用户刷新
@@ -83,13 +91,28 @@ export async function closeDB(): Promise<void> {
 /** 全库清空（设置页的「危险区」） */
 export async function wipeAll(): Promise<void> {
   const db = await getDB();
-  const names = ['books', 'files', 'chapters', 'blockIndex', 'footnotes', 'progress', 'bookmarks', 'fonts', 'outbox'] as const;
+  const names = [
+    'books',
+    'files',
+    'chapters',
+    'blockIndex',
+    'footnotes',
+    'progress',
+    'bookmarks',
+    'fonts',
+    'outbox',
+    'voices',
+  ] as const;
   const tx = db.transaction([...names], 'readwrite');
   for (const n of names) tx.objectStore(n).clear();
   await tx.done;
 }
 
-export async function usageEstimate(): Promise<{ usage: number; quota: number; persisted: boolean }> {
+export async function usageEstimate(): Promise<{
+  usage: number;
+  quota: number;
+  persisted: boolean;
+}> {
   let usage = 0;
   let quota = 0;
   let persisted = false;

@@ -293,6 +293,7 @@
 }
 .reader-bar.bottom {
   /* 底栏在窗口底部，不需要让位红绿灯 */
+  position: relative;
   padding-top: 6px;
   padding-bottom: calc(8px + var(--safe-b));
   border-top: 1px solid var(--line-soft);
@@ -768,6 +769,41 @@
     z-index: 6;
     box-shadow: var(--shadow-lg);
   }
+}
+
+.tts-panel {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% + 8px);
+  max-height: 9.5em;
+  overflow: hidden;
+  padding: 8px 12px 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--paper-0) 94%, transparent);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.tts-panel > p:first-child {
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tts-note {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.tts-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+.tts-current {
+  background: color-mix(in srgb, var(--seal) 18%, transparent);
+  border-radius: 2px;
 }
 
 /* 目录项：编号收窄一点，标题才是主体 */

@@ -332,7 +332,11 @@ export function PagedView({
   useLayoutEffect(() => {
     const host = viewRef.current?.parentElement;
     if (!host) return;
-    const measure = () => setBox({ w: host.clientWidth, h: host.clientHeight });
+    const measure = () => {
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      setBox((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(host);

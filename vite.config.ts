@@ -16,6 +16,7 @@ export default defineConfig({
       // 离线能力来自数据全在本地，而非任何 runtimeCaching 外部域名。
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2,json}'],
+        globIgnores: ['**/*.{onnx,bz2,tar}', '**/espeak-ng-data/**'],
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
         // 显式声明：不缓存任何跨域资源，杜绝隐性网络依赖

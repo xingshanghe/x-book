@@ -49,6 +49,13 @@ tests/fixtures/large-*.txt
 # 本地会话记忆（非源码）
 .workbuddy/
 
+# 建档服务的本地库和虚拟环境
+services/voice-enroll/**/*.db
+services/voice-enroll/.env
+services/voice-enroll/**/__pycache__/
+services/voice-enroll/.venv/
+.venv/
+
 # 本机打包产物
 release/
 .dmg-staging/

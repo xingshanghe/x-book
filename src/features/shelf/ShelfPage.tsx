@@ -18,6 +18,7 @@ import {
 } from '@/ui/icons';
 import { formatChars, formatPercent, formatRelative, formatRemaining } from '@/lib/format';
 import { BookCover } from './BookCover';
+import { ShelfAccount } from './ShelfAccount';
 import { ImportTray, useDropImport } from './ImportDropzone';
 import { useImportQueue } from '@/features/import/importQueue';
 import './shelf.css';
@@ -141,6 +142,7 @@ export function ShelfPage() {
         <button type="button" className="qy-icon-btn" onClick={() => navigate('/settings')} aria-label="设置">
           <IconGear />
         </button>
+        <ShelfAccount toast={(text) => toast(text, 'ok')} />
       </header>
 
       <main className="shelf-body">

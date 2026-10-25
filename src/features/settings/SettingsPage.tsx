@@ -1,17 +1,29 @@
-/** 设置页：外观 / 阅读 / 识别与清洗 / 字体 / 数据 / 同步 / 关于 */
+/** 设置页：外观 / 阅读 / 识别与清洗 / 字体 / 朗读 / 数据 / 同步 / 关于 */
 
-import { useEffect, useState } from 'react';
+import { type ComponentType, useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useSettings } from '@/app/store';
+import { BUILTIN_RULES, validatePattern } from '@/core/parser/cleaner';
+import { formatBytes } from '@/lib/format';
+import { estimateQuota, isStandalone } from '@/lib/platform';
+import { usageEstimate, wipeAll } from '@/storage/db';
+import {
+  ACCEPTED_FONT_TYPES,
+  addFont,
+  listFonts,
+  removeFont,
+  type StoredFont,
+} from '@/storage/fontStore';
+import {
+  FONT_SIZE_RANGE,
+  INDENT_RANGE,
+  LINE_HEIGHT_RANGE,
+  SPACING_RANGE,
+  WIDTH_RANGE,
+} from '@/storage/repositories/defaults';
+import type { CleanRule } from '@/types/models';
 import { Button, Segmented, Slider, Switch, useToast } from '@/ui';
 import { IconChevronLeft, LogoMark } from '@/ui/icons';
-import { estimateQuota, isStandalone } from '@/lib/platform';
-import { formatBytes } from '@/lib/format';
-import { usageEstimate, wipeAll } from '@/storage/db';
-import { addFont, listFonts, removeFont, ACCEPTED_FONT_TYPES, type StoredFont } from '@/storage/fontStore';
-import { BUILTIN_RULES, validatePattern } from '@/core/parser/cleaner';
-import type { CleanRule } from '@/types/models';
-import { INDENT_RANGE, LINE_HEIGHT_RANGE, SPACING_RANGE, WIDTH_RANGE, FONT_SIZE_RANGE } from '@/storage/repositories/defaults';
 import './settings.css';
 
 const SECTIONS = [
@@ -19,6 +31,7 @@ const SECTIONS = [
   { id: 'reading', label: '阅读' },
   { id: 'recognition', label: '识别与清洗' },
   { id: 'fonts', label: '字体' },
+  { id: 'aloud', label: '朗读' },
   { id: 'data', label: '数据' },
   { id: 'sync', label: '同步' },
   { id: 'about', label: '关于' },
@@ -30,11 +43,21 @@ export function SettingsPage() {
   const [, navigate] = useLocation();
   const { settings, update, updateTypography, userRules, setRules } = useSettings();
   const toast = useToast().push;
+  const [Aloud, setAloud] = useState<ComponentType<{ toast: (text: string) => void }> | null>(null);
+  const openAloud = () => {
+    if (Aloud) return;
+    void import('./ReadingAloudSection').then((mod) => setAloud(() => mod.ReadingAloudSection));
+  };
 
   return (
     <div className="settings">
       <header className="settings-top" data-tauri-drag-region="">
-        <button type="button" className="qy-icon-btn" onClick={() => navigate('/')} aria-label="返回书架">
+        <button
+          type="button"
+          className="qy-icon-btn"
+          onClick={() => navigate('/')}
+          aria-label="返回书架"
+        >
           <IconChevronLeft />
         </button>
         <h1 data-tauri-drag-region="">设置</h1>
@@ -43,7 +66,14 @@ export function SettingsPage() {
       <div className="settings-body">
         <nav className="settings-nav">
           {SECTIONS.map((s) => (
-            <Button key={s.id} size="sm" onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth' })}>
+            <Button
+              key={s.id}
+              size="sm"
+              onClick={() => {
+                if (s.id === 'aloud') openAloud();
+                document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth' });
+              }}
+            >
               {s.label}
             </Button>
           ))}
@@ -130,7 +160,12 @@ export function SettingsPage() {
             onChange={(v) => updateTypography({ maxWidth: v })}
             format={(v) => `${v} 字`}
           />
-          <Switch label="点按翻页" hint="翻页模式下点按屏幕左右侧翻页" checked={settings.tapToTurn} onChange={(v) => update({ tapToTurn: v })} />
+          <Switch
+            label="点按翻页"
+            hint="翻页模式下点按屏幕左右侧翻页"
+            checked={settings.tapToTurn}
+            onChange={(v) => update({ tapToTurn: v })}
+          />
           <Switch
             label="键盘快捷键"
             hint={
@@ -142,8 +177,16 @@ export function SettingsPage() {
             checked={settings.enableShortcuts}
             onChange={(v) => update({ enableShortcuts: v })}
           />
-          <Switch label="「快读完」提示" checked={settings.showProgressHints} onChange={(v) => update({ showProgressHints: v })} />
-          <Switch label="显示扉页" checked={settings.showTitlePage} onChange={(v) => update({ showTitlePage: v })} />
+          <Switch
+            label="「快读完」提示"
+            checked={settings.showProgressHints}
+            onChange={(v) => update({ showProgressHints: v })}
+          />
+          <Switch
+            label="显示扉页"
+            checked={settings.showTitlePage}
+            onChange={(v) => update({ showTitlePage: v })}
+          />
         </section>
 
         {/* ── 识别与清洗 ── */}
@@ -159,6 +202,20 @@ export function SettingsPage() {
 
         {/* ── 字体 ── */}
         <FontsSection toast={toast} />
+
+        <section id="aloud" className="settings-section">
+          {Aloud ? (
+            <Aloud toast={toast} />
+          ) : (
+            <>
+              <h2>朗读</h2>
+              <p className="desc">朗读引擎在你确认后才下载，不会随安装包附带。</p>
+              <Button size="sm" onClick={openAloud}>
+                打开朗读设置
+              </Button>
+            </>
+          )}
+        </section>
 
         {/* ── 数据 ── */}
         <DataSection toast={toast} />
@@ -180,7 +237,9 @@ export function SettingsPage() {
           <p className="desc">轻阅 QINGYUE v1.0 · 本地优先的纯离线 txt 阅读器</p>
           <div className="qy-row">
             <span className="qy-row-label">安装形态</span>
-            <span className="qy-row-hint">{isStandalone() ? '已安装（独立窗口）' : '浏览器内运行'}</span>
+            <span className="qy-row-hint">
+              {isStandalone() ? '已安装（独立窗口）' : '浏览器内运行'}
+            </span>
           </div>
           <div className="qy-row">
             <span className="qy-row-label">设备标识</span>
@@ -221,7 +280,15 @@ function RecognitionSection({
       toast(`正则有误：${v.error}`, 'warn');
       return;
     }
-    setRules([...userRules, { id: `user-${Date.now().toString(36)}`, name: `自定义 ${userRules.length + 1}`, pattern: p, enabled: true }]);
+    setRules([
+      ...userRules,
+      {
+        id: `user-${Date.now().toString(36)}`,
+        name: `自定义 ${userRules.length + 1}`,
+        pattern: p,
+        enabled: true,
+      },
+    ]);
     setDraft('');
     toast('规则已添加，重新导入书籍后生效', 'ok');
   };
@@ -229,8 +296,17 @@ function RecognitionSection({
   return (
     <section id="recognition" className="settings-section">
       <h2>识别与清洗</h2>
-      <Switch label="自动识别章节" checked={detectChapters} onChange={(v) => update({ detectChapters: v })} />
-      <Switch label="脚注识别" hint="①–㊿ 引用与行首注释" checked={detectFootnotes} onChange={(v) => update({ detectFootnotes: v })} />
+      <Switch
+        label="自动识别章节"
+        checked={detectChapters}
+        onChange={(v) => update({ detectChapters: v })}
+      />
+      <Switch
+        label="脚注识别"
+        hint="①–㊿ 引用与行首注释"
+        checked={detectFootnotes}
+        onChange={(v) => update({ detectFootnotes: v })}
+      />
       <Switch label="广告清洗" checked={cleanAds} onChange={(v) => update({ cleanAds: v })} />
       {cleanAds && (
         <>
@@ -260,7 +336,13 @@ function RecognitionSection({
                   toast('规则已更新，重新导入书籍后生效', 'ok');
                 }}
               />
-              <Switch checked={r.enabled} onChange={(v) => setRules(userRules.map((x) => (x.id === r.id ? { ...x, enabled: v } : x)))} label="" />
+              <Switch
+                checked={r.enabled}
+                onChange={(v) =>
+                  setRules(userRules.map((x) => (x.id === r.id ? { ...x, enabled: v } : x)))
+                }
+                label=""
+              />
               <button
                 type="button"
                 className="qy-icon-btn"
@@ -304,7 +386,8 @@ function FontsSection({ toast }: { toast: ToastFn }) {
     <section id="fonts" className="settings-section">
       <h2>自备字体</h2>
       <p className="desc">
-        拖入或选择 TTF / OTF / WOFF2 字体文件，完全存放在本机（IndexedDB），最多 12 个。适合加载方正楷体、霞鹜文楷等商用或开源字体。
+        拖入或选择 TTF / OTF / WOFF2 字体文件，完全存放在本机（IndexedDB），最多 12
+        个。适合加载方正楷体、霞鹜文楷等商用或开源字体。
       </p>
       <div className="rule-item">
         <label style={{ cursor: 'pointer' }}>
@@ -355,7 +438,9 @@ function FontsSection({ toast }: { toast: ToastFn }) {
           </button>
         </div>
       ))}
-      {fonts.length === 0 && <p style={{ color: 'var(--ink-3)', fontSize: 12 }}>尚未导入自备字体。</p>}
+      {fonts.length === 0 && (
+        <p style={{ color: 'var(--ink-3)', fontSize: 12 }}>尚未导入自备字体。</p>
+      )}
     </section>
   );
 }
@@ -363,7 +448,9 @@ function FontsSection({ toast }: { toast: ToastFn }) {
 /* ────────────── 数据 ────────────── */
 
 function DataSection({ toast }: { toast: ToastFn }) {
-  const [usage, setUsage] = useState<{ usage: number; quota: number; persisted: boolean } | null>(null);
+  const [usage, setUsage] = useState<{ usage: number; quota: number; persisted: boolean } | null>(
+    null,
+  );
 
   useEffect(() => {
     void (async () => {
@@ -391,17 +478,23 @@ function DataSection({ toast }: { toast: ToastFn }) {
         </div>
       </div>
       <p className="desc">
-        书籍文件、进度、书签全部存放在浏览器 IndexedDB。开启持久化后，系统不会因空间不足自动清除你的书。
+        书籍文件、进度、书签全部存放在浏览器
+        IndexedDB。开启持久化后，系统不会因空间不足自动清除你的书。
       </p>
-      <div className="rule-item" style={{ borderTop: '1px solid var(--line-soft)', paddingTop: 14 }}>
+      <div
+        className="rule-item"
+        style={{ borderTop: '1px solid var(--line-soft)', paddingTop: 14 }}
+      >
         <b style={{ color: 'var(--seal)', fontSize: 13 }}>危险区</b>
         <Button
           variant="danger"
           size="sm"
           onClick={async () => {
-            if (!window.confirm('确定清空全部书籍与阅读数据？\n此操作不可撤销！')) return;
-            if (!window.confirm('再次确认：真的要删除所有书籍吗？')) return;
+            if (!window.confirm('确定清空全部书籍、音色包与朗读引擎？\n此操作不可撤销！')) return;
+            if (!window.confirm('再次确认：真的要删除这些本机数据吗？')) return;
             await wipeAll();
+            const engine = await import('@/tts/engine');
+            await engine.deleteInstalledEngine();
             toast('已清空全部数据', 'ok');
           }}
         >
