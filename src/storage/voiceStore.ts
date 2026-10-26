@@ -6,9 +6,37 @@ import type { VoiceOrigin, VoicePack } from '@/tts/types';
 import { wavBlobFromBase64 } from '@/tts/wav';
 import { getDB } from './db';
 
-export function voiceLimitError(storedCount: number, limit = VOICE_KEEP_LIMIT): string | null {
-  if (storedCount + BUILTIN_VOICE_SLOTS >= limit) {
-    return `最多保留 ${limit} 个音色（含引擎示例），请先删掉一个`;
+const HIDE_BUILTIN_KEY = 'qingyue.tts.hideBuiltin';
+
+type FlagStore = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+
+/** 引擎示例从列表里拿掉之后，不再占用名额。没有其他音色时，朗读仍用它。 */
+export function readBuiltinHidden(storage: FlagStore = browserFlagStore()): boolean {
+  try {
+    return storage.getItem(HIDE_BUILTIN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function writeBuiltinHidden(hidden: boolean, storage: FlagStore = browserFlagStore()): void {
+  if (hidden) storage.setItem(HIDE_BUILTIN_KEY, '1');
+  else storage.removeItem(HIDE_BUILTIN_KEY);
+}
+
+export function builtinSlotsInUse(hidden = readBuiltinHidden()): number {
+  return hidden ? 0 : BUILTIN_VOICE_SLOTS;
+}
+
+export function voiceLimitError(
+  storedCount: number,
+  limit = VOICE_KEEP_LIMIT,
+  builtinSlots = BUILTIN_VOICE_SLOTS,
+): string | null {
+  const slots = builtinSlots > 0 ? builtinSlots : 0;
+  if (storedCount + slots >= limit) {
+    const scope = slots > 0 ? '（含引擎示例）' : '';
+    return `最多保留 ${limit} 个音色${scope}，请先删掉一个`;
   }
   return null;
 }
@@ -37,7 +65,7 @@ export async function saveVoice(input: {
   const problem = voiceDraftError(input.name, input.refText);
   if (problem) throw new Error(problem);
   const existing = await listVoices();
-  const full = voiceLimitError(existing.length);
+  const full = voiceLimitError(existing.length, VOICE_KEEP_LIMIT, builtinSlotsInUse());
   if (full) throw new Error(full);
   const pack: VoicePack = {
     id: nanoid(8),
@@ -61,10 +89,10 @@ export async function saveMissingRemoteVoices(
 ): Promise<void> {
   const existing = await listVoices();
   const known = new Set(existing.map((voice) => voice.remoteId).filter((id) => id != null));
-  if (voiceLimitError(existing.length)) return;
+  if (voiceLimitError(existing.length, VOICE_KEEP_LIMIT, builtinSlotsInUse())) return;
   for (const item of items) {
     if (known.has(item.id) || !item.refText.trim() || !item.wavBase64) continue;
-    if (voiceLimitError((await listVoices()).length)) return;
+    if (voiceLimitError((await listVoices()).length, VOICE_KEEP_LIMIT, builtinSlotsInUse())) return;
     await saveVoice({
       name: '我的音色',
       refText: item.refText,
@@ -88,4 +116,17 @@ export async function renameVoice(id: string, name: string): Promise<void> {
 export async function removeVoice(id: string): Promise<void> {
   const db = await getDB();
   await db.delete('voices', id);
+}
+
+function browserFlagStore(): FlagStore {
+  try {
+    if (typeof localStorage === 'undefined') throw new Error('no storage');
+    return localStorage;
+  } catch {
+    return {
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    };
+  }
 }

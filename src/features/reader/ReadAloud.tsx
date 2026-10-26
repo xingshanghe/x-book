@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { BlockIndexView } from '@/core/reader/progress';
-import { listVoices } from '@/storage/voiceStore';
+import { listVoices, readBuiltinHidden } from '@/storage/voiceStore';
 import {
   cancelEngineDownload,
   deleteInstalledEngine,
@@ -294,6 +294,7 @@ export function ReadAloud({
           const voiceId = pickReadingVoice(
             current.voiceId,
             voicesRef.current.map((voice) => voice.id),
+            !readBuiltinHidden(),
           );
           const pack =
             voiceId === 'builtin'
@@ -359,11 +360,11 @@ export function ReadAloud({
               音色
             </span>
             <select
-              value={prefs.voiceId}
+              value={readBuiltinHidden() && prefs.voiceId === 'builtin' ? 'auto' : prefs.voiceId}
               onChange={(event) => changePrefs({ voiceId: event.target.value })}
             >
               <option value="auto">自动（优先最近的音色）</option>
-              <option value="builtin">引擎示例（雷军）</option>
+              {!readBuiltinHidden() && <option value="builtin">引擎示例（雷军）</option>}
               {voices.map((voice) => (
                 <option key={voice.id} value={voice.id}>
                   {voice.name}

@@ -142,11 +142,28 @@
 .sponsor-card {
   margin-top: 8px;
 }
-.sponsor-pay {
+.sponsor-qrs {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin: 8px 0 4px;
+  gap: 16px;
+  margin: 8px 0 12px;
+}
+.sponsor-qr {
+  margin: 0;
+  width: min(220px, 100%);
+}
+.sponsor-qr img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  background: white;
+}
+.sponsor-qr figcaption {
+  margin-top: 6px;
+  text-align: center;
+  color: var(--ink-2);
+  font-size: 13px;
 }
 .sponsor-modal {
   align-items: center;
@@ -183,18 +200,9 @@
   font-size: var(--step-0);
   font-weight: 600;
 }
-.sponsor-dialog img {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: 12px;
-  background: white;
-}
 .sponsor-record {
   display: grid;
   gap: 8px;
-  max-width: 360px;
-  margin-top: 12px;
 }
 .sponsor-record label {
   display: grid;
@@ -219,6 +227,43 @@
   cursor: pointer;
   color: var(--ink-3);
   font-size: 12px;
+}
+.voice-catalog {
+  margin: 12px 0;
+}
+.voice-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.voice-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--line-soft);
+}
+.voice-row-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.voice-row-name b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.voice-badge {
+  flex-shrink: 0;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.voice-row-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  margin-left: auto;
 }
 .thanks-list {
   list-style: none;

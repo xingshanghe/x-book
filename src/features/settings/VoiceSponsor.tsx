@@ -33,16 +33,16 @@ export function VoiceSponsor({
   const [paidOn, setPaidOn] = useState(today);
   const [note, setNote] = useState('');
   const [pending, setPending] = useState(false);
-  const [channel, setChannel] = useState<SponsorChannel | null>(null);
+  const [recordOpen, setRecordOpen] = useState(false);
 
   useEffect(() => {
     setName((current) => (current.trim() ? current : username));
   }, [username]);
 
   useEffect(() => {
-    if (!channel) return;
+    if (!recordOpen) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setChannel(null);
+      if (event.key === 'Escape') setRecordOpen(false);
     };
     window.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
@@ -51,9 +51,7 @@ export function VoiceSponsor({
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
     };
-  }, [channel]);
-
-  const opened = SPONSOR_OFFER.qrs.find((item) => item.channel === channel) ?? null;
+  }, [recordOpen]);
 
   const submit = () => {
     if (!loggedIn) {
@@ -93,6 +91,7 @@ export function VoiceSponsor({
         }
         setPhone('');
         setNote('');
+        setRecordOpen(false);
         toast('已记下');
       })
       .finally(() => setPending(false));
@@ -102,79 +101,90 @@ export function VoiceSponsor({
     <div className="sponsor-card">
       <h3>{SPONSOR_OFFER.title}</h3>
       <p className="desc">{SPONSOR_OFFER.body}</p>
-      <div className="sponsor-pay">
+      <div className="sponsor-qrs">
         {SPONSOR_OFFER.qrs.map((item) => (
-          <Button key={item.channel} size="sm" onClick={() => setChannel(item.channel)}>
-            {item.label}
-          </Button>
+          <figure className="sponsor-qr" key={item.channel}>
+            <img src={QR_SRC[item.channel]} alt={`${item.label}收款码`} />
+            <figcaption>{item.label}</figcaption>
+          </figure>
         ))}
       </div>
-      {opened && (
+      <Button size="sm" onClick={() => setRecordOpen(true)}>
+        提交记录
+      </Button>
+      {recordOpen && (
         <div className="qy-overlay sponsor-modal">
           <button
             type="button"
             className="sponsor-dialog-backdrop"
-            aria-label="关闭收款码"
-            onClick={() => setChannel(null)}
+            aria-label="关闭"
+            onClick={() => setRecordOpen(false)}
           />
           <div
             className="sponsor-dialog"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="sponsor-qr-title"
+            aria-labelledby="sponsor-record-title"
           >
             <div className="sponsor-dialog-head">
-              <h3 id="sponsor-qr-title">{opened.label}收款码</h3>
+              <h3 id="sponsor-record-title">提交记录</h3>
               <button
                 type="button"
                 className="qy-icon-btn"
-                onClick={() => setChannel(null)}
+                onClick={() => setRecordOpen(false)}
                 aria-label="关闭"
               >
                 <IconClose size={16} />
               </button>
             </div>
-            <img src={QR_SRC[opened.channel]} alt={`${opened.label}收款码`} />
+            <form
+              className="sponsor-record"
+              onSubmit={(event) => {
+                event.preventDefault();
+                submit();
+              }}
+            >
+              <label>
+                赞助人
+                <input
+                  value={name}
+                  maxLength={32}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              </label>
+              <label>
+                手机号
+                <input
+                  value={phone}
+                  inputMode="numeric"
+                  maxLength={11}
+                  onChange={(event) => setPhone(event.target.value)}
+                />
+              </label>
+              <label>
+                日期
+                <input
+                  type="date"
+                  value={paidOn}
+                  onChange={(event) => setPaidOn(event.target.value)}
+                />
+              </label>
+              <label>
+                备注
+                <textarea
+                  value={note}
+                  rows={2}
+                  maxLength={200}
+                  onChange={(event) => setNote(event.target.value)}
+                />
+              </label>
+              <Button size="sm" type="submit" disabled={pending}>
+                {pending ? '正在记下' : '提交记录'}
+              </Button>
+            </form>
           </div>
         </div>
       )}
-      <form
-        className="sponsor-record"
-        onSubmit={(event) => {
-          event.preventDefault();
-          submit();
-        }}
-      >
-        <label>
-          赞助人
-          <input value={name} maxLength={32} onChange={(event) => setName(event.target.value)} />
-        </label>
-        <label>
-          手机号
-          <input
-            value={phone}
-            inputMode="numeric"
-            maxLength={11}
-            onChange={(event) => setPhone(event.target.value)}
-          />
-        </label>
-        <label>
-          日期
-          <input type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} />
-        </label>
-        <label>
-          备注
-          <textarea
-            value={note}
-            rows={2}
-            maxLength={200}
-            onChange={(event) => setNote(event.target.value)}
-          />
-        </label>
-        <Button size="sm" type="submit" disabled={pending}>
-          {pending ? '正在记下' : '提交记录'}
-        </Button>
-      </form>
     </div>
   );
 }

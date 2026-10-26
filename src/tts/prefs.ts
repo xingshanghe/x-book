@@ -45,9 +45,13 @@ export function writeReadingPrefs(
 }
 
 /** 选出真正用来合成的音色。builtin 表示引擎自带的雷军示例。 */
-export function pickReadingVoice(voiceId: string, idsInOrder: readonly string[]): string {
-  if (voiceId === 'builtin') return 'builtin';
-  if (voiceId !== 'auto' && idsInOrder.includes(voiceId)) return voiceId;
+export function pickReadingVoice(
+  voiceId: string,
+  idsInOrder: readonly string[],
+  builtinAvailable = true,
+): string {
+  if (builtinAvailable && voiceId === 'builtin') return 'builtin';
+  if (voiceId !== 'auto' && voiceId !== 'builtin' && idsInOrder.includes(voiceId)) return voiceId;
   return idsInOrder[idsInOrder.length - 1] ?? 'builtin';
 }
 

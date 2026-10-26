@@ -28,6 +28,8 @@ describe('朗读偏好', () => {
     expect(pickReadingVoice('builtin', ['a'])).toBe('builtin');
     expect(pickReadingVoice('a', ['a', 'b'])).toBe('a');
     expect(pickReadingVoice('missing', ['a', 'b'])).toBe('b');
+    expect(pickReadingVoice('builtin', ['a'], false)).toBe('a');
+    expect(pickReadingVoice('auto', [], false)).toBe('builtin');
   });
 });
 

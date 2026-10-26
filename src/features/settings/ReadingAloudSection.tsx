@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { accountSession } from '@/account/session';
 import {
   listVoices,
+  readBuiltinHidden,
   removeVoice,
   renameVoice,
   saveVoice,
   voiceLimitError,
+  writeBuiltinHidden,
 } from '@/storage/voiceStore';
+import { BUILTIN_VOICE_SLOTS, VOICE_KEEP_LIMIT } from '@/tts/account';
 import {
   deleteInstalledEngine,
   downloadDesktopEngine,
@@ -16,16 +19,19 @@ import {
   readEnginePhase,
 } from '@/tts/engine';
 import { enrollBlockReason, GUIDE_TEXT } from '@/tts/enroll';
+import { readReadingPrefs, writeReadingPrefs } from '@/tts/prefs';
 import { desktopReadingReady } from '@/tts/support';
 import type { VoicePack } from '@/tts/types';
 import { encodeWavPcm16, mixToMono } from '@/tts/wav';
 import { Button } from '@/ui';
 import { useAccountProfile } from './useAccountProfile';
+import { VoiceList } from './VoiceList';
 import { VoiceSponsor } from './VoiceSponsor';
 
 export function ReadingAloudSection({ toast }: { toast: (text: string) => void }) {
   const profile = useAccountProfile();
   const [voices, setVoices] = useState<VoicePack[]>([]);
+  const [builtinHidden, setBuiltinHidden] = useState(() => readBuiltinHidden());
   const [voiceName, setVoiceName] = useState('');
   const [refText, setRefText] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -50,7 +56,24 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
     if (me.data) accountSession.remember(me.data);
   };
 
-  const gate = (): string | null => voiceLimitError(voices.length);
+  const builtinSlots = builtinHidden ? 0 : BUILTIN_VOICE_SLOTS;
+  const gate = (): string | null => voiceLimitError(voices.length, VOICE_KEEP_LIMIT, builtinSlots);
+
+  const hideBuiltin = () => {
+    writeBuiltinHidden(true);
+    setBuiltinHidden(true);
+    if (readReadingPrefs().voiceId === 'builtin') writeReadingPrefs({ voiceId: 'auto' });
+    toast('已从列表移除');
+  };
+
+  const restoreBuiltin = () => {
+    if (voices.length + BUILTIN_VOICE_SLOTS > VOICE_KEEP_LIMIT) {
+      toast(`最多保留 ${VOICE_KEEP_LIMIT} 个音色，请先删掉一个`);
+      return;
+    }
+    writeBuiltinHidden(false);
+    setBuiltinHidden(false);
+  };
 
   const storeEnrolled = async (audio: Blob, transcript: string) => {
     const blocked = gate();
@@ -186,6 +209,10 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
             await refreshProfile();
           });
         }}
+        builtinHidden={builtinHidden}
+        usedVoices={voices.length + builtinSlots}
+        onHideBuiltin={hideBuiltin}
+        onRestoreBuiltin={restoreBuiltin}
       />
       <VoiceSponsor loggedIn={profile != null} username={profile?.username ?? ''} toast={toast} />
     </>
@@ -209,6 +236,10 @@ function VoiceLibrary({
   onSubmitSample,
   onRename,
   onRemove,
+  builtinHidden,
+  usedVoices,
+  onHideBuiltin,
+  onRestoreBuiltin,
 }: {
   voices: VoicePack[];
   voiceName: string;
@@ -226,13 +257,31 @@ function VoiceLibrary({
   onSubmitSample: () => void;
   onRename: (voice: VoicePack) => void;
   onRemove: (voice: VoicePack) => void;
+  builtinHidden: boolean;
+  usedVoices: number;
+  onHideBuiltin: () => void;
+  onRestoreBuiltin: () => void;
 }) {
   return (
     <>
       <p className="desc">
-        最多保留 {voices.length + 1}/3 个，含引擎示例（雷军）。删掉一个自己的音色就可以再加。
+        最多保留 {usedVoices}/{VOICE_KEEP_LIMIT} 个。删掉一个就可以再加。
       </p>
       <p className="desc">提交请用 16-bit wav，单声道或双声道，5 到 15 秒，不超过 3 MB。</p>
+      <VoiceList
+        voices={voices}
+        builtinHidden={builtinHidden}
+        onRename={(id) => {
+          const voice = voices.find((item) => item.id === id);
+          if (voice) onRename(voice);
+        }}
+        onRemove={(id) => {
+          const voice = voices.find((item) => item.id === id);
+          if (voice) onRemove(voice);
+        }}
+        onHideBuiltin={onHideBuiltin}
+        onRestoreBuiltin={onRestoreBuiltin}
+      />
       <h3>导入音色包</h3>
       <label className="qy-row">
         <span className="qy-row-label">名称</span>
@@ -253,21 +302,6 @@ function VoiceLibrary({
       <Button size="sm" disabled={!consent || !profileReady} onClick={onEnrollFile}>
         用这个文件建档
       </Button>
-      <div className="rule-item">
-        <b>引擎示例（雷军）</b>
-        <span className="desc">内置</span>
-      </div>
-      {voices.map((voice) => (
-        <div className="rule-item" key={voice.id}>
-          <b>{voice.name}</b>
-          <Button size="sm" onClick={() => onRename(voice)}>
-            改名
-          </Button>
-          <Button size="sm" onClick={() => onRemove(voice)}>
-            删除
-          </Button>
-        </div>
-      ))}
 
       <h3>试读建档</h3>
       <p className="desc">{GUIDE_TEXT}</p>
