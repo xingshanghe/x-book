@@ -101,7 +101,7 @@ macOS 桌面版可在设置中单独下载朗读引擎。安装包不包含该�
 
 ## 赞助
 
-轻阅按 MIT 许可证免费提供。朗读引擎分发与账号服务的计算资源及带宽由维护方承担。可通过以下收款码赞助，用于维持上述基础设施。
+轻阅按 MIT 许可证免费提供。可以请我喝杯咖啡。
 
 <p align="center">
   <img src="services/voice-enroll/app/static/sponsor-wechat.png" alt="微信收款码" width="220"><br>
