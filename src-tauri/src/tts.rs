@@ -1,6 +1,6 @@
 //! 朗读引擎只在用户确认后下载到应用数据目录，不打进安装包。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -47,6 +47,16 @@ pub(crate) struct SpeakRequest {
     ref_wav: Option<Vec<u8>>,
     #[serde(default)]
     silence_scale: f32,
+    /// 用户注音。引擎先载入这份，同词的原读音会被略过。
+    #[serde(default)]
+    pronunciations: Vec<PronunciationEntry>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PronunciationEntry {
+    word: String,
+    phones: String,
 }
 
 fn safe_version(version: &str) -> Result<(), String> {
@@ -276,6 +286,8 @@ fn speak_blocking(app: AppHandle, request: SpeakRequest) -> Result<Vec<u8>, Stri
     let vocoder = find_file(&dir, "vocos_24khz.onnx").ok_or("缺少 vocos_24khz.onnx")?;
     let lexicon = find_file(&dir, "lexicon.txt").ok_or("缺少 lexicon.txt")?;
     let tokens = find_file(&dir, "tokens.txt").ok_or("缺少 tokens.txt")?;
+    let (lexicon_arg, _user_lexicon) =
+        prepare_user_lexicon(&dir, seq, &lexicon, &request.pronunciations)?;
     let scale = if request.silence_scale > 0.0 {
         request.silence_scale
     } else {
@@ -285,7 +297,7 @@ fn speak_blocking(app: AppHandle, request: SpeakRequest) -> Result<Vec<u8>, Stri
     let mut cmd = Command::new(&binary);
     cmd.arg(format!("--zipvoice-encoder={}", encoder.display()))
         .arg(format!("--zipvoice-decoder={}", decoder.display()))
-        .arg(format!("--zipvoice-lexicon={}", lexicon.display()))
+        .arg(format!("--zipvoice-lexicon={lexicon_arg}"))
         .arg(format!("--zipvoice-tokens={}", tokens.display()))
         .arg(format!("--zipvoice-vocoder={}", vocoder.display()))
         .arg(format!("--reference-audio={}", ref_path.display()))
@@ -528,6 +540,87 @@ fn sha256_file(path: &Path) -> Result<String, String> {
         .ok_or_else(|| "无法校验文件".into())
 }
 
+/// 用户词表单独写成一个小文件，排在原词表前面。路径里有逗号时改成合并成一份，避免被拆开。
+fn prepare_user_lexicon(
+    dir: &Path,
+    seq: u64,
+    stock: &Path,
+    entries: &[PronunciationEntry],
+) -> Result<(String, Option<RemoveOnDrop>), String> {
+    let body = lexicon_body(entries);
+    if body.is_empty() {
+        return Ok((stock.display().to_string(), None));
+    }
+    let path = dir.join(format!("lexicon-{seq}.txt"));
+    let user = path.display().to_string();
+    let stock_path = stock.display().to_string();
+    let (arg, contents) = if user.contains(',') || stock_path.contains(',') {
+        let stock_text = fs::read_to_string(stock).map_err(|err| err.to_string())?;
+        (user, format!("{body}{stock_text}"))
+    } else {
+        (format!("{user},{stock_path}"), body)
+    };
+    fs::write(&path, contents).map_err(|err| err.to_string())?;
+    Ok((arg, Some(RemoveOnDrop(path))))
+}
+
+fn lexicon_body(entries: &[PronunciationEntry]) -> String {
+    let mut seen = HashSet::new();
+    let mut out = String::new();
+    for entry in entries {
+        let Some(line) = lexicon_line(&entry.word, &entry.phones) else {
+            continue;
+        };
+        let word = line.split_once(' ').map(|(word, _)| word).unwrap_or("");
+        if !seen.insert(word.to_string()) {
+            continue;
+        }
+        out.push_str(&line);
+        out.push('\n');
+    }
+    out
+}
+
+fn lexicon_line(word: &str, phones: &str) -> Option<String> {
+    let word = word.trim();
+    if word.is_empty() || word.chars().count() > 10 {
+        return None;
+    }
+    if !word
+        .chars()
+        .all(|ch| ('\u{3400}'..='\u{9fff}').contains(&ch))
+    {
+        return None;
+    }
+    let phones = phones.trim();
+    if !valid_phones(phones) {
+        return None;
+    }
+    Some(format!("{word} {phones}"))
+}
+
+fn valid_phones(phones: &str) -> bool {
+    let mut any = false;
+    for phone in phones.split_whitespace() {
+        any = true;
+        let chars: Vec<char> = phone.chars().collect();
+        if chars.len() < 2 || chars.len() > 8 {
+            return false;
+        }
+        let tone = chars[chars.len() - 1];
+        if !tone.is_ascii_digit() {
+            return false;
+        }
+        if !chars[..chars.len() - 1]
+            .iter()
+            .all(|ch| ch.is_ascii_lowercase() || *ch == 'ê')
+        {
+            return false;
+        }
+    }
+    any
+}
+
 fn find_binary(dir: &Path) -> Option<PathBuf> {
     find_file(dir, "sherpa-onnx-offline-tts")
 }
@@ -552,7 +645,33 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{account_header_allowed, account_url_allowed, decode_base64};
+    use super::{
+        account_header_allowed, account_url_allowed, decode_base64, lexicon_body,
+        PronunciationEntry,
+    };
+
+    #[test]
+    fn user_lexicon_keeps_the_first_reading_and_drops_junk() {
+        let lines = lexicon_body(&[
+            PronunciationEntry {
+                word: "行长".into(),
+                phones: "h0 ang2 zh0 ang3".into(),
+            },
+            PronunciationEntry {
+                word: "行长".into(),
+                phones: "x0 ing2 zh0 ang3".into(),
+            },
+            PronunciationEntry {
+                word: "hello".into(),
+                phones: "h0 e1".into(),
+            },
+            PronunciationEntry {
+                word: "啊".into(),
+                phones: "not phones".into(),
+            },
+        ]);
+        assert_eq!(lines, "行长 h0 ang2 zh0 ang3\n");
+    }
 
     #[test]
     fn account_url_accepts_the_enroll_host() {

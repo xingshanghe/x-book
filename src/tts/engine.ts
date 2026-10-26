@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { BUILTIN_VOICE, ENGINE_MANIFEST, manifestBytes, manifestReady } from './manifest';
+import type { LexiconEntry } from './pronounce';
 import { desktopReadingReady } from './support';
 import type { EnginePhase, VoicePack } from './types';
 
@@ -80,7 +81,7 @@ export async function deleteInstalledEngine(): Promise<void> {
 export async function speakSentence(
   text: string,
   pack: VoicePack | 'builtin',
-  options?: { silenceScale?: number },
+  options?: { silenceScale?: number; pronunciations?: readonly LexiconEntry[] },
 ): Promise<Uint8Array> {
   if (!desktopReadingReady()) throw new Error('朗读即将支持');
   if (readEnginePhase() !== 'installed') throw new Error('请先下载朗读引擎');
@@ -93,6 +94,7 @@ export async function speakSentence(
       builtinFile: builtin ? BUILTIN_VOICE.file : null,
       refWav: builtin ? null : Array.from(new Uint8Array(await pack.refAudio.arrayBuffer())),
       silenceScale: options?.silenceScale ?? 1,
+      pronunciations: options?.pronunciations ?? [],
     },
   });
   return Uint8Array.from(wav);

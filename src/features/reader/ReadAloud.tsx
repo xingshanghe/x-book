@@ -19,6 +19,7 @@ import {
   readReadingPrefs,
   writeReadingPrefs,
 } from '@/tts/prefs';
+import { lexiconEntries, readPronunciations } from '@/tts/pronounce';
 import {
   clearReadMark,
   type ReadMark,
@@ -302,6 +303,7 @@ export function ReadAloud({
               : (voicesRef.current.find((voice) => voice.id === voiceId) ?? 'builtin');
           return speakSentence(prepareSpokenText(sentence), pack, {
             silenceScale: current.silenceScale,
+            pronunciations: lexiconEntries(readPronunciations()),
           });
         },
         play: (audio, signal, live) => playWavBytes(audio, signal, readReadingPrefs().speed, live),

@@ -18,12 +18,12 @@ import {
   engineProgressLabel,
   readEnginePhase,
 } from '@/tts/engine';
-import { enrollBlockReason, GUIDE_TEXT } from '@/tts/enroll';
 import { readReadingPrefs, writeReadingPrefs } from '@/tts/prefs';
 import { desktopReadingReady } from '@/tts/support';
 import type { VoicePack } from '@/tts/types';
-import { encodeWavPcm16, mixToMono } from '@/tts/wav';
+import { type ParsedVoicePack, readVoicePack, voicePackSource } from '@/tts/voicePack';
 import { Button } from '@/ui';
+import { PronunciationTable } from './PronunciationTable';
 import { useAccountProfile } from './useAccountProfile';
 import { VoiceList } from './VoiceList';
 import { VoiceSponsor } from './VoiceSponsor';
@@ -32,15 +32,6 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
   const profile = useAccountProfile();
   const [voices, setVoices] = useState<VoicePack[]>([]);
   const [builtinHidden, setBuiltinHidden] = useState(() => readBuiltinHidden());
-  const [voiceName, setVoiceName] = useState('');
-  const [refText, setRefText] = useState('');
-  const [file, setFile] = useState<File | null>(null);
-  const [consent, setConsent] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const [durationMs, setDurationMs] = useState(0);
-  const [sample, setSample] = useState<Blob | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const startedRef = useRef(0);
   const ready = desktopReadingReady();
   const [progress, setProgress] = useState<EngineProgress | null>(null);
 
@@ -73,30 +64,6 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
     }
     writeBuiltinHidden(false);
     setBuiltinHidden(false);
-  };
-
-  const storeEnrolled = async (audio: Blob, transcript: string) => {
-    const blocked = gate();
-    if (blocked) {
-      toast(blocked);
-      return;
-    }
-    const result = await accountSession.client().enroll(audio, transcript);
-    if (!result.ok || !result.data) {
-      toast(result.message);
-      return;
-    }
-    await saveVoice({
-      name: voiceName || '我的音色',
-      refText: result.data.refText,
-      refAudio: audio,
-      origin: 'enrolled',
-      consentAt: Date.now(),
-      remoteId: result.data.id,
-    });
-    setVoices(await listVoices());
-    await refreshProfile();
-    toast('建档完成，已保存在本机');
   };
 
   return (
@@ -135,67 +102,33 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
         </div>
       )}
 
+      <PronunciationTable toast={toast} />
+
       <h3>音色</h3>
-      {!profile && (
-        <p className="desc">建档需要先在上面的账号里登录。未登录时，已在本机的音色仍可朗读。</p>
-      )}
       <VoiceLibrary
         voices={voices}
-        voiceName={voiceName}
-        refText={refText}
-        consent={consent}
-        recording={recording}
-        profileReady={profile != null}
-        setVoiceName={setVoiceName}
-        setRefText={setRefText}
-        setFile={setFile}
-        setConsent={setConsent}
-        onImport={() => {
+        builtinHidden={builtinHidden}
+        usedVoices={voices.length + builtinSlots}
+        onImport={async (pack) => {
           const blocked = gate();
-          if (blocked || !file) {
-            toast(blocked ?? '请选择 wav');
-            return;
+          if (blocked) {
+            toast(blocked);
+            throw new Error(blocked);
           }
-          void saveVoice({ name: voiceName, refText, refAudio: file, origin: 'import' })
-            .then(async () => {
-              setVoices(await listVoices());
-              toast('已导入音色');
-            })
-            .catch((error: unknown) => toast(error instanceof Error ? error.message : '导入失败'));
-        }}
-        onEnrollFile={() => {
-          if (!file) {
-            toast('请选择 wav');
-            return;
+          try {
+            await saveVoice({
+              name: pack.name,
+              refText: pack.refText,
+              refAudio: pack.wav,
+              lang: pack.lang,
+              origin: 'import',
+            });
+            setVoices(await listVoices());
+            toast(`已导入「${pack.name}」`);
+          } catch (error: unknown) {
+            toast(error instanceof Error ? error.message : '导入失败');
+            throw error;
           }
-          if (!consent) {
-            toast('请先确认已获授权');
-            return;
-          }
-          void storeEnrolled(file, refText);
-        }}
-        onToggleRecord={() => {
-          void toggleRecord(
-            recorderRef,
-            startedRef,
-            recording,
-            setRecording,
-            setDurationMs,
-            setSample,
-            toast,
-          );
-        }}
-        onSubmitSample={() => {
-          const reason = enrollBlockReason({
-            loggedIn: profile != null,
-            consent,
-            durationMs,
-          });
-          if (reason || !sample) {
-            toast(reason ?? '请先完成试读');
-            return;
-          }
-          void storeEnrolled(sample, GUIDE_TEXT);
         }}
         onRename={(voice) => {
           const next = window.prompt('音色名称', voice.name);
@@ -209,8 +142,6 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
             await refreshProfile();
           });
         }}
-        builtinHidden={builtinHidden}
-        usedVoices={voices.length + builtinSlots}
         onHideBuiltin={hideBuiltin}
         onRestoreBuiltin={restoreBuiltin}
       />
@@ -221,44 +152,20 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
 
 function VoiceLibrary({
   voices,
-  voiceName,
-  refText,
-  consent,
-  recording,
-  profileReady,
-  setVoiceName,
-  setRefText,
-  setFile,
-  setConsent,
-  onImport,
-  onEnrollFile,
-  onToggleRecord,
-  onSubmitSample,
-  onRename,
-  onRemove,
   builtinHidden,
   usedVoices,
+  onImport,
+  onRename,
+  onRemove,
   onHideBuiltin,
   onRestoreBuiltin,
 }: {
   voices: VoicePack[];
-  voiceName: string;
-  refText: string;
-  consent: boolean;
-  recording: boolean;
-  profileReady: boolean;
-  setVoiceName: (value: string) => void;
-  setRefText: (value: string) => void;
-  setFile: (file: File | null) => void;
-  setConsent: (value: boolean) => void;
-  onImport: () => void;
-  onEnrollFile: () => void;
-  onToggleRecord: () => void;
-  onSubmitSample: () => void;
-  onRename: (voice: VoicePack) => void;
-  onRemove: (voice: VoicePack) => void;
   builtinHidden: boolean;
   usedVoices: number;
+  onImport: (pack: ParsedVoicePack) => Promise<void>;
+  onRename: (voice: VoicePack) => void;
+  onRemove: (voice: VoicePack) => void;
   onHideBuiltin: () => void;
   onRestoreBuiltin: () => void;
 }) {
@@ -267,7 +174,6 @@ function VoiceLibrary({
       <p className="desc">
         最多保留 {usedVoices}/{VOICE_KEEP_LIMIT} 个。删掉一个就可以再加。
       </p>
-      <p className="desc">提交请用 16-bit wav，单声道或双声道，5 到 15 秒，不超过 3 MB。</p>
       <VoiceList
         voices={voices}
         builtinHidden={builtinHidden}
@@ -282,46 +188,85 @@ function VoiceLibrary({
         onHideBuiltin={onHideBuiltin}
         onRestoreBuiltin={onRestoreBuiltin}
       />
-      <h3>导入音色包</h3>
-      <label className="qy-row">
-        <span className="qy-row-label">名称</span>
-        <input value={voiceName} onChange={(event) => setVoiceName(event.target.value)} />
-      </label>
-      <label className="qy-row">
-        <span className="qy-row-label">对齐文本</span>
-        <textarea value={refText} onChange={(event) => setRefText(event.target.value)} rows={3} />
-      </label>
-      <input
-        type="file"
-        accept="audio/wav,audio/wave,.wav"
-        onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-      />
-      <Button size="sm" onClick={onImport}>
-        导入
-      </Button>
-      <Button size="sm" disabled={!consent || !profileReady} onClick={onEnrollFile}>
-        用这个文件建档
-      </Button>
+      <VoiceImport onImport={onImport} />
+    </>
+  );
+}
 
-      <h3>试读建档</h3>
-      <p className="desc">{GUIDE_TEXT}</p>
-      <label className="qy-row">
-        <input
-          type="checkbox"
-          checked={consent}
-          onChange={(event) => setConsent(event.target.checked)}
-        />
-        <span>我是本人，或已获得声音主人的授权。音频只用于这一次加工。</span>
-      </label>
+function VoiceImport({ onImport }: { onImport: (pack: ParsedVoicePack) => Promise<void> }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [picked, setPicked] = useState<ParsedVoicePack | null>(null);
+  const [problem, setProblem] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    inputRef.current?.setAttribute('webkitdirectory', '');
+  }, []);
+
+  const choose = async (list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    try {
+      setPicked(await readVoicePack([...list].map(voicePackSource)));
+      setProblem('');
+    } catch (error: unknown) {
+      setPicked(null);
+      setProblem(error instanceof Error ? error.message : '这个文件夹读不出来');
+    } finally {
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="voice-import">
+      <h3>导入音色包</h3>
+      <p className="desc">
+        下载音色包后，按这个格式放进一个文件夹，再选择文件夹导入。名称和对齐文本从文件里读，不用手填。
+      </p>
+      <pre className="voice-import-tree">{'妈妈/\n  voice.wav\n  voice.txt'}</pre>
+      <p className="desc">
+        voice.wav 用 16-bit，单声道或双声道，5 到 15 秒，不超过 3 MB。voice.txt
+        写这段声音对应的文字，UTF-8。名称用文件夹名。
+      </p>
       <div className="tts-actions">
-        <Button size="sm" onClick={onToggleRecord}>
-          {recording ? '停止试读' : '开始试读'}
+        <Button size="sm" onClick={() => inputRef.current?.click()}>
+          选择文件夹
         </Button>
-        <Button size="sm" disabled={!consent || !profileReady} onClick={onSubmitSample}>
-          提交建档
+        <Button
+          size="sm"
+          variant="primary"
+          disabled={!picked || saving}
+          onClick={() => {
+            if (!picked || saving) return;
+            setSaving(true);
+            void onImport(picked)
+              .then(() => {
+                setPicked(null);
+                setProblem('');
+              })
+              .catch(() => undefined)
+              .finally(() => setSaving(false));
+          }}
+        >
+          导入
         </Button>
       </div>
-    </>
+      <input
+        ref={inputRef}
+        className="voice-import-file"
+        type="file"
+        multiple
+        accept=".wav,.txt,.json,audio/wav,text/plain,application/json"
+        onChange={(event) => void choose(event.target.files)}
+      />
+      {picked ? (
+        <>
+          <p className="voice-import-picked">将导入</p>
+          <p className="voice-import-name">{picked.name}</p>
+          <p className="voice-import-text">{picked.refText}</p>
+        </>
+      ) : null}
+      {problem ? <p className="voice-import-error">{problem}</p> : null}
+    </div>
   );
 }
 
@@ -332,57 +277,4 @@ async function removeStoredVoice(voice: VoicePack): Promise<string | null> {
   }
   await removeVoice(voice.id);
   return null;
-}
-
-async function toggleRecord(
-  recorderRef: { current: MediaRecorder | null },
-  startedRef: { current: number },
-  recording: boolean,
-  setRecording: (value: boolean) => void,
-  setDurationMs: (value: number) => void,
-  setSample: (blob: Blob | null) => void,
-  toast: (text: string) => void,
-): Promise<void> {
-  if (recording && recorderRef.current) {
-    recorderRef.current.stop();
-    return;
-  }
-  if (!navigator.mediaDevices?.getUserMedia) {
-    toast('当前环境不能录音');
-    return;
-  }
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  const recorder = new MediaRecorder(stream);
-  const chunks: Blob[] = [];
-  recorder.ondataavailable = (event) => {
-    if (event.data.size > 0) chunks.push(event.data);
-  };
-  recorder.onstop = () => {
-    for (const track of stream.getTracks()) track.stop();
-    const elapsed = Date.now() - startedRef.current;
-    setRecording(false);
-    recorderRef.current = null;
-    const recorded = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
-    void recorded
-      .arrayBuffer()
-      .then((raw) => new AudioContext().decodeAudioData(raw))
-      .then((audio) => {
-        const channels = Array.from({ length: audio.numberOfChannels }, (_, index) =>
-          audio.getChannelData(index),
-        );
-        const wav = encodeWavPcm16(mixToMono(channels), audio.sampleRate);
-        setDurationMs(Math.round(audio.duration * 1000));
-        setSample(wav);
-        toast('试读已结束。请保持在 5 到 15 秒，并勾选授权、登录后再提交。');
-      })
-      .catch(() => {
-        setDurationMs(elapsed);
-        setSample(null);
-        toast('这段录音转不成 wav，请改用上传 wav');
-      });
-  };
-  recorderRef.current = recorder;
-  startedRef.current = Date.now();
-  setRecording(true);
-  recorder.start();
 }

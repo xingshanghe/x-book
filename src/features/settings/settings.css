@@ -139,6 +139,34 @@
   gap: 8px;
   margin: 8px 0;
 }
+.pronounce {
+  margin: 16px 0 4px;
+}
+.pronounce-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  margin: 8px 0;
+}
+.pronounce-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.pronounce-form input {
+  width: min(100%, 180px);
+  background: var(--paper-0);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font: inherit;
+  color: inherit;
+}
+.pronounce-form .qy-btn {
+  margin-bottom: 1px;
+}
 .sponsor-card {
   margin-top: 8px;
 }
@@ -231,6 +259,64 @@
 .voice-catalog {
   margin: 12px 0;
 }
+.voice-import {
+  position: relative;
+  margin: 16px 0 8px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line-soft);
+}
+.voice-import h3 {
+  margin: 0 0 6px;
+  font-size: var(--step-0);
+  font-weight: 600;
+}
+.voice-import-tree {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre;
+}
+.voice-import-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.voice-import-picked,
+.voice-import-error,
+.voice-import-name,
+.voice-import-text {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.voice-import-picked,
+.voice-import-text {
+  color: var(--ink-2);
+}
+.voice-import-name {
+  margin-top: 0;
+  color: var(--ink-1);
+  font-weight: 600;
+}
+.voice-import-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.voice-import-error {
+  color: var(--seal);
+}
 .voice-list {
   list-style: none;
   margin: 0;
@@ -287,4 +373,7 @@
 .settings-section input:not([type]) {
   width: min(100%, 320px);
   font: inherit;
+}
+.settings-section .pronounce-form input {
+  width: min(100%, 180px);
 }
