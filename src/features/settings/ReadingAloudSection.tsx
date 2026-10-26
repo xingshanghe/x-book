@@ -26,6 +26,7 @@ import { Button } from '@/ui';
 import { PronunciationTable } from './PronunciationTable';
 import { useAccountProfile } from './useAccountProfile';
 import { VoiceList } from './VoiceList';
+import { VoiceRecord } from './VoiceRecord';
 import { VoiceSponsor } from './VoiceSponsor';
 
 export function ReadingAloudSection({ toast }: { toast: (text: string) => void }) {
@@ -188,6 +189,7 @@ function VoiceLibrary({
         onHideBuiltin={onHideBuiltin}
         onRestoreBuiltin={onRestoreBuiltin}
       />
+      <VoiceRecord onImport={onImport} />
       <VoiceImport onImport={onImport} />
     </>
   );
@@ -217,16 +219,13 @@ function VoiceImport({ onImport }: { onImport: (pack: ParsedVoicePack) => Promis
   };
 
   return (
-    <div className="voice-import">
-      <h3>导入音色包</h3>
+    <details className="voice-import">
+      <summary>已有 wav 文件</summary>
       <p className="desc">
-        下载音色包后，按这个格式放进一个文件夹，再选择文件夹导入。名称和对齐文本从文件里读，不用手填。
+        放进一个文件夹再选择导入。名称用文件夹名，这段声音对应的文字写在 voice.txt，UTF-8。
       </p>
       <pre className="voice-import-tree">{'妈妈/\n  voice.wav\n  voice.txt'}</pre>
-      <p className="desc">
-        voice.wav 用 16-bit，单声道或双声道，5 到 15 秒，不超过 3 MB。voice.txt
-        写这段声音对应的文字，UTF-8。名称用文件夹名。
-      </p>
+      <p className="desc">voice.wav 用 16-bit，单声道或双声道，5 到 15 秒，不超过 3 MB。</p>
       <div className="tts-actions">
         <Button size="sm" onClick={() => inputRef.current?.click()}>
           选择文件夹
@@ -266,7 +265,7 @@ function VoiceImport({ onImport }: { onImport: (pack: ParsedVoicePack) => Promis
         </>
       ) : null}
       {problem ? <p className="voice-import-error">{problem}</p> : null}
-    </div>
+    </details>
   );
 }
 

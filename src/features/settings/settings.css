@@ -259,11 +259,54 @@
 .voice-catalog {
   margin: 12px 0;
 }
-.voice-import {
-  position: relative;
+.voice-record {
   margin: 16px 0 8px;
   padding-top: 12px;
   border-top: 1px dashed var(--line-soft);
+}
+.voice-record h3 {
+  margin: 0 0 6px;
+  font-size: var(--step-0);
+  font-weight: 600;
+}
+.voice-record-script {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--paper-2);
+  color: var(--ink-1);
+  font-size: 15px;
+  line-height: 1.7;
+}
+.voice-record-name {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.voice-record-name input {
+  width: min(240px, 100%);
+  background: var(--paper-0);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font: inherit;
+  color: inherit;
+}
+.voice-record-time {
+  margin: 8px 0 0;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.voice-import {
+  position: relative;
+  margin: 14px 0 8px;
+}
+.voice-import summary {
+  cursor: pointer;
+  color: var(--ink-3);
+  font-size: 12px;
 }
 .voice-import h3 {
   margin: 0 0 6px;
