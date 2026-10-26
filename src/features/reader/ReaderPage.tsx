@@ -42,6 +42,7 @@ import {
   touchBook,
 } from '@/storage/repositories/bookRepo';
 import { getProgress, saveProgress } from '@/storage/repositories/progressRepo';
+import { clearReadMark } from '@/tts/resume';
 import { desktopReadingReady } from '@/tts/support';
 import type { Book, Bookmark, Chapter } from '@/types/models';
 import { Button, EmptyState, useToast } from '@/ui';
@@ -146,9 +147,13 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   const noteOpenedAt = useRef<number | null>(null);
   const [barsVisible, setBarsVisible] = useState(true);
   const [aloudNote, setAloudNote] = useState<string | null>(null);
+  const [readPlace, setReadPlace] = useState(0);
   const [Aloud, setAloud] = useState<ComponentType<{
     bookId: string;
     anchorChar: number;
+    chapterOffsets: readonly number[];
+    /** 读者主动换了位置。朗读据此丢掉停止点。 */
+    readPlace: number;
     index: BlockIndexView;
     readLines: (block: number) => Promise<string[]>;
     onFollow: (charOffset: number) => void;
@@ -570,6 +575,8 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
       );
       const b = blockHint ?? blockAtCharOffset(data.idx, clamped);
       pendingSeek.current = clamped;
+      // 先记下目标，朗读才知道人已经换了章节。等滚动落稳再写，会晚一拍。
+      setCurrentChar(clamped);
       setWin({
         start: Math.max(0, b - 1),
         end: Math.min(data.idx.count, b + 3),
@@ -592,6 +599,16 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
       }
     },
     [settings.pageMode, seekToChar],
+  );
+
+  /** 目录、进度、书签这些是读者自己选的位置，下一次朗读从这里开始。 */
+  const jumpTo = useCallback(
+    (char: number, blockHint?: number) => {
+      if (bookId) clearReadMark(bookId);
+      setReadPlace((n) => n + 1);
+      seek(char, blockHint);
+    },
+    [bookId, seek],
   );
 
   const openNote = useCallback(
@@ -899,8 +916,8 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
           chapters={chapters}
           bookmarks={bookmarksRef.current}
           currentChar={currentChar}
-          onJump={seek}
-          onJumpBookmark={(b) => seek(b.charOffset)}
+          onJump={jumpTo}
+          onJumpBookmark={(b) => jumpTo(b.charOffset)}
           onClose={() => updateSettings({ tocDocked: false })}
         />
       )}
@@ -1022,7 +1039,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
               max={1000}
               value={Math.round(percent * 1000)}
               style={{ '--pct': `${percent * 100}%` } as React.CSSProperties}
-              onChange={(e) => seek((Number(e.target.value) / 1000) * totalChars)}
+              onChange={(e) => jumpTo((Number(e.target.value) / 1000) * totalChars)}
               aria-label="阅读进度"
             />
             <span className="pct">
@@ -1103,6 +1120,8 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
             <Aloud
               bookId={book.id}
               anchorChar={currentChar}
+              chapterOffsets={chapters.map((chapter) => chapter.charOffset)}
+              readPlace={readPlace}
               index={idx}
               readLines={(block) => reader.readLines(block)}
               onFollow={seek}
@@ -1119,7 +1138,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
         open={sheet === 'search'}
         onClose={() => setSheet(null)}
         book={book}
-        onJump={seek}
+        onJump={jumpTo}
       />
       <BookmarkSheet
         open={sheet === 'bookmark'}
@@ -1135,7 +1154,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
               }
             : null
         }
-        onJump={(b) => seek(b.charOffset)}
+        onJump={(b) => jumpTo(b.charOffset)}
         onChanged={() => {
           void listBookmarks(book.id).then((bs) => {
             bookmarksRef.current = bs;
@@ -1168,7 +1187,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
         noteChar={footnote?.noteChar}
         onJump={(char) => {
           setFootnote(null);
-          seek(char);
+          jumpTo(char);
         }}
         onClose={() => setFootnote(null)}
       />

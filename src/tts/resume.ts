@@ -1,4 +1,6 @@
-/** 记住用户点停止时正在读的那一句。再次开始时从这一句读起。 */
+/** 记住用户点停止时正在读的那一句。还停在原处时从这一句读起，换了章节就从新位置开始。 */
+
+import { chapterAtChar } from '@/core/reader/progress';
 
 export interface ReadMark {
   charOffset: number;
@@ -30,6 +32,35 @@ export function recallReadMark(bookId: string): ReadMark | null {
 export function clearReadMark(bookId: string): void {
   memory.delete(bookId);
   writeStored(bookId, null);
+}
+
+/** 没有章节时，挪过大约一屏就当成换了地方。 */
+const SCREEN_CHARS = 1600;
+
+/**
+ * 下一次朗读从哪个字符开始。
+ * parkedAt 是停下时屏幕上的位置。页首有时落在上一章，不能拿它和句子比章节。
+ * 没记下屏幕位置时，用停止句自己的偏移。
+ */
+export function readingOrigin(
+  mark: ReadMark | null,
+  anchorChar: number,
+  chapterOffsets: readonly number[],
+  parkedAt?: number,
+): number {
+  if (!mark) return anchorChar;
+  const parked = parkedAt ?? mark.charOffset;
+  if (sameReadingPlace(parked, anchorChar, chapterOffsets)) return mark.charOffset;
+  return anchorChar;
+}
+
+function sameReadingPlace(
+  parkedAt: number,
+  anchorChar: number,
+  chapterOffsets: readonly number[],
+): boolean {
+  if (chapterOffsets.length === 0) return Math.abs(anchorChar - parkedAt) <= SCREEN_CHARS;
+  return chapterAtChar(chapterOffsets, parkedAt) === chapterAtChar(chapterOffsets, anchorChar);
 }
 
 function parseMark(raw: string): ReadMark | null {

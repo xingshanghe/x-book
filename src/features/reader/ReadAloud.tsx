@@ -13,8 +13,19 @@ import {
 } from '@/tts/engine';
 import { playWavBytes, primePlayback } from '@/tts/playback';
 import { createSentencePlayer, type SentencePlayer } from '@/tts/player';
-import { pickReadingVoice, readReadingPrefs, writeReadingPrefs, type ReadingPrefs } from '@/tts/prefs';
-import { clearReadMark, type ReadMark, recallReadMark, rememberReadMark } from '@/tts/resume';
+import {
+  pickReadingVoice,
+  type ReadingPrefs,
+  readReadingPrefs,
+  writeReadingPrefs,
+} from '@/tts/prefs';
+import {
+  clearReadMark,
+  type ReadMark,
+  readingOrigin,
+  recallReadMark,
+  rememberReadMark,
+} from '@/tts/resume';
 import {
   FIRST_WINDOW_BLOCKS,
   NEXT_WINDOW_BLOCKS,
@@ -29,14 +40,19 @@ import { Button, Slider } from '@/ui';
 export function ReadAloud({
   bookId,
   anchorChar,
+  chapterOffsets,
+  readPlace,
   index,
   readLines,
   onFollow,
   onClose,
 }: {
   bookId: string;
-  /** 当前屏幕上的字符位置。没有停读记录时从这里开始。 */
+  /** 当前屏幕上的字符位置。没有停读记录，或已经换了章节时，从这里开始。 */
   anchorChar: number;
+  chapterOffsets: readonly number[];
+  /** 读者点了目录、进度或书签。变了就不再续上停止的那一句。 */
+  readPlace: number;
   index: BlockIndexView;
   readLines: (block: number) => Promise<string[]>;
   onFollow: (charOffset: number) => void;
@@ -48,6 +64,7 @@ export function ReadAloud({
   const [player, setPlayer] = useState<SentencePlayer | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [mark, setMark] = useState<ReadMark | null>(() => recallReadMark(bookId));
+  const [seenPlace, setSeenPlace] = useState(readPlace);
   const [confirming, setConfirming] = useState(false);
   const [voices, setVoices] = useState<VoicePack[]>([]);
   const [prefs, setPrefs] = useState<ReadingPrefs>(() => readReadingPrefs());
@@ -62,12 +79,63 @@ export function ReadAloud({
   const indexRef = useRef(index);
   const anchorRef = useRef(anchorChar);
   const onFollowRef = useRef(onFollow);
+  /** 停下时屏幕上的位置。拿它和现在的位置比，才知道人有没有换章。 */
+  const parkedRef = useRef<number | null>(null);
+  const offsetsRef = useRef(chapterOffsets);
+  const placeRef = useRef(readPlace);
+  /** 刚换过章节时，别让还在跑的跟读把画面拉回去。 */
+  const holdFollow = useRef(false);
   readLinesRef.current = readLines;
   indexRef.current = index;
   anchorRef.current = anchorChar;
   onFollowRef.current = onFollow;
+  offsetsRef.current = chapterOffsets;
+  if (readPlace !== seenPlace) {
+    setSeenPlace(readPlace);
+    holdFollow.current = true;
+    if (mark) {
+      clearReadMark(bookId);
+      parkedRef.current = null;
+      setMark(null);
+    }
+  } else if (parkedRef.current == null && mark) {
+    parkedRef.current = mark.charOffset;
+  }
 
   const spokenIndex = snapshot && snapshot.status !== 'idle' ? snapshot.index : -1;
+  const parked = parkedRef.current ?? mark?.charOffset ?? anchorChar;
+  const resumeMark =
+    mark && readingOrigin(mark, anchorChar, chapterOffsets, parked) === mark.charOffset
+      ? mark
+      : null;
+
+  useEffect(() => {
+    if (preparing || player) return;
+    if (!mark) return;
+    const stayed = readingOrigin(
+      mark,
+      anchorChar,
+      offsetsRef.current,
+      parkedRef.current ?? mark.charOffset,
+    );
+    if (stayed === mark.charOffset) return;
+    clearReadMark(bookId);
+    parkedRef.current = null;
+    setMark(null);
+  }, [anchorChar, bookId, mark, player, preparing]);
+
+  useEffect(() => {
+    if (placeRef.current === readPlace) return;
+    placeRef.current = readPlace;
+    const current = playerRef.current;
+    if (!current) return;
+    run.current += 1;
+    current.stop();
+    playerRef.current = null;
+    setPlayer(null);
+    setPreparing(false);
+    setSnapshot(null);
+  }, [readPlace]);
 
   useEffect(() => {
     void listVoices()
@@ -91,6 +159,7 @@ export function ReadAloud({
     }
     let seeked = false;
     const tick = () => {
+      if (holdFollow.current) return;
       if (paintSpoken(item.charOffset)) return;
       if (seeked) return;
       seeked = true;
@@ -108,6 +177,7 @@ export function ReadAloud({
       const item = scriptRef.current[current?.state.index ?? -1];
       if (current && item && current.state.status !== 'idle') {
         rememberReadMark(bookId, { charOffset: item.charOffset, sentence: item.text });
+        parkedRef.current = anchorRef.current;
       }
       current?.stop();
       playerRef.current = null;
@@ -117,7 +187,14 @@ export function ReadAloud({
   const keep = (item: SpokenSentence) => {
     const next = { charOffset: item.charOffset, sentence: item.text };
     rememberReadMark(bookId, next);
+    parkedRef.current = anchorRef.current;
     setMark(next);
+  };
+
+  const dropMark = () => {
+    clearReadMark(bookId);
+    parkedRef.current = null;
+    setMark(null);
   };
 
   const stopReading = () => {
@@ -158,6 +235,7 @@ export function ReadAloud({
 
   const start = async () => {
     const ticket = ++run.current;
+    holdFollow.current = false;
     const previous = playerRef.current;
     playerRef.current = null;
     previous?.stop();
@@ -174,7 +252,9 @@ export function ReadAloud({
     setNote(null);
     try {
       const saved = recallReadMark(bookId);
-      let from = saved?.charOffset ?? anchorRef.current;
+      const anchor = anchorRef.current;
+      let from = readingOrigin(saved, anchor, offsetsRef.current, parkedRef.current ?? undefined);
+      if (saved && from !== saved.charOffset) dropMark();
       let loaded = await readSpokenScript(
         readLinesRef.current,
         indexRef.current,
@@ -182,8 +262,8 @@ export function ReadAloud({
         FIRST_WINDOW_BLOCKS,
       );
       if (ticket !== run.current) return;
-      if (loaded.sentences.length === 0 && saved && from !== anchorRef.current) {
-        from = anchorRef.current;
+      if (loaded.sentences.length === 0 && saved && from !== anchor) {
+        from = anchor;
         loaded = await readSpokenScript(
           readLinesRef.current,
           indexRef.current,
@@ -194,8 +274,7 @@ export function ReadAloud({
       }
       if (loaded.sentences.length === 0) {
         setNote('后面没有可以朗读的句子');
-        clearReadMark(bookId);
-        setMark(null);
+        dropMark();
         return;
       }
       const loadedVoices = await listVoices();
@@ -233,8 +312,7 @@ export function ReadAloud({
       setPreparing(false);
       await next.start();
       if (ticket !== run.current) return;
-      clearReadMark(bookId);
-      setMark(null);
+      dropMark();
       scriptRef.current = [];
     } catch (error) {
       if (ticket !== run.current) return;
@@ -255,14 +333,14 @@ export function ReadAloud({
 
   const active = preparing || player != null;
   const paused = snapshot?.status === 'paused';
-  const lead = snapshot?.sentence || mark?.sentence || '从当前这一屏开始，会一直往下读。';
+  const lead = snapshot?.sentence || resumeMark?.sentence || '从当前这一屏开始，会一直往下读。';
 
   return (
     <section className="tts-panel" aria-label="朗读">
       <p>{lead}</p>
       {snapshot?.gapNote && <p className="tts-note">{snapshot.gapNote}</p>}
-      {!snapshot?.sentence && mark && <p className="tts-note">点继续，从这句重新读。</p>}
-      {!snapshot?.sentence && !mark && !note && (
+      {!snapshot?.sentence && resumeMark && <p className="tts-note">点继续，从这句重新读。</p>}
+      {!snapshot?.sentence && !resumeMark && !note && (
         <p className="tts-note">不会在段末停下，只有停止才会停。</p>
       )}
       {note && <p className="tts-note">{note}</p>}
@@ -377,7 +455,7 @@ export function ReadAloud({
         ) : (
           <>
             <Button size="sm" disabled={active} onClick={() => void start()}>
-              {beginLabel(preparing, player != null, mark)}
+              {beginLabel(preparing, player != null, resumeMark)}
             </Button>
             {paused ? (
               <Button size="sm" onClick={() => player?.resume()}>

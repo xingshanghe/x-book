@@ -6,8 +6,8 @@
  * 恢复时逐级回退；charOffset 用「可见字符」口径，跨字号/跨设备不漂移。
  */
 
-import { locateCharOffset } from '../parser/scanner';
 import type { BlockIndex, Progress } from '@/types/models';
+import { locateCharOffset } from '../parser/scanner';
 
 export interface BlockIndexView {
   starts: Uint32Array;
@@ -43,10 +43,7 @@ export function blockAtChar(idx: BlockIndexView, charOffset: number): number {
 }
 
 /** 章节列表 → 某字符偏移所在章号（二分） */
-export function chapterAtChar(
-  chapterOffsets: number[],
-  charOffset: number,
-): number {
+export function chapterAtChar(chapterOffsets: readonly number[], charOffset: number): number {
   let lo = 0;
   let hi = chapterOffsets.length - 1;
   while (lo < hi) {
