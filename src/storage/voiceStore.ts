@@ -1,13 +1,15 @@
 /** 用户音色包：短 wav + 对齐文本，存在 IndexedDB，不进安装包。 */
 
 import { nanoid } from '@/lib/id';
-import { VOICE_KEEP_LIMIT } from '@/tts/account';
+import { BUILTIN_VOICE_SLOTS, VOICE_KEEP_LIMIT } from '@/tts/account';
 import type { VoiceOrigin, VoicePack } from '@/tts/types';
 import { wavBlobFromBase64 } from '@/tts/wav';
 import { getDB } from './db';
 
-export function voiceLimitError(count: number, limit = VOICE_KEEP_LIMIT): string | null {
-  if (count >= limit) return `最多保留 ${limit} 个音色，请先删掉一个`;
+export function voiceLimitError(storedCount: number, limit = VOICE_KEEP_LIMIT): string | null {
+  if (storedCount + BUILTIN_VOICE_SLOTS >= limit) {
+    return `最多保留 ${limit} 个音色（含引擎示例），请先删掉一个`;
+  }
   return null;
 }
 

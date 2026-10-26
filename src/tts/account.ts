@@ -18,7 +18,7 @@ export interface AccountProfile {
   id: string;
   username: string;
   enrollCredits: number;
-  /** 旧服务仍可能带回这个字段。音色管理已改为赞助一次开通。 */
+  /** 旧服务仍可能带回这个字段。音色管理不再按次扣次数。 */
   chargeCredits?: boolean;
   sponsored?: boolean;
   sponsorChannel?: string;
@@ -43,13 +43,15 @@ export interface SponsorOffer {
   voiceLimit: number;
 }
 
+/** 含引擎示例（雷军）。自己的音色最多再留 2 个。 */
 export const VOICE_KEEP_LIMIT = 3;
+export const BUILTIN_VOICE_SLOTS = 1;
 
 export const SPONSOR_OFFER: SponsorOffer = {
   title: '赞助一杯咖啡',
-  body: '添加音色时，声音样本要在服务器上处理。机器和流量是我自己在维护，需要赞助一杯咖啡来维持这项基础服务。每人最多保留 3 个音色，删掉一个就可以再加一个。',
+  body: '机器和流量是我自己在维护。愿意的话，可以赞助一杯咖啡，帮我把这项基础服务留住。',
   amountNote: '',
-  note: '付完后点一下你用的那一种。',
+  note: '',
   qrs: [
     { channel: 'wechat', label: '微信', qrPath: '/v1/sponsor/qrcode/wechat' },
     { channel: 'alipay', label: '支付宝', qrPath: '/v1/sponsor/qrcode/alipay' },
@@ -74,6 +76,12 @@ export interface AccountClient {
   me(): Promise<AccountResult<AccountProfile>>;
   sponsorOffer(): Promise<AccountResult<SponsorOffer>>;
   sponsor(channel: SponsorChannel): Promise<AccountResult<{ sponsored: boolean; channel: string }>>;
+  submitSponsorRecord(input: {
+    name: string;
+    phone: string;
+    paidOn: string;
+    note: string;
+  }): Promise<AccountResult<{ id: string }>>;
   deleteVoice(id: string): Promise<AccountResult<{ success: boolean }>>;
   enroll(
     file: Blob,
@@ -220,6 +228,13 @@ export function createAccountClient(opts: {
       return call<{ sponsored: boolean; channel: string }>(
         '/v1/account/sponsor',
         { method: 'POST', body: JSON.stringify({ channel }) },
+        true,
+      );
+    },
+    submitSponsorRecord(input) {
+      return call<{ id: string }>(
+        '/v1/sponsor/records',
+        { method: 'POST', body: JSON.stringify(input) },
         true,
       );
     },

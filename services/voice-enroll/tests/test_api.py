@@ -133,15 +133,12 @@ def test_enroll_skips_credits_when_charging_is_off(tmp_path: Path):
     assert health.json()["data"]["chargeCredits"] is False
     created = client.post("/v1/auth/register", json={"username": "reader", "password": "password1"})
     token = created.json()["data"]["accessToken"]
-    blocked = enroll(client, token)
-    assert blocked.status_code == 402
-    assert sponsor(client, token).status_code == 200
     made = enroll(client, token)
     assert made.status_code == 200
     me = client.get("/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.json()["data"]["enrollCredits"] == 0
     assert me.json()["data"]["chargeCredits"] is False
-    assert me.json()["data"]["sponsored"] is True
+    assert me.json()["data"]["sponsored"] is False
     assert me.json()["data"]["voiceCount"] == 1
     assert list((tmp_path / "uploads").iterdir()) == []
 
@@ -165,10 +162,6 @@ def test_sponsor_once_then_keep_three_voices(tmp_path: Path):
         assert qr.status_code == 200
         assert qr.content.startswith(b"\x89PNG")
 
-    empty = enroll(client, token)
-    assert empty.status_code == 402
-    assert empty.json()["message"] == "请先赞助一杯咖啡"
-    assert list(uploads.iterdir()) == []
     assert client.post("/v1/account/sponsor", json={"channel": "wechat"}).status_code == 401
 
     added = client.post(
@@ -183,8 +176,6 @@ def test_sponsor_once_then_keep_three_voices(tmp_path: Path):
         json={"username": "reader", "amount": 1},
     )
     assert bad_admin.status_code == 401
-    still_locked = enroll(client, token)
-    assert still_locked.status_code == 402
 
     assert client.post(
         "/v1/account/sponsor",
@@ -217,18 +208,51 @@ def test_sponsor_once_then_keep_three_voices(tmp_path: Path):
     assert after == before
 
     second = enroll(client, token)
-    third = enroll(client, token)
     assert second.status_code == 200
-    assert third.status_code == 200
     full = enroll(client, token)
     assert full.status_code == 409
-    assert full.json()["message"] == "最多保留 3 个音色，请先删掉一个"
-    removed = client.delete(f"/v1/voices/{third.json()['data']['id']}", headers={"Authorization": f"Bearer {token}"})
+    assert full.json()["message"] == "最多保留 3 个音色（含引擎示例），请先删掉一个"
+    removed = client.delete(
+        f"/v1/voices/{second.json()['data']['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert removed.status_code == 200
     again = enroll(client, token)
     assert again.status_code == 200
     counted = client.get("/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
-    assert counted.json()["data"]["voiceCount"] == 3
+    assert counted.json()["data"]["voiceCount"] == 2
+    assert counted.json()["data"]["voiceLimit"] == 3
+
+
+def test_sponsor_record_keeps_name_phone_date_and_note(tmp_path: Path):
+    client, _, _ = build(tmp_path)
+    created = client.post("/v1/auth/register", json={"username": "reader", "password": "password1"})
+    token = created.json()["data"]["accessToken"]
+    anonymous = client.post(
+        "/v1/sponsor/records",
+        json={"name": "reader", "phone": "13800138000", "paidOn": "2026-10-26", "note": ""},
+    )
+    assert anonymous.status_code == 401
+    missing = client.post(
+        "/v1/sponsor/records",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"name": "", "phone": "13800138000", "paidOn": "2026-10-26", "note": ""},
+    )
+    assert missing.status_code == 400
+    bad_phone = client.post(
+        "/v1/sponsor/records",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"name": "reader", "phone": "123", "paidOn": "2026-10-26", "note": ""},
+    )
+    assert bad_phone.status_code == 400
+    saved = client.post(
+        "/v1/sponsor/records",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"name": "大炮", "phone": "13800138000", "paidOn": "2026-10-26", "note": "微信"},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["data"]["id"]
+    assert client.get("/v1/sponsor/thanks").status_code == 404
 
 
 def test_change_password_revokes_refresh_tokens(tmp_path: Path):
