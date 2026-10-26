@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createAccountSession } from '@/account/session';
 import thanksFile from '@/features/settings/thanks.json';
 import { voiceDraftError } from '@/storage/voiceStore';
-import { createAccountClient, voiceAccessLabel } from '@/tts/account';
+import { createAccountClient } from '@/tts/account';
 import { canSubmitEnroll } from '@/tts/enroll';
 
 describe('建档与账号', () => {
@@ -16,22 +16,6 @@ describe('建档与账号', () => {
   it('鸣谢名单来自客户端文件，赞助不会往里写', () => {
     expect(thanksFile.intro.length).toBeGreaterThan(0);
     expect(Array.isArray(thanksFile.entries)).toBe(true);
-  });
-
-  it('未赞助和已赞助的账号文案不同', () => {
-    expect(
-      voiceAccessLabel({ id: '1', username: 'reader', enrollCredits: 0, sponsored: false }),
-    ).toBe('reader · 音色管理未开通');
-    expect(
-      voiceAccessLabel({
-        id: '1',
-        username: 'reader',
-        enrollCredits: 0,
-        sponsored: true,
-        voiceCount: 1,
-        voiceLimit: 3,
-      }),
-    ).toBe('reader · 音色 1/3');
   });
 
   it('对齐文本为空时拒绝写入音色包', () => {

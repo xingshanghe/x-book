@@ -78,7 +78,7 @@ QR_FILES = {
     "alipay": Path(__file__).resolve().parent / "static" / "sponsor-alipay.png",
 }
 SPONSOR_CHANNELS = {"wechat", "alipay"}
-SPONSOR_REQUIRED = "请先赞助一杯咖啡，开通音色管理"
+SPONSOR_REQUIRED = "请先赞助一杯咖啡"
 VOICE_FULL = "最多保留 3 个音色，请先删掉一个"
 
 
@@ -502,10 +502,10 @@ def _profile(app: FastAPI, account, voice_count: int):
 
 def _sponsor_offer():
     return {
-        "title": "赞助一杯咖啡，开通音色管理",
-        "body": "添加音色时，声音样本要在我自己的服务器上处理。机器和流量是实打实的维护费。赞助一次就永久开通，不用按次付费。每个人最多保留 3 个音色，删掉一个就可以再加一个。",
-        "amountNote": "金额随意，付多少都行。",
-        "note": "付款发生在微信或支付宝里。付完后点一下你用的那一种，这个账号就会开通音色管理。鸣谢名单我整理后随下一版更新。",
+        "title": "赞助一杯咖啡",
+        "body": "添加音色时，声音样本要在服务器上处理。机器和流量是我自己在维护，需要赞助一杯咖啡来维持这项基础服务。每人最多保留 3 个音色，删掉一个就可以再加一个。",
+        "amountNote": "",
+        "note": "付完后点一下你用的那一种。",
         "qrs": [
             {"channel": "wechat", "label": "微信", "qrPath": "/v1/sponsor/qrcode/wechat"},
             {"channel": "alipay", "label": "支付宝", "qrPath": "/v1/sponsor/qrcode/alipay"},

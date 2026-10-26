@@ -98,13 +98,7 @@ export function SettingsPage() {
         </nav>
 
         <section id="account" className="settings-section">
-          <UserCenterSection
-            toast={toast}
-            onManageVoices={() => {
-              openAloud();
-              document.getElementById('aloud')?.scrollIntoView({ behavior: 'smooth' });
-            }}
-          />
+          <UserCenterSection toast={toast} />
         </section>
 
         <section id="thanks" className="settings-section">

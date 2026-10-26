@@ -7,7 +7,6 @@ import {
   saveVoice,
   voiceLimitError,
 } from '@/storage/voiceStore';
-import { voiceAccessLabel } from '@/tts/account';
 import {
   deleteInstalledEngine,
   downloadDesktopEngine,
@@ -52,7 +51,7 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
   };
 
   const gate = (): string | null => {
-    if (!profile?.sponsored) return '请先赞助一杯咖啡，开通音色管理';
+    if (!profile?.sponsored) return '请先赞助一杯咖啡';
     return voiceLimitError(voices.length);
   };
 
@@ -117,11 +116,9 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
       )}
 
       <h3>音色</h3>
-      <p className="desc">
-        {profile
-          ? voiceAccessLabel(profile)
-          : '添加音色需要先在上面的账号里登录。未登录时，已在本机的音色仍可朗读。'}
-      </p>
+      {!profile && (
+        <p className="desc">添加音色需要先在上面的账号里登录。未登录时，已在本机的音色仍可朗读。</p>
+      )}
       {!profile?.sponsored ? (
         profile ? (
           <VoiceSponsor toast={toast} onSponsored={() => void refreshProfile()} />
@@ -242,7 +239,7 @@ function VoiceLibrary({
 }) {
   return (
     <>
-      <p className="desc">已开通。最多保留 {voices.length}/3 个，删掉一个就可以再加。</p>
+      <p className="desc">最多保留 {voices.length}/3 个，删掉一个就可以再加。</p>
       <h3>导入音色包</h3>
       <label className="qy-row">
         <span className="qy-row-label">名称</span>

@@ -167,7 +167,7 @@ def test_sponsor_once_then_keep_three_voices(tmp_path: Path):
 
     empty = enroll(client, token)
     assert empty.status_code == 402
-    assert empty.json()["message"] == "请先赞助一杯咖啡，开通音色管理"
+    assert empty.json()["message"] == "请先赞助一杯咖啡"
     assert list(uploads.iterdir()) == []
     assert client.post("/v1/account/sponsor", json={"channel": "wechat"}).status_code == 401
 
