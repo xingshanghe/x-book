@@ -1,6 +1,6 @@
 {
   "name": "qingyue",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "private": true,
   "description": "轻阅 QINGYUE · 本地优先的纯离线 txt 阅读器",
   "type": "module",
