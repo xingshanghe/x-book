@@ -11,6 +11,11 @@ function audioContext(): AudioContext {
   return shared;
 }
 
+/** 录音和朗读共用这一份。调用方不要 close：关掉之后，这一页后面的朗读会没有声音。 */
+export function sharedAudioContext(): AudioContext {
+  return audioContext();
+}
+
 /** 在点击回调里同步调用，避免等合成结束之后浏览器把音频挂起。 */
 export function primePlayback(): void {
   try {

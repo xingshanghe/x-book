@@ -138,7 +138,11 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
         }}
         onRemove={(voice) => {
           void removeStoredVoice(voice).then(async (message) => {
-            if (message) toast(message);
+            if (message) {
+              toast(message);
+              return;
+            }
+            if (readReadingPrefs().voiceId === voice.id) writeReadingPrefs({ voiceId: 'auto' });
             setVoices(await listVoices());
             await refreshProfile();
           });

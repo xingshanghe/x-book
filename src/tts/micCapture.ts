@@ -1,5 +1,6 @@
 /** 用麦克风录一段对齐文本，并写成 16-bit 单声道 wav。 */
 
+import { sharedAudioContext } from './playback';
 import type { ParsedVoicePack } from './voicePack';
 import { VOICE_PACK_MAX_BYTES } from './voicePack';
 import { encodeWavPcm16, mixToMono } from './wav';
@@ -50,7 +51,7 @@ export async function openMicSession(): Promise<MicSession> {
   const stream = await media.getUserMedia({
     audio: { channelCount: { ideal: 1 }, echoCancellation: true, noiseSuppression: true },
   });
-  const ctx = createContext();
+  const ctx = sharedAudioContext();
   if (ctx.state === 'suspended') await ctx.resume();
   const source = ctx.createMediaStreamSource(stream);
   const processor = ctx.createScriptProcessor(4096, 1, 1);
@@ -82,11 +83,11 @@ export async function openMicSession(): Promise<MicSession> {
       if (closed) return concat(chunks, total);
       closed = true;
       processor.onaudioprocess = null;
+      for (const track of stream.getTracks()) track.stop();
       processor.disconnect();
       source.disconnect();
       mute.disconnect();
-      for (const track of stream.getTracks()) track.stop();
-      void ctx.close();
+      // 不要 ctx.close()。关掉之后，这一页后面的朗读会没有声音。
       return concat(chunks, total);
     },
   };
@@ -118,14 +119,6 @@ function concat(chunks: readonly Float32Array[], total: number): Float32Array {
     offset += chunk.length;
   }
   return out;
-}
-
-function createContext(): AudioContext {
-  const Ctx =
-    window.AudioContext ||
-    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!Ctx) throw new Error('当前环境不能使用麦克风');
-  return new Ctx();
 }
 
 function errorName(error: unknown): string {

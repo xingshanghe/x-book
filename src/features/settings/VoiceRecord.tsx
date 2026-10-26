@@ -7,6 +7,7 @@ import {
   RECORD_MAX_SECONDS,
   RECORD_SCRIPT,
 } from '@/tts/micCapture';
+import { primePlayback } from '@/tts/playback';
 import type { ParsedVoicePack } from '@/tts/voicePack';
 import { Button } from '@/ui';
 
@@ -91,6 +92,7 @@ export function VoiceRecord({ onImport }: { onImport: (pack: ParsedVoicePack) =>
     setProblem('');
     setSeconds(0);
     setPhase('recording');
+    primePlayback();
     void openMicSession()
       .then((session) => {
         if (!mounted.current || generation.current !== ticket) {
