@@ -33,6 +33,7 @@ export function createSentencePlayer(opts: {
   let snapshot: PlayerSnapshot = IDLE_PLAYER;
   let paused = false;
   let stopped = false;
+  let active = false;
   let playback = new AbortController();
   const cache = new Map<number, Promise<Uint8Array>>();
 
@@ -46,9 +47,15 @@ export function createSentencePlayer(opts: {
       return snapshot;
     },
     pause() {
-      if (snapshot.status !== 'playing') return;
+      if (!active && snapshot.status !== 'playing') return;
       paused = true;
-      emit({ ...snapshot, status: 'paused' });
+      if (snapshot.status === 'playing') {
+        emit({ ...snapshot, status: 'paused' });
+        return;
+      }
+      if (snapshot.status === 'idle') {
+        emit({ status: 'paused', index: -1, sentence: '', gapNote: null });
+      }
     },
     resume() {
       if (!paused) return;
@@ -58,12 +65,14 @@ export function createSentencePlayer(opts: {
     stop() {
       stopped = true;
       paused = false;
+      active = false;
       playback.abort();
       emit(IDLE_PLAYER);
     },
     async start() {
       stopped = false;
       paused = false;
+      active = true;
       playback = new AbortController();
       cache.clear();
       const signal = playback.signal;
@@ -92,34 +101,38 @@ export function createSentencePlayer(opts: {
         pulling = job;
       };
 
-      for (let index = 0; index < list.length || pulling != null; index++) {
-        if (stopped) return;
-        ensure(index);
-        if (index >= list.length) {
-          if (pulling == null) break;
-          await pulling;
+      try {
+        for (let index = 0; index < list.length || pulling != null; index++) {
           if (stopped) return;
-          if (index >= list.length) break;
+          ensure(index);
+          if (index >= list.length) {
+            if (pulling == null) break;
+            await pulling;
+            if (stopped) return;
+            if (index >= list.length) break;
+          }
+          const sentence = list[index];
+          if (sentence == null) break;
+          const done = await speakOne({
+            index,
+            sentence,
+            signal,
+            prefetch,
+            getPending: () => cache.get(index),
+            getGapNote: () => snapshot.gapNote,
+            pauseAfter: opts.pauseAfter ?? (() => 0),
+            play: opts.play,
+            emit,
+            isPaused: () => paused,
+            isStopped: () => stopped,
+          });
+          if (done === 'stop') return;
+          if (done === 'missing') break;
         }
-        const sentence = list[index];
-        if (sentence == null) break;
-        const done = await speakOne({
-          index,
-          sentence,
-          signal,
-          prefetch,
-          getPending: () => cache.get(index),
-          getGapNote: () => snapshot.gapNote,
-          pauseAfter: opts.pauseAfter ?? (() => 0),
-          play: opts.play,
-          emit,
-          isPaused: () => paused,
-          isStopped: () => stopped,
-        });
-        if (done === 'stop') return;
-        if (done === 'missing') break;
+        if (!stopped) emit(IDLE_PLAYER);
+      } finally {
+        active = false;
       }
-      if (!stopped) emit(IDLE_PLAYER);
     },
   };
 }
@@ -138,12 +151,6 @@ async function speakOne(args: {
   isStopped: () => boolean;
 }): Promise<'next' | 'stop' | 'missing'> {
   if (await hold(args.isPaused, args.isStopped)) return 'stop';
-  args.emit({
-    status: 'playing',
-    index: args.index,
-    sentence: args.sentence,
-    gapNote: args.getGapNote(),
-  });
   for (let step = 0; step <= PREFETCH_AHEAD; step += 1) args.prefetch(args.index + step);
   const started = nowMs();
   const pending = args.getPending();
@@ -152,6 +159,13 @@ async function speakOne(args: {
   const synthMs = nowMs() - started;
   if (args.isStopped()) return 'stop';
   if (await hold(args.isPaused, args.isStopped)) return 'stop';
+  // 等这一句的声音要响了再报出去，高亮才跟得上耳朵听到的那句。
+  args.emit({
+    status: 'playing',
+    index: args.index,
+    sentence: args.sentence,
+    gapNote: args.getGapNote(),
+  });
   const durationMs = await args.play(audio, args.signal);
   if (args.isStopped()) return 'stop';
   const gapNote =

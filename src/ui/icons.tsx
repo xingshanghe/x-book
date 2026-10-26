@@ -136,6 +136,15 @@ export function IconMore({ size, style, className }: P) {
   );
 }
 
+/** 音色：五根等高错落的声纹 */
+export function IconVoice({ size, style, className }: P) {
+  return (
+    <svg {...base(size)} style={style} className={className} aria-hidden>
+      <path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" />
+    </svg>
+  );
+}
+
 export function IconSpark({ size, style, className }: P) {
   return (
     <svg {...base(size)} style={style} className={className} aria-hidden>

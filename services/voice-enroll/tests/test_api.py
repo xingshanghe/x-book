@@ -33,6 +33,23 @@ def build(tmp_path: Path, admin: str | None = "admin-secret"):
     return TestClient(app), clock, tmp_path / "uploads"
 
 
+def sponsor(client: TestClient, token: str, channel: str = "wechat"):
+    return client.post(
+        "/v1/account/sponsor",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"channel": channel},
+    )
+
+
+def enroll(client: TestClient, token: str, amplitude: int = 4000):
+    return client.post(
+        "/v1/voices/enroll",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"audio": ("a.wav", wav_bytes(6, amplitude=amplitude), "audio/wav")},
+        data={"transcript": "今天把这一小段念完。", "consent": "true"},
+    )
+
+
 def test_login_preflight_is_allowed(tmp_path: Path):
     client, _, _ = build(tmp_path)
     response = client.options(
@@ -116,34 +133,43 @@ def test_enroll_skips_credits_when_charging_is_off(tmp_path: Path):
     assert health.json()["data"]["chargeCredits"] is False
     created = client.post("/v1/auth/register", json={"username": "reader", "password": "password1"})
     token = created.json()["data"]["accessToken"]
-    made = client.post(
-        "/v1/voices/enroll",
-        headers={"Authorization": f"Bearer {token}"},
-        files={"audio": ("a.wav", wav_bytes(6), "audio/wav")},
-        data={"transcript": "今天把这一小段念完。", "consent": "true"},
-    )
+    blocked = enroll(client, token)
+    assert blocked.status_code == 402
+    assert sponsor(client, token).status_code == 200
+    made = enroll(client, token)
     assert made.status_code == 200
     me = client.get("/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.json()["data"]["enrollCredits"] == 0
     assert me.json()["data"]["chargeCredits"] is False
+    assert me.json()["data"]["sponsored"] is True
+    assert me.json()["data"]["voiceCount"] == 1
     assert list((tmp_path / "uploads").iterdir()) == []
 
 
-def test_enroll_debits_credits_and_hides_other_accounts(tmp_path: Path):
+def test_sponsor_once_then_keep_three_voices(tmp_path: Path):
     client, _, uploads = build(tmp_path)
     client.post("/v1/auth/register", json={"username": "reader", "password": "password1"})
     other = client.post("/v1/auth/register", json={"username": "other", "password": "password1"})
     other_token = other.json()["data"]["accessToken"]
-    no_credit = client.post("/v1/auth/login", json={"username": "reader", "password": "password1"})
-    token = no_credit.json()["data"]["accessToken"]
-    empty = client.post(
-        "/v1/voices/enroll",
-        headers={"Authorization": f"Bearer {token}"},
-        files={"audio": ("a.wav", wav_bytes(6), "audio/wav")},
-        data={"transcript": "今天把这一小段念完。", "consent": "true"},
-    )
+    signed = client.post("/v1/auth/login", json={"username": "reader", "password": "password1"})
+    token = signed.json()["data"]["accessToken"]
+    offer = client.get("/v1/sponsor")
+    assert offer.status_code == 200
+    assert "咖啡" in offer.json()["data"]["title"]
+    assert "9.9" not in offer.json()["data"]["amountNote"]
+    assert offer.json()["data"]["voiceLimit"] == 3
+    qrs = offer.json()["data"]["qrs"]
+    assert [item["channel"] for item in qrs] == ["wechat", "alipay"]
+    for item in qrs:
+        qr = client.get(item["qrPath"])
+        assert qr.status_code == 200
+        assert qr.content.startswith(b"\x89PNG")
+
+    empty = enroll(client, token)
     assert empty.status_code == 402
+    assert empty.json()["message"] == "请先赞助一杯咖啡，开通音色管理"
     assert list(uploads.iterdir()) == []
+    assert client.post("/v1/account/sponsor", json={"channel": "wechat"}).status_code == 401
 
     added = client.post(
         "/v1/admin/credits",
@@ -157,18 +183,26 @@ def test_enroll_debits_credits_and_hides_other_accounts(tmp_path: Path):
         json={"username": "reader", "amount": 1},
     )
     assert bad_admin.status_code == 401
+    still_locked = enroll(client, token)
+    assert still_locked.status_code == 402
 
-    made = client.post(
-        "/v1/voices/enroll",
+    assert client.post(
+        "/v1/account/sponsor",
         headers={"Authorization": f"Bearer {token}"},
-        files={"audio": ("a.wav", wav_bytes(6), "audio/wav")},
-        data={"transcript": "今天把这一小段念完。", "consent": "true"},
-    )
+        json={"channel": "cash"},
+    ).status_code == 400
+    assert sponsor(client, token, "alipay").status_code == 200
+    assert sponsor(client, token, "wechat").status_code == 200
+    assert client.get("/v1/sponsor/thanks").status_code == 404
+    made = enroll(client, token)
     assert made.status_code == 200
     assert list(uploads.iterdir()) == []
     voice_id = made.json()["data"]["id"]
     me = client.get("/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
-    assert me.json()["data"]["enrollCredits"] == 0
+    assert me.json()["data"]["enrollCredits"] == 1
+    assert me.json()["data"]["sponsored"] is True
+    assert me.json()["data"]["sponsorChannel"] == "alipay"
+    assert me.json()["data"]["voiceCount"] == 1
     hidden = client.delete(f"/v1/voices/{voice_id}", headers={"Authorization": f"Bearer {other_token}"})
     assert hidden.status_code == 404
     own = client.get("/v1/voices", headers={"Authorization": f"Bearer {other_token}"})
@@ -176,21 +210,25 @@ def test_enroll_debits_credits_and_hides_other_accounts(tmp_path: Path):
     restored = client.get("/v1/voices", headers={"Authorization": f"Bearer {token}"})
     assert restored.json()["data"][0]["id"] == voice_id
     assert base64.b64decode(restored.json()["data"][0]["wavBase64"]).startswith(b"RIFF")
-    client.post(
-        "/v1/admin/credits",
-        headers={"Authorization": "Bearer admin-secret"},
-        json={"username": "reader", "amount": 1},
-    )
     before = client.get("/v1/auth/me", headers={"Authorization": f"Bearer {token}"}).json()["data"]["enrollCredits"]
-    noisy = client.post(
-        "/v1/voices/enroll",
-        headers={"Authorization": f"Bearer {token}"},
-        files={"audio": ("a.wav", wav_bytes(6, amplitude=32767), "audio/wav")},
-        data={"transcript": "今天把这一小段念完。", "consent": "true"},
-    )
+    noisy = enroll(client, token, amplitude=32767)
     assert noisy.json()["message"] == "太吵"
     after = client.get("/v1/auth/me", headers={"Authorization": f"Bearer {token}"}).json()["data"]["enrollCredits"]
     assert after == before
+
+    second = enroll(client, token)
+    third = enroll(client, token)
+    assert second.status_code == 200
+    assert third.status_code == 200
+    full = enroll(client, token)
+    assert full.status_code == 409
+    assert full.json()["message"] == "最多保留 3 个音色，请先删掉一个"
+    removed = client.delete(f"/v1/voices/{third.json()['data']['id']}", headers={"Authorization": f"Bearer {token}"})
+    assert removed.status_code == 200
+    again = enroll(client, token)
+    assert again.status_code == 200
+    counted = client.get("/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert counted.json()["data"]["voiceCount"] == 3
 
 
 def test_change_password_revokes_refresh_tokens(tmp_path: Path):

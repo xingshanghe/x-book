@@ -35,6 +35,7 @@ import {
 import { desktopReadingReady } from '@/tts/support';
 import type { PlayerSnapshot, VoicePack } from '@/tts/types';
 import { Button, Slider } from '@/ui';
+import { IconVoice } from '@/ui/icons';
 
 /** 阅读页朗读条。只在用户点过「朗读」后才会被加载。 */
 export function ReadAloud({
@@ -160,7 +161,7 @@ export function ReadAloud({
     let seeked = false;
     const tick = () => {
       if (holdFollow.current) return;
-      if (paintSpoken(item.charOffset)) return;
+      if (paintSpoken(item.charOffset, item.text)) return;
       if (seeked) return;
       seeked = true;
       onFollowRef.current(item.charOffset);
@@ -347,9 +348,11 @@ export function ReadAloud({
       {!confirming && (
         <details className="tts-prefs">
           <summary>朗读设置</summary>
-          <p className="tts-note">修改从后面的句子生效。换气和段末停顿留出来，听起来会更接近人读。</p>
           <label className="tts-voice">
-            <span>音色</span>
+            <span className="tts-voice-name">
+              <IconVoice size={15} />
+              音色
+            </span>
             <select
               value={prefs.voiceId}
               onChange={(event) => changePrefs({ voiceId: event.target.value })}
@@ -518,11 +521,24 @@ function clearSpokenMark(): void {
   for (const el of document.querySelectorAll('.tts-current')) el.classList.remove('tts-current');
 }
 
-/** 把当前句所在的行标出来。行不在视野里时返回 false，调用方再去翻页。 */
-function paintSpoken(char: number): boolean {
+/** 只标当前这一句。句子不在视野里时返回 false，调用方再去翻页。 */
+function paintSpoken(char: number, sentence: string): boolean {
   if (typeof document === 'undefined') return false;
   clearSpokenMark();
   const root = document.querySelector('.reader-main') ?? document.body;
+  const lines = linesAt(root, char).filter((line) => inView(line));
+  if (lines.length === 0) return false;
+  let marked = false;
+  for (const line of lines) {
+    const spoken = sentenceAt(line, char, sentence) ?? line;
+    if (!inView(spoken)) continue;
+    spoken.classList.add('tts-current');
+    marked = true;
+  }
+  return marked;
+}
+
+function linesAt(root: ParentNode, char: number): HTMLElement[] {
   const lines = root.querySelectorAll<HTMLElement>('.qy-line[data-char]');
   let best = -1;
   const hits: HTMLElement[] = [];
@@ -537,10 +553,26 @@ function paintSpoken(char: number): boolean {
       hits.push(line);
     }
   }
-  const visible = hits.filter((line) => inView(line));
-  if (visible.length === 0) return false;
-  for (const line of visible) line.classList.add('tts-current');
-  return true;
+  return hits;
+}
+
+/** 行内按句起点对上正在读的那一句。没有句节点时交给整行。 */
+function sentenceAt(line: HTMLElement, char: number, sentence: string): HTMLElement | null {
+  const spans = [...line.querySelectorAll<HTMLElement>('.qy-sentence[data-char]')];
+  if (spans.length === 0) return null;
+  const exact = spans.find((span) => Number(span.dataset.char) === char);
+  if (exact) return exact;
+  const byText = spans.find((span) => span.textContent === sentence);
+  if (byText) return byText;
+  let best: HTMLElement | null = null;
+  let at = -1;
+  for (const span of spans) {
+    const start = Number(span.dataset.char);
+    if (!Number.isFinite(start) || start > char || start < at) continue;
+    at = start;
+    best = span;
+  }
+  return best;
 }
 
 function inView(line: HTMLElement): boolean {

@@ -29,6 +29,45 @@ export function splitSentences(input: string): string[] {
   return sentenceSpans(input).map((span) => span.text);
 }
 
+export interface SentencePiece {
+  text: string;
+  /** 换行归一化之后，按 Unicode 码点计的起点。 */
+  start: number;
+  /** 句末切出来的一句。句间空白是 false，朗读时不单独高亮。 */
+  sentence: boolean;
+}
+
+/**
+ * 把一段拆成句子和句间空白，拼回去仍是原文。
+ * 句子的 start 与朗读脚本的句起点用同一套切分。
+ */
+export function sentencePieces(input: string): SentencePiece[] {
+  const normalized = input.replace(/\r\n/g, '\n');
+  const spans = sentenceSpans(normalized);
+  if (spans.length === 0) {
+    return normalized ? [{ text: normalized, start: 0, sentence: false }] : [];
+  }
+  const chars = Array.from(normalized);
+  const pieces: SentencePiece[] = [];
+  let cursor = 0;
+  for (const span of spans) {
+    if (span.start > cursor) {
+      pieces.push({
+        text: chars.slice(cursor, span.start).join(''),
+        start: cursor,
+        sentence: false,
+      });
+    }
+    const end = span.start + Array.from(span.text).length;
+    pieces.push({ text: span.text, start: span.start, sentence: true });
+    cursor = end;
+  }
+  if (cursor < chars.length) {
+    pieces.push({ text: chars.slice(cursor).join(''), start: cursor, sentence: false });
+  }
+  return pieces;
+}
+
 function scanSentences(text: string): SentenceSpan[] {
   const chars = Array.from(text);
   const out: SentenceSpan[] = [];

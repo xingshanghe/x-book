@@ -1,9 +1,15 @@
 /** 用户音色包：短 wav + 对齐文本，存在 IndexedDB，不进安装包。 */
 
 import { nanoid } from '@/lib/id';
+import { VOICE_KEEP_LIMIT } from '@/tts/account';
 import type { VoiceOrigin, VoicePack } from '@/tts/types';
 import { wavBlobFromBase64 } from '@/tts/wav';
 import { getDB } from './db';
+
+export function voiceLimitError(count: number, limit = VOICE_KEEP_LIMIT): string | null {
+  if (count >= limit) return `最多保留 ${limit} 个音色，请先删掉一个`;
+  return null;
+}
 
 export function voiceDraftError(name: string, refText: string): string | null {
   if (!name.trim()) return '请填写音色名称';
@@ -28,6 +34,9 @@ export async function saveVoice(input: {
 }): Promise<VoicePack> {
   const problem = voiceDraftError(input.name, input.refText);
   if (problem) throw new Error(problem);
+  const existing = await listVoices();
+  const full = voiceLimitError(existing.length);
+  if (full) throw new Error(full);
   const pack: VoicePack = {
     id: nanoid(8),
     name: input.name.trim().slice(0, 40),
@@ -50,8 +59,10 @@ export async function saveMissingRemoteVoices(
 ): Promise<void> {
   const existing = await listVoices();
   const known = new Set(existing.map((voice) => voice.remoteId).filter((id) => id != null));
+  if (voiceLimitError(existing.length)) return;
   for (const item of items) {
     if (known.has(item.id) || !item.refText.trim() || !item.wavBase64) continue;
+    if (voiceLimitError((await listVoices()).length)) return;
     await saveVoice({
       name: '我的音色',
       refText: item.refText,

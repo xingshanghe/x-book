@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createAccountSession } from '@/account/session';
+import thanksFile from '@/features/settings/thanks.json';
 import { voiceDraftError } from '@/storage/voiceStore';
-import { createAccountClient, enrollQuotaLabel } from '@/tts/account';
+import { createAccountClient, voiceAccessLabel } from '@/tts/account';
 import { canSubmitEnroll } from '@/tts/enroll';
 
 describe('建档与账号', () => {
@@ -12,13 +13,25 @@ describe('建档与账号', () => {
     expect(canSubmitEnroll({ loggedIn: true, consent: true, durationMs: 30_000 })).toBe(false);
   });
 
-  it('不扣次数时账号页不再显示剩余 0 次', () => {
-    expect(enrollQuotaLabel({ id: '1', username: 'reader', enrollCredits: 0, chargeCredits: false })).toBe(
-      'reader · 建档暂不限次数',
-    );
-    expect(enrollQuotaLabel({ id: '1', username: 'reader', enrollCredits: 2, chargeCredits: true })).toBe(
-      'reader · 剩余建档次数 2',
-    );
+  it('鸣谢名单来自客户端文件，赞助不会往里写', () => {
+    expect(thanksFile.intro.length).toBeGreaterThan(0);
+    expect(Array.isArray(thanksFile.entries)).toBe(true);
+  });
+
+  it('未赞助和已赞助的账号文案不同', () => {
+    expect(
+      voiceAccessLabel({ id: '1', username: 'reader', enrollCredits: 0, sponsored: false }),
+    ).toBe('reader · 音色管理未开通');
+    expect(
+      voiceAccessLabel({
+        id: '1',
+        username: 'reader',
+        enrollCredits: 0,
+        sponsored: true,
+        voiceCount: 1,
+        voiceLimit: 3,
+      }),
+    ).toBe('reader · 音色 1/3');
   });
 
   it('对齐文本为空时拒绝写入音色包', () => {

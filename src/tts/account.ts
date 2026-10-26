@@ -1,6 +1,6 @@
 /**
  * 建档账号。模块加载和构造客户端都不会发请求。
- * 只有 register / login / refresh / logout / me / changePassword / enroll / listVoices 会。
+ * 只有 register / login / refresh / logout / me / changePassword / enroll / listVoices / sponsor 会。
  */
 
 import { isTauri } from '@/lib/platform';
@@ -18,13 +18,50 @@ export interface AccountProfile {
   id: string;
   username: string;
   enrollCredits: number;
-  /** 服务端为 false 时不扣建档次数。旧服务没这个字段时仍按次数显示。 */
+  /** 旧服务仍可能带回这个字段。音色管理已改为赞助一次开通。 */
   chargeCredits?: boolean;
+  sponsored?: boolean;
+  sponsorChannel?: string;
+  voiceCount?: number;
+  voiceLimit?: number;
 }
 
-export function enrollQuotaLabel(profile: AccountProfile): string {
-  const quota = profile.chargeCredits === false ? '建档暂不限次数' : `剩余建档次数 ${profile.enrollCredits}`;
-  return `${profile.username} · ${quota}`;
+export type SponsorChannel = 'wechat' | 'alipay';
+
+export interface SponsorQr {
+  channel: SponsorChannel;
+  label: string;
+  qrPath: string;
+}
+
+export interface SponsorOffer {
+  title: string;
+  body: string;
+  amountNote: string;
+  note: string;
+  qrs: SponsorQr[];
+  voiceLimit: number;
+}
+
+export const VOICE_KEEP_LIMIT = 3;
+
+export const SPONSOR_OFFER: SponsorOffer = {
+  title: '赞助一杯咖啡，开通音色管理',
+  body: '添加音色时，声音样本要在我自己的服务器上处理。机器和流量是实打实的维护费。赞助一次就永久开通，不用按次付费。每个人最多保留 3 个音色，删掉一个就可以再加一个。',
+  amountNote: '金额随意，付多少都行。',
+  note: '付款发生在微信或支付宝里。付完后点一下你用的那一种，这个账号就会开通音色管理。鸣谢名单我整理后随下一版更新。',
+  qrs: [
+    { channel: 'wechat', label: '微信', qrPath: '/v1/sponsor/qrcode/wechat' },
+    { channel: 'alipay', label: '支付宝', qrPath: '/v1/sponsor/qrcode/alipay' },
+  ],
+  voiceLimit: VOICE_KEEP_LIMIT,
+};
+
+export function voiceAccessLabel(profile: AccountProfile): string {
+  if (!profile.sponsored) return `${profile.username} · 音色管理未开通`;
+  const limit = profile.voiceLimit ?? VOICE_KEEP_LIMIT;
+  const used = profile.voiceCount ?? 0;
+  return `${profile.username} · 音色 ${used}/${limit}`;
 }
 
 export interface AccountResult<T> {
@@ -42,6 +79,9 @@ export interface AccountClient {
   changePassword(oldPassword: string, newPassword: string): Promise<AccountResult<AuthTokens>>;
   clearLocal(): void;
   me(): Promise<AccountResult<AccountProfile>>;
+  sponsorOffer(): Promise<AccountResult<SponsorOffer>>;
+  sponsor(channel: SponsorChannel): Promise<AccountResult<{ sponsored: boolean; channel: string }>>;
+  deleteVoice(id: string): Promise<AccountResult<{ success: boolean }>>;
   enroll(
     file: Blob,
     transcript: string,
@@ -179,6 +219,23 @@ export function createAccountClient(opts: {
     },
     me() {
       return call<AccountProfile>('/v1/auth/me', { method: 'GET' }, true);
+    },
+    sponsorOffer() {
+      return call<SponsorOffer>('/v1/sponsor', { method: 'GET' }, false);
+    },
+    sponsor(channel) {
+      return call<{ sponsored: boolean; channel: string }>(
+        '/v1/account/sponsor',
+        { method: 'POST', body: JSON.stringify({ channel }) },
+        true,
+      );
+    },
+    deleteVoice(id) {
+      return call<{ success: boolean }>(
+        `/v1/voices/${encodeURIComponent(id)}`,
+        { method: 'DELETE' },
+        true,
+      );
     },
     enroll(file, transcript) {
       const body = new FormData();

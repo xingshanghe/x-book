@@ -833,6 +833,15 @@
   gap: 8px;
   padding: 4px 0;
 }
+.tts-voice-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tts-voice-name svg {
+  flex: none;
+  color: var(--ink-2);
+}
 .tts-voice select {
   max-width: 68%;
 }
@@ -843,8 +852,10 @@
   margin: 8px 0;
 }
 .tts-current {
-  background: color-mix(in srgb, var(--seal) 18%, transparent);
+  background: color-mix(in srgb, var(--seal) 22%, transparent);
   border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 /* 目录项：编号收窄一点，标题才是主体 */

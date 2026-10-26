@@ -33,6 +33,10 @@ class CreditsBody(BaseModel):
     username: str = ""
     amount: int = 0
 
+
+class SponsorBody(BaseModel):
+    channel: str = ""
+
 from app.passwords import generate_salt, hash_password, verify_password
 from app.pipeline import inspect_wav
 
@@ -67,6 +71,15 @@ ENGINE_FILES = {
     "vocos_24khz.onnx",
     "sherpa-onnx-v2.0.0-osx-arm64-shared.tar.bz2",
 }
+
+VOICE_LIMIT = 3
+QR_FILES = {
+    "wechat": Path(__file__).resolve().parent / "static" / "sponsor-wechat.png",
+    "alipay": Path(__file__).resolve().parent / "static" / "sponsor-alipay.png",
+}
+SPONSOR_CHANNELS = {"wechat", "alipay"}
+SPONSOR_REQUIRED = "请先赞助一杯咖啡，开通音色管理"
+VOICE_FULL = "最多保留 3 个音色，请先删掉一个"
 
 
 def create_app(
@@ -109,7 +122,7 @@ def serve() -> None:
     host = os.environ.get("ENROLL_HOST", "127.0.0.1")
     port = int(os.environ.get("ENROLL_PORT", "8787"))
     tts_dir = os.environ.get("ENROLL_TTS_DIR", "").strip() or None
-    # 默认不扣建档次数，方便测试。收费上线时设 ENROLL_CHARGE_CREDITS=1。
+    # 音色管理改为赞助一次永久开通，不再按次扣次数。这个开关只继续出现在健康检查里。
     charge_credits = os.environ.get("ENROLL_CHARGE_CREDITS", "0").strip().lower() in {"1", "true", "yes", "on"}
     import uvicorn
 
@@ -140,7 +153,9 @@ def _migrate(path: str) -> None:
               updated_at INTEGER NOT NULL,
               last_login INTEGER NOT NULL DEFAULT 0,
               login_ip TEXT NOT NULL DEFAULT '',
-              enroll_credits INTEGER NOT NULL DEFAULT 0
+              enroll_credits INTEGER NOT NULL DEFAULT 0,
+              sponsored_at INTEGER NOT NULL DEFAULT 0,
+              sponsor_channel TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS refresh_tokens (
               jti TEXT PRIMARY KEY,
@@ -157,6 +172,11 @@ def _migrate(path: str) -> None:
             );
             """
         )
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(accounts)")}
+        if "sponsored_at" not in columns:
+            conn.execute("ALTER TABLE accounts ADD COLUMN sponsored_at INTEGER NOT NULL DEFAULT 0")
+        if "sponsor_channel" not in columns:
+            conn.execute("ALTER TABLE accounts ADD COLUMN sponsor_channel TEXT NOT NULL DEFAULT ''")
 
 
 def _ok(data):
@@ -261,14 +281,9 @@ def _routes(app: FastAPI, admin_token: str | None) -> None:
         account = _account_from_access(app, authorization)
         if isinstance(account, JSONResponse):
             return account
-        return _ok(
-            {
-                "id": account["id"],
-                "username": account["username"],
-                "enrollCredits": account["enroll_credits"],
-                "chargeCredits": app.state.charge_credits,
-            }
-        )
+        with _connect(app.state.db_path) as conn:
+            voice_count = _voice_count(conn, account["id"])
+        return _ok(_profile(app, account, voice_count))
 
     @app.post("/v1/auth/password")
     def change_password(body: PasswordBody, authorization: str = Header(default="")):
@@ -289,6 +304,43 @@ def _routes(app: FastAPI, admin_token: str | None) -> None:
             conn.execute("DELETE FROM refresh_tokens WHERE account_id = ?", (account["id"],))
         return _issue(app, account["username"])
 
+    @app.get("/v1/sponsor")
+    def sponsor_offer():
+        return _ok(_sponsor_offer())
+
+    @app.get("/v1/sponsor/qrcode/{channel}")
+    def sponsor_qr(channel: str):
+        path = QR_FILES.get(channel)
+        if path is None or not path.is_file():
+            return _err(404, "收款码还没放好")
+        return FileResponse(path, media_type="image/png")
+
+    @app.post("/v1/account/sponsor")
+    def claim_sponsor(body: SponsorBody, authorization: str = Header(default="")):
+        account = _account_from_access(app, authorization)
+        if isinstance(account, JSONResponse):
+            return account
+        if body.channel not in SPONSOR_CHANNELS:
+            return _err(400, "请选择微信或支付宝")
+        now = app.state.clock.now()
+        if int(account["sponsored_at"] or 0) <= 0:
+            with _connect(app.state.db_path) as conn:
+                conn.execute(
+                    """
+                    UPDATE accounts
+                    SET sponsored_at = ?, sponsor_channel = ?, updated_at = ?
+                    WHERE id = ? AND sponsored_at = 0
+                    """,
+                    (now, body.channel, now, account["id"]),
+                )
+        fresh = _reload(app, account["id"])
+        return _ok(
+            {
+                "sponsored": True,
+                "channel": fresh["sponsor_channel"] if fresh is not None else body.channel,
+            }
+        )
+
     @app.post("/v1/voices/enroll")
     async def enroll(
         audio: UploadFile = File(...),
@@ -299,10 +351,10 @@ def _routes(app: FastAPI, admin_token: str | None) -> None:
         account = _account_from_access(app, authorization)
         if isinstance(account, JSONResponse):
             return account
+        if int(account["sponsored_at"] or 0) <= 0:
+            return _err(402, SPONSOR_REQUIRED)
         if consent != "true":
             return _err(400, "请先确认已获授权")
-        if app.state.charge_credits and account["enroll_credits"] <= 0:
-            return _err(402, "建档次数已用完")
         raw = await audio.read()
         if len(raw) > 3_000_000:
             return _err(400, "文件太大")
@@ -316,19 +368,12 @@ def _routes(app: FastAPI, admin_token: str | None) -> None:
             voice_id = uuid.uuid4().hex
             now = app.state.clock.now()
             with _connect(app.state.db_path) as conn:
-                if app.state.charge_credits:
-                    fresh = conn.execute("SELECT enroll_credits FROM accounts WHERE id = ?", (account["id"],)).fetchone()
-                    if fresh is None or fresh["enroll_credits"] <= 0:
-                        return _err(402, "建档次数已用完")
+                if _voice_count(conn, account["id"]) >= VOICE_LIMIT:
+                    return _err(409, VOICE_FULL)
                 conn.execute(
                     "INSERT INTO voices (id, account_id, ref_text, quality, wav, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                     (voice_id, account["id"], ref_text, quality, wav, now),
                 )
-                if app.state.charge_credits:
-                    conn.execute(
-                        "UPDATE accounts SET enroll_credits = enroll_credits - 1 WHERE id = ?",
-                        (account["id"],),
-                    )
             return _ok({"id": voice_id, "refText": ref_text, "quality": quality})
         finally:
             target.unlink(missing_ok=True)
@@ -440,6 +485,38 @@ def _account_from_access(app: FastAPI, authorization: str):
     if payload.get("typ") != "access":
         return _err(401, "未登录")
     return _reload(app, str(payload.get("sub", ""))) or _err(401, "未登录")
+
+
+def _profile(app: FastAPI, account, voice_count: int):
+    return {
+        "id": account["id"],
+        "username": account["username"],
+        "enrollCredits": account["enroll_credits"],
+        "chargeCredits": app.state.charge_credits,
+        "sponsored": int(account["sponsored_at"] or 0) > 0,
+        "sponsorChannel": account["sponsor_channel"] or "",
+        "voiceCount": voice_count,
+        "voiceLimit": VOICE_LIMIT,
+    }
+
+
+def _sponsor_offer():
+    return {
+        "title": "赞助一杯咖啡，开通音色管理",
+        "body": "添加音色时，声音样本要在我自己的服务器上处理。机器和流量是实打实的维护费。赞助一次就永久开通，不用按次付费。每个人最多保留 3 个音色，删掉一个就可以再加一个。",
+        "amountNote": "金额随意，付多少都行。",
+        "note": "付款发生在微信或支付宝里。付完后点一下你用的那一种，这个账号就会开通音色管理。鸣谢名单我整理后随下一版更新。",
+        "qrs": [
+            {"channel": "wechat", "label": "微信", "qrPath": "/v1/sponsor/qrcode/wechat"},
+            {"channel": "alipay", "label": "支付宝", "qrPath": "/v1/sponsor/qrcode/alipay"},
+        ],
+        "voiceLimit": VOICE_LIMIT,
+    }
+
+
+def _voice_count(conn: sqlite3.Connection, account_id: str) -> int:
+    row = conn.execute("SELECT COUNT(*) AS n FROM voices WHERE account_id = ?", (account_id,)).fetchone()
+    return int(row["n"])
 
 
 def _reload(app: FastAPI, account_id: str):

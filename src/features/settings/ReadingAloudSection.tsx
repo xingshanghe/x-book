@@ -1,21 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
 import { accountSession } from '@/account/session';
-import { listVoices, removeVoice, renameVoice, saveVoice } from '@/storage/voiceStore';
 import {
-  type EngineProgress,
+  listVoices,
+  removeVoice,
+  renameVoice,
+  saveVoice,
+  voiceLimitError,
+} from '@/storage/voiceStore';
+import { voiceAccessLabel } from '@/tts/account';
+import {
   deleteInstalledEngine,
   downloadDesktopEngine,
+  type EngineProgress,
   engineDownloadLabel,
   engineProgressLabel,
   readEnginePhase,
 } from '@/tts/engine';
-import { enrollQuotaLabel } from '@/tts/account';
 import { enrollBlockReason, GUIDE_TEXT } from '@/tts/enroll';
 import { desktopReadingReady } from '@/tts/support';
 import type { VoicePack } from '@/tts/types';
 import { encodeWavPcm16, mixToMono } from '@/tts/wav';
 import { Button } from '@/ui';
 import { useAccountProfile } from './useAccountProfile';
+import { VoiceSponsor } from './VoiceSponsor';
 
 export function ReadingAloudSection({ toast }: { toast: (text: string) => void }) {
   const profile = useAccountProfile();
@@ -42,6 +49,35 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
   const refreshProfile = async () => {
     const me = await accountSession.client().me();
     if (me.data) accountSession.remember(me.data);
+  };
+
+  const gate = (): string | null => {
+    if (!profile?.sponsored) return '请先赞助一杯咖啡，开通音色管理';
+    return voiceLimitError(voices.length);
+  };
+
+  const storeEnrolled = async (audio: Blob, transcript: string) => {
+    const blocked = gate();
+    if (blocked) {
+      toast(blocked);
+      return;
+    }
+    const result = await accountSession.client().enroll(audio, transcript);
+    if (!result.ok || !result.data) {
+      toast(result.message);
+      return;
+    }
+    await saveVoice({
+      name: voiceName || '我的音色',
+      refText: result.data.refText,
+      refAudio: audio,
+      origin: 'enrolled',
+      consentAt: Date.now(),
+      remoteId: result.data.id,
+    });
+    setVoices(await listVoices());
+    await refreshProfile();
+    toast('建档完成，已保存在本机');
   };
 
   return (
@@ -80,12 +116,133 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
         </div>
       )}
 
+      <h3>音色</h3>
       <p className="desc">
         {profile
-          ? enrollQuotaLabel(profile)
-          : '建档需要先在书架右上角的「账号」里登录。未登录时，已在本机的音色仍可朗读。'}
+          ? voiceAccessLabel(profile)
+          : '添加音色需要先在上面的账号里登录。未登录时，已在本机的音色仍可朗读。'}
       </p>
+      {!profile?.sponsored ? (
+        profile ? (
+          <VoiceSponsor toast={toast} onSponsored={() => void refreshProfile()} />
+        ) : null
+      ) : (
+        <VoiceLibrary
+          voices={voices}
+          voiceName={voiceName}
+          refText={refText}
+          consent={consent}
+          recording={recording}
+          profileReady={profile != null}
+          setVoiceName={setVoiceName}
+          setRefText={setRefText}
+          setFile={setFile}
+          setConsent={setConsent}
+          onImport={() => {
+            const blocked = gate();
+            if (blocked || !file) {
+              toast(blocked ?? '请选择 wav');
+              return;
+            }
+            void saveVoice({ name: voiceName, refText, refAudio: file, origin: 'import' })
+              .then(async () => {
+                setVoices(await listVoices());
+                toast('已导入音色');
+              })
+              .catch((error: unknown) =>
+                toast(error instanceof Error ? error.message : '导入失败'),
+              );
+          }}
+          onEnrollFile={() => {
+            if (!file) {
+              toast('请选择 wav');
+              return;
+            }
+            if (!consent) {
+              toast('请先确认已获授权');
+              return;
+            }
+            void storeEnrolled(file, refText);
+          }}
+          onToggleRecord={() => {
+            void toggleRecord(
+              recorderRef,
+              startedRef,
+              recording,
+              setRecording,
+              setDurationMs,
+              setSample,
+              toast,
+            );
+          }}
+          onSubmitSample={() => {
+            const reason = enrollBlockReason({
+              loggedIn: profile != null,
+              consent,
+              durationMs,
+            });
+            if (reason || !sample) {
+              toast(reason ?? '请先完成试读');
+              return;
+            }
+            void storeEnrolled(sample, GUIDE_TEXT);
+          }}
+          onRename={(voice) => {
+            const next = window.prompt('音色名称', voice.name);
+            if (!next) return;
+            void renameVoice(voice.id, next).then(async () => setVoices(await listVoices()));
+          }}
+          onRemove={(voice) => {
+            void removeStoredVoice(voice).then(async (message) => {
+              if (message) toast(message);
+              setVoices(await listVoices());
+              await refreshProfile();
+            });
+          }}
+        />
+      )}
+    </>
+  );
+}
 
+function VoiceLibrary({
+  voices,
+  voiceName,
+  refText,
+  consent,
+  recording,
+  profileReady,
+  setVoiceName,
+  setRefText,
+  setFile,
+  setConsent,
+  onImport,
+  onEnrollFile,
+  onToggleRecord,
+  onSubmitSample,
+  onRename,
+  onRemove,
+}: {
+  voices: VoicePack[];
+  voiceName: string;
+  refText: string;
+  consent: boolean;
+  recording: boolean;
+  profileReady: boolean;
+  setVoiceName: (value: string) => void;
+  setRefText: (value: string) => void;
+  setFile: (file: File | null) => void;
+  setConsent: (value: boolean) => void;
+  onImport: () => void;
+  onEnrollFile: () => void;
+  onToggleRecord: () => void;
+  onSubmitSample: () => void;
+  onRename: (voice: VoicePack) => void;
+  onRemove: (voice: VoicePack) => void;
+}) {
+  return (
+    <>
+      <p className="desc">已开通。最多保留 {voices.length}/3 个，删掉一个就可以再加。</p>
       <h3>导入音色包</h3>
       <label className="qy-row">
         <span className="qy-row-label">名称</span>
@@ -100,75 +257,19 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
         accept="audio/wav,audio/wave,.wav"
         onChange={(event) => setFile(event.target.files?.[0] ?? null)}
       />
-      <Button
-        size="sm"
-        onClick={() => {
-          if (!file) {
-            toast('请选择 wav');
-            return;
-          }
-          void saveVoice({ name: voiceName, refText, refAudio: file, origin: 'import' })
-            .then(async () => {
-              setVoices(await listVoices());
-              toast('已导入音色');
-            })
-            .catch((error: unknown) => toast(error instanceof Error ? error.message : '导入失败'));
-        }}
-      >
+      <Button size="sm" onClick={onImport}>
         导入
       </Button>
-      <Button
-        size="sm"
-        disabled={!consent || !profile}
-        onClick={() => {
-          if (!file) {
-            toast('请选择 wav');
-            return;
-          }
-          if (!consent || !profile) return;
-          void accountSession
-            .client()
-            .enroll(file, refText)
-            .then(async (result) => {
-              if (!result.ok || !result.data) {
-                toast(result.message);
-                return;
-              }
-              await saveVoice({
-                name: voiceName || '我的音色',
-                refText: result.data.refText,
-                refAudio: file,
-                origin: 'enrolled',
-                consentAt: Date.now(),
-                remoteId: result.data.id,
-              });
-              setVoices(await listVoices());
-              await refreshProfile();
-              toast('建档完成，已保存在本机');
-            });
-        }}
-      >
+      <Button size="sm" disabled={!consent || !profileReady} onClick={onEnrollFile}>
         用这个文件建档
       </Button>
       {voices.map((voice) => (
         <div className="rule-item" key={voice.id}>
           <b>{voice.name}</b>
-          <Button
-            size="sm"
-            onClick={() => {
-              const next = window.prompt('音色名称', voice.name);
-              if (!next) return;
-              void renameVoice(voice.id, next).then(async () => setVoices(await listVoices()));
-            }}
-          >
+          <Button size="sm" onClick={() => onRename(voice)}>
             改名
           </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              void removeVoice(voice.id).then(async () => setVoices(await listVoices()));
-            }}
-          >
+          <Button size="sm" onClick={() => onRemove(voice)}>
             删除
           </Button>
         </div>
@@ -185,62 +286,24 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
         <span>我是本人，或已获得声音主人的授权。音频只用于这一次加工。</span>
       </label>
       <div className="tts-actions">
-        <Button
-          size="sm"
-          onClick={() => {
-            void toggleRecord(
-              recorderRef,
-              startedRef,
-              recording,
-              setRecording,
-              setDurationMs,
-              setSample,
-              toast,
-            );
-          }}
-        >
+        <Button size="sm" onClick={onToggleRecord}>
           {recording ? '停止试读' : '开始试读'}
         </Button>
-        <Button
-          size="sm"
-          disabled={!consent || !profile}
-          onClick={() => {
-            const reason = enrollBlockReason({
-              loggedIn: profile != null,
-              consent,
-              durationMs,
-            });
-            if (reason || !sample) {
-              toast(reason ?? '请先完成试读');
-              return;
-            }
-            void accountSession
-              .client()
-              .enroll(sample, GUIDE_TEXT)
-              .then(async (result) => {
-                if (!result.ok || !result.data) {
-                  toast(result.message);
-                  return;
-                }
-                await saveVoice({
-                  name: voiceName || '我的音色',
-                  refText: result.data.refText,
-                  refAudio: sample,
-                  origin: 'enrolled',
-                  consentAt: Date.now(),
-                  remoteId: result.data.id,
-                });
-                setVoices(await listVoices());
-                await refreshProfile();
-                toast('建档完成，已保存在本机');
-              });
-          }}
-        >
+        <Button size="sm" disabled={!consent || !profileReady} onClick={onSubmitSample}>
           提交建档
         </Button>
       </div>
     </>
   );
+}
+
+async function removeStoredVoice(voice: VoicePack): Promise<string | null> {
+  if (voice.remoteId) {
+    const remote = await accountSession.client().deleteVoice(voice.remoteId);
+    if (!remote.ok) return remote.message || '服务器上的音色还没删掉';
+  }
+  await removeVoice(voice.id);
+  return null;
 }
 
 async function toggleRecord(

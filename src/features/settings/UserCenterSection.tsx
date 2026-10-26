@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react';
 import { accountSession, DEFAULT_ENROLL_ENDPOINT } from '@/account/session';
-import { enrollQuotaLabel } from '@/tts/account';
+import { voiceAccessLabel } from '@/tts/account';
 import { Button } from '@/ui';
 import { useAccountProfile } from './useAccountProfile';
 
-export function UserCenterSection({ toast }: { toast: (text: string) => void }) {
+export function UserCenterSection({
+  toast,
+  onManageVoices,
+}: {
+  toast: (text: string) => void;
+  onManageVoices?: () => void;
+}) {
   const profile = useAccountProfile();
   const [endpoint, setEndpoint] = useState(() => accountSession.readEndpoint());
   const [username, setUsername] = useState('');
@@ -23,20 +29,15 @@ export function UserCenterSection({ toast }: { toast: (text: string) => void }) 
   return (
     <>
       <h2>账号</h2>
-      <label className="qy-row">
-        <span className="qy-row-label">服务地址</span>
-        <input
-          value={endpoint}
-          placeholder={DEFAULT_ENROLL_ENDPOINT}
-          onChange={(event) => setEndpoint(event.target.value)}
-          onBlur={saveEndpoint}
-        />
-      </label>
+      <p className="desc">阅读和已有音色都在本机。账号只用于添加和管理音色。</p>
       {profile ? (
         <>
-          <p className="desc">
-            {enrollQuotaLabel(profile)}
-          </p>
+          <p className="desc">{voiceAccessLabel(profile)}</p>
+          {onManageVoices && (
+            <Button size="sm" onClick={onManageVoices}>
+              {profile.sponsored ? '管理音色' : '开通音色管理'}
+            </Button>
+          )}
           <h3>修改口令</h3>
           <label className="qy-row">
             <span className="qy-row-label">原口令</span>
@@ -145,6 +146,18 @@ export function UserCenterSection({ toast }: { toast: (text: string) => void }) 
           </div>
         </>
       )}
+      <details className="sponsor-advanced">
+        <summary>服务地址</summary>
+        <label className="qy-row">
+          <span className="qy-row-label">地址</span>
+          <input
+            value={endpoint}
+            placeholder={DEFAULT_ENROLL_ENDPOINT}
+            onChange={(event) => setEndpoint(event.target.value)}
+            onBlur={saveEndpoint}
+          />
+        </label>
+      </details>
     </>
   );
 }

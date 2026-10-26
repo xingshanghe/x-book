@@ -172,6 +172,34 @@ describe('朗读状态机', () => {
     expect(player.state.status).toBe('idle');
   });
 
+  it('声音还没出来时，不把这一句报成正在读', async () => {
+    let release: ((audio: Uint8Array) => void) | null = null;
+    const seen: string[] = [];
+    const player = createSentencePlayer({
+      sentences: ['甲。', '乙。'],
+      synth: (sentence) =>
+        new Promise((resolve) => {
+          if (sentence === '甲。') release = resolve;
+          else resolve(new Uint8Array([1]));
+        }),
+      play: async () => {
+        seen.push('play');
+        return 5;
+      },
+      onChange: (state) => {
+        if (state.status === 'playing') seen.push(state.sentence);
+      },
+    });
+    const pending = player.start();
+    await waitUntil(() => release != null);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(seen).toEqual([]);
+    release?.(new Uint8Array([1]));
+    await pending;
+    expect(seen[0]).toBe('甲。');
+    expect(seen[1]).toBe('play');
+  });
+
   it('合成明显慢于音频时长时记下句间停顿', async () => {
     const notes: Array<string | null> = [];
     const player = createSentencePlayer({

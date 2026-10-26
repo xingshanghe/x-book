@@ -162,10 +162,10 @@ export function ShelfPage() {
           options={SORTS}
           onChange={(v) => update({ sortMode: v })}
         />
-        <button type="button" className="qy-icon-btn" onClick={() => navigate('/settings')} aria-label="设置">
+        <button type="button" className="qy-icon-btn" onClick={() => navigate('/settings')} aria-label="个人中心">
           <IconGear />
         </button>
-        <ShelfAccount toast={(text) => toast(text, 'ok')} />
+        <ShelfAccount />
       </header>
 
       <main className="shelf-body">

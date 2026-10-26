@@ -1,4 +1,4 @@
-/** 设置页：外观 / 阅读 / 识别与清洗 / 字体 / 朗读 / 数据 / 同步 / 关于 */
+/** 个人中心：账号 / 鸣谢 / 外观 / 阅读 / 识别与清洗 / 字体 / 朗读 / 数据 / 同步 / 关于 */
 
 import { type ComponentType, useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
@@ -25,8 +25,12 @@ import type { CleanRule } from '@/types/models';
 import { Button, Segmented, Slider, Switch, useToast } from '@/ui';
 import { IconChevronLeft, LogoMark } from '@/ui/icons';
 import './settings.css';
+import { ThanksSection } from './ThanksSection';
+import { UserCenterSection } from './UserCenterSection';
 
 const SECTIONS = [
+  { id: 'account', label: '账号' },
+  { id: 'thanks', label: '鸣谢' },
   { id: 'appearance', label: '外观' },
   { id: 'reading', label: '阅读' },
   { id: 'recognition', label: '识别与清洗' },
@@ -49,6 +53,20 @@ export function SettingsPage() {
     void import('./ReadingAloudSection').then((mod) => setAloud(() => mod.ReadingAloudSection));
   };
 
+  useEffect(() => {
+    const jump = () => {
+      const id = window.location.hash.replace(/^#/, '');
+      if (!id || id.includes('/')) return;
+      if (id === 'aloud') {
+        void import('./ReadingAloudSection').then((mod) => setAloud(() => mod.ReadingAloudSection));
+      }
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+    };
+    jump();
+    window.addEventListener('hashchange', jump);
+    return () => window.removeEventListener('hashchange', jump);
+  }, []);
+
   return (
     <div className="settings">
       <header className="settings-top" data-tauri-drag-region="">
@@ -60,7 +78,7 @@ export function SettingsPage() {
         >
           <IconChevronLeft />
         </button>
-        <h1 data-tauri-drag-region="">设置</h1>
+        <h1 data-tauri-drag-region="">个人中心</h1>
       </header>
 
       <div className="settings-body">
@@ -78,6 +96,20 @@ export function SettingsPage() {
             </Button>
           ))}
         </nav>
+
+        <section id="account" className="settings-section">
+          <UserCenterSection
+            toast={toast}
+            onManageVoices={() => {
+              openAloud();
+              document.getElementById('aloud')?.scrollIntoView({ behavior: 'smooth' });
+            }}
+          />
+        </section>
+
+        <section id="thanks" className="settings-section">
+          <ThanksSection />
+        </section>
 
         {/* ── 外观 ── */}
         <section id="appearance" className="settings-section">

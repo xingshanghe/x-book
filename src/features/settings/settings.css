@@ -139,6 +139,57 @@
   gap: 8px;
   margin: 8px 0;
 }
+.sponsor-card {
+  margin-top: 8px;
+}
+.sponsor-qrs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+  margin: 8px 0;
+}
+.sponsor-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.sponsor-qr img {
+  width: min(220px, 100%);
+  height: auto;
+  border-radius: 12px;
+  background: white;
+}
+.sponsor-qr figcaption {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.sponsor-advanced {
+  margin-top: 12px;
+}
+.sponsor-advanced summary {
+  cursor: pointer;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.thanks-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.thanks-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--line-soft);
+  font-size: 13px;
+}
+.thanks-item span {
+  color: var(--ink-3);
+}
 .settings-section textarea,
 .settings-section input[type="text"],
 .settings-section input[type="password"],
