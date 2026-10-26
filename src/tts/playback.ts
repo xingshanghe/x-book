@@ -21,10 +21,16 @@ export function primePlayback(): void {
   }
 }
 
+export interface PlaybackLive {
+  onProgress?: (ratio: number) => void;
+  isPaused?: () => boolean;
+}
+
 export async function playWavBytes(
   bytes: Uint8Array,
   signal?: AbortSignal,
   speed = 1,
+  live?: PlaybackLive,
 ): Promise<number> {
   const ctx = audioContext();
   if (ctx.state === 'suspended') await ctx.resume();
@@ -36,6 +42,7 @@ export async function playWavBytes(
   const audio = await ctx.decodeAudioData(copy);
   if (signal?.aborted) return 0;
   const rate = Math.min(1.15, Math.max(0.85, speed));
+  if (live?.onProgress || live?.isPaused) return playAcross(ctx, audio, rate, signal, live);
   const source = ctx.createBufferSource();
   source.buffer = audio;
   source.playbackRate.value = rate;
@@ -55,4 +62,118 @@ export async function playWavBytes(
     source.start();
   });
   return durationMs;
+}
+
+/** 一段里有多句时，暂停要停住声音，并按进度把高亮移到对应的一句。单句仍走原来的播放。 */
+async function playAcross(
+  ctx: AudioContext,
+  audio: AudioBuffer,
+  rate: number,
+  signal: AbortSignal | undefined,
+  live: PlaybackLive,
+): Promise<number> {
+  const total = audio.duration;
+  if (total <= 0) return 0;
+  let offset = 0;
+  while (offset < total && (offset === 0 || total - offset >= 0.03)) {
+    if (signal?.aborted) break;
+    while (live.isPaused?.()) {
+      if (signal?.aborted) return durationOf(total, rate);
+      await wait(30);
+    }
+    if (signal?.aborted) break;
+    const next = await playSlice(ctx, audio, rate, offset, total, signal, live);
+    if (signal?.aborted) break;
+    if (live.isPaused?.()) {
+      offset = next;
+      continue;
+    }
+    break;
+  }
+  return durationOf(total, rate);
+}
+
+function playSlice(
+  ctx: AudioContext,
+  audio: AudioBuffer,
+  rate: number,
+  offset: number,
+  total: number,
+  signal: AbortSignal | undefined,
+  live: PlaybackLive,
+): Promise<number> {
+  const source = ctx.createBufferSource();
+  source.buffer = audio;
+  source.playbackRate.value = rate;
+  source.connect(ctx.destination);
+  const startAt = ctx.currentTime;
+  let pausedCut = false;
+  live.onProgress?.(offset / total);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (next: number) => {
+      if (settled) return;
+      settled = true;
+      window.clearInterval(timer);
+      resolve(Math.min(total, Math.max(offset, next)));
+    };
+    const timer = window.setInterval(() => {
+      const pos = position(startAt, ctx, rate, offset, total);
+      live.onProgress?.(pos / total);
+      if (signal?.aborted) {
+        stopSource(source);
+        finish(pos);
+        return;
+      }
+      if (live.isPaused?.()) {
+        pausedCut = true;
+        stopSource(source);
+        finish(pos);
+      }
+    }, 80);
+    source.onended = () => {
+      const pos = position(startAt, ctx, rate, offset, total);
+      finish(pausedCut || live.isPaused?.() ? pos : total);
+    };
+    signal?.addEventListener(
+      'abort',
+      () => {
+        stopSource(source);
+        finish(position(startAt, ctx, rate, offset, total));
+      },
+      { once: true },
+    );
+    try {
+      source.start(0, Math.min(offset, Math.max(0, total - 0.01)));
+    } catch {
+      finish(offset);
+    }
+  });
+}
+
+function position(
+  startAt: number,
+  ctx: AudioContext,
+  rate: number,
+  offset: number,
+  total: number,
+): number {
+  const elapsed = Math.max(0, (ctx.currentTime - startAt) * rate);
+  return Math.min(total, offset + elapsed);
+}
+
+function durationOf(total: number, rate: number): number {
+  return Math.round((total * 1000) / rate);
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function stopSource(source: AudioBufferSourceNode): void {
+  try {
+    source.stop();
+  } catch {
+    /* 已经停了 */
+  }
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { accountSession } from '@/account/session';
 import { SPONSOR_OFFER, type SponsorChannel } from '@/tts/account';
 import { Button } from '@/ui';
+import { IconClose } from '@/ui/icons';
 import alipayQr from '../../../services/voice-enroll/app/static/sponsor-alipay.png';
 import wechatQr from '../../../services/voice-enroll/app/static/sponsor-wechat.png';
 
@@ -32,10 +33,27 @@ export function VoiceSponsor({
   const [paidOn, setPaidOn] = useState(today);
   const [note, setNote] = useState('');
   const [pending, setPending] = useState(false);
+  const [channel, setChannel] = useState<SponsorChannel | null>(null);
 
   useEffect(() => {
     setName((current) => (current.trim() ? current : username));
   }, [username]);
+
+  useEffect(() => {
+    if (!channel) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setChannel(null);
+    };
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [channel]);
+
+  const opened = SPONSOR_OFFER.qrs.find((item) => item.channel === channel) ?? null;
 
   const submit = () => {
     if (!loggedIn) {
@@ -84,14 +102,42 @@ export function VoiceSponsor({
     <div className="sponsor-card">
       <h3>{SPONSOR_OFFER.title}</h3>
       <p className="desc">{SPONSOR_OFFER.body}</p>
-      <div className="sponsor-qrs">
+      <div className="sponsor-pay">
         {SPONSOR_OFFER.qrs.map((item) => (
-          <figure className="sponsor-qr" key={item.channel}>
-            <img src={QR_SRC[item.channel]} alt={`${item.label}收款码`} />
-            <figcaption>{item.label}</figcaption>
-          </figure>
+          <Button key={item.channel} size="sm" onClick={() => setChannel(item.channel)}>
+            {item.label}
+          </Button>
         ))}
       </div>
+      {opened && (
+        <div className="qy-overlay sponsor-modal">
+          <button
+            type="button"
+            className="sponsor-dialog-backdrop"
+            aria-label="关闭收款码"
+            onClick={() => setChannel(null)}
+          />
+          <div
+            className="sponsor-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="sponsor-qr-title"
+          >
+            <div className="sponsor-dialog-head">
+              <h3 id="sponsor-qr-title">{opened.label}收款码</h3>
+              <button
+                type="button"
+                className="qy-icon-btn"
+                onClick={() => setChannel(null)}
+                aria-label="关闭"
+              >
+                <IconClose size={16} />
+              </button>
+            </div>
+            <img src={QR_SRC[opened.channel]} alt={`${opened.label}收款码`} />
+          </div>
+        </div>
+      )}
       <form
         className="sponsor-record"
         onSubmit={(event) => {

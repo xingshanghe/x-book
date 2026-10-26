@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createSentencePlayer } from '@/tts/player';
+import { type UtteranceSentence, utteranceCount } from '@/tts/spoken';
 
 const sentences = ['甲。', '乙。', '丙。'];
 
@@ -173,13 +174,13 @@ describe('朗读状态机', () => {
   });
 
   it('声音还没出来时，不把这一句报成正在读', async () => {
-    let release: ((audio: Uint8Array) => void) | null = null;
+    const gate: { open: ((audio: Uint8Array) => void) | null } = { open: null };
     const seen: string[] = [];
     const player = createSentencePlayer({
       sentences: ['甲。', '乙。'],
       synth: (sentence) =>
         new Promise((resolve) => {
-          if (sentence === '甲。') release = resolve;
+          if (sentence === '甲。') gate.open = resolve;
           else resolve(new Uint8Array([1]));
         }),
       play: async () => {
@@ -191,13 +192,69 @@ describe('朗读状态机', () => {
       },
     });
     const pending = player.start();
-    await waitUntil(() => release != null);
+    await waitUntil(() => gate.open != null);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(seen).toEqual([]);
-    release?.(new Uint8Array([1]));
+    gate.open?.(new Uint8Array([1]));
     await pending;
     expect(seen[0]).toBe('甲。');
     expect(seen[1]).toBe('play');
+  });
+
+  it('第一声只合成一句，同一段后面的短句合成一次', async () => {
+    const script: UtteranceSentence[] = [
+      { text: '甲。', paragraphEnd: false },
+      { text: '乙。', paragraphEnd: false },
+      { text: '丙。', paragraphEnd: true },
+      { text: '丁。', paragraphEnd: true },
+    ];
+    const started: string[] = [];
+    const seen: number[] = [];
+    const player = createSentencePlayer({
+      sentences: script.map((item) => item.text),
+      groupAt: (at, _sentences, firstSound) => utteranceCount(script, at, firstSound),
+      synth: async (text) => {
+        started.push(text);
+        return new Uint8Array([1]);
+      },
+      play: async (_audio, _signal, live) => {
+        live?.onProgress?.(0.2);
+        live?.onProgress?.(0.9);
+        return 20;
+      },
+      onChange: (state) => {
+        if (state.status === 'playing') seen.push(state.index);
+      },
+    });
+    await player.start();
+    expect(started).toEqual(['甲。', '乙。丙。', '丁。']);
+    expect(seen).toEqual([0, 1, 2, 3]);
+  });
+
+  it('一段里有多句时，暂停会让播放停住这段声音', async () => {
+    let seenPaused = false;
+    const player = createSentencePlayer({
+      sentences: ['甲。', '乙。'],
+      groupAt: () => 2,
+      synth: async () => new Uint8Array([1]),
+      play: (_audio, _signal, live) =>
+        new Promise((resolve) => {
+          const timer = setInterval(() => {
+            if (!live?.isPaused?.()) return;
+            seenPaused = true;
+            clearInterval(timer);
+            resolve(10);
+          }, 5);
+        }),
+    });
+    const pending = player.start();
+    await waitUntil(() => player.state.status === 'playing');
+    player.pause();
+    await waitUntil(() => seenPaused);
+    player.stop();
+    await pending;
+    expect(seenPaused).toBe(true);
+    expect(player.state.status).toBe('idle');
   });
 
   it('合成明显慢于音频时长时记下句间停顿', async () => {

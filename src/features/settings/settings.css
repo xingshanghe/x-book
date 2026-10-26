@@ -142,23 +142,49 @@
 .sponsor-card {
   margin-top: 8px;
 }
-.sponsor-qrs {
+.sponsor-pay {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 12px;
-  align-items: flex-start;
-  margin: 8px 0;
-}
-.sponsor-qr {
-  display: flex;
-  flex: 1 1 0;
-  flex-direction: column;
-  align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
-  min-width: 0;
-  margin: 0;
+  margin: 8px 0 4px;
 }
-.sponsor-qr img {
+.sponsor-modal {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.sponsor-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: transparent;
+}
+.sponsor-dialog {
+  position: relative;
+  z-index: 1;
+  width: min(420px, 100%);
+  max-height: min(86vh, 760px);
+  overflow: auto;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper-0);
+  box-shadow: var(--shadow-lg);
+}
+.sponsor-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.sponsor-dialog-head h3 {
+  margin: 0;
+  font-size: var(--step-0);
+  font-weight: 600;
+}
+.sponsor-dialog img {
+  display: block;
   width: 100%;
   height: auto;
   border-radius: 12px;
@@ -185,10 +211,6 @@
   padding: 7px 10px;
   font: inherit;
   color: inherit;
-}
-.sponsor-qr figcaption {
-  color: var(--ink-2);
-  font-size: 13px;
 }
 .sponsor-advanced {
   margin-top: 12px;

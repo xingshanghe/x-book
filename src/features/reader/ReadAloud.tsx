@@ -32,6 +32,7 @@ import {
   readSpokenScript,
   type SpokenSentence,
 } from '@/tts/script';
+import { prepareSpokenText, utteranceCount } from '@/tts/spoken';
 import { desktopReadingReady } from '@/tts/support';
 import type { PlayerSnapshot, VoicePack } from '@/tts/types';
 import { Button, Slider } from '@/ui';
@@ -286,6 +287,8 @@ export function ReadAloud({
       ahead.current = loaded.nextChar;
       const next = createSentencePlayer({
         sentences: loaded.sentences.map((item) => item.text),
+        // 第一声只读一句，按下后的等待和现在一样。同一段里后面的短句合成一次。
+        groupAt: (at, _sentences, firstSound) => utteranceCount(scriptRef.current, at, firstSound),
         synth: (sentence) => {
           const current = readReadingPrefs();
           const voiceId = pickReadingVoice(
@@ -296,9 +299,11 @@ export function ReadAloud({
             voiceId === 'builtin'
               ? 'builtin'
               : (voicesRef.current.find((voice) => voice.id === voiceId) ?? 'builtin');
-          return speakSentence(sentence, pack, { silenceScale: current.silenceScale });
+          return speakSentence(prepareSpokenText(sentence), pack, {
+            silenceScale: current.silenceScale,
+          });
         },
-        play: (audio, signal) => playWavBytes(audio, signal, readReadingPrefs().speed),
+        play: (audio, signal, live) => playWavBytes(audio, signal, readReadingPrefs().speed, live),
         pauseAfter: (index) => {
           const current = readReadingPrefs();
           const item = scriptRef.current[index];
