@@ -49,6 +49,8 @@ export function ReadAloud({
   readLines,
   onFollow,
   onClose,
+  open = true,
+  onActivity,
 }: {
   bookId: string;
   /** 当前屏幕上的字符位置。没有停读记录，或已经换了章节时，从这里开始。 */
@@ -60,6 +62,9 @@ export function ReadAloud({
   readLines: (block: number) => Promise<string[]>;
   onFollow: (charOffset: number) => void;
   onClose: () => void;
+  /** 面板收起时组件仍留着，朗读不会被卸掉。 */
+  open?: boolean;
+  onActivity?: (activity: 'idle' | 'preparing' | 'playing' | 'paused') => void;
 }) {
   const [phase, setPhase] = useState(readEnginePhase());
   const [note, setNote] = useState<string | null>(desktopReadingReady() ? null : '朗读即将支持');
@@ -342,10 +347,14 @@ export function ReadAloud({
 
   const active = preparing || player != null;
   const paused = snapshot?.status === 'paused';
+  const live = preparing ? 'preparing' : paused ? 'paused' : player ? 'playing' : 'idle';
+  useEffect(() => {
+    onActivity?.(live);
+  }, [live, onActivity]);
   const lead = snapshot?.sentence || resumeMark?.sentence || '从当前这一屏开始，会一直往下读。';
 
   return (
-    <section className="tts-panel" aria-label="朗读">
+    <section className="tts-panel" aria-label="朗读" hidden={!open}>
       <p>{lead}</p>
       {snapshot?.gapNote && <p className="tts-note">{snapshot.gapNote}</p>}
       {!snapshot?.sentence && resumeMark && <p className="tts-note">点继续，从这句重新读。</p>}

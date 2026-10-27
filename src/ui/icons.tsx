@@ -3,7 +3,18 @@ import type { CSSProperties } from 'react';
 
 type P = { size?: number; style?: CSSProperties; className?: string };
 
-const base = (size = 20): { width: number; height: number; viewBox: string; fill: string; stroke: string; strokeWidth: number; strokeLinecap: 'round'; strokeLinejoin: 'round' } => ({
+const base = (
+  size = 20,
+): {
+  width: number;
+  height: number;
+  viewBox: string;
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+  strokeLinecap: 'round';
+  strokeLinejoin: 'round';
+} => ({
   width: size,
   height: size,
   viewBox: '0 0 24 24',
@@ -132,6 +143,19 @@ export function IconMore({ size, style, className }: P) {
       <circle cx="5.5" cy="12" r="1.15" fill="currentColor" stroke="none" />
       <circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none" />
       <circle cx="18.5" cy="12" r="1.15" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/**
+ * 小喇叭。外形取自 Tabler Icons 的 volume-2（MIT）。
+ * 声纹单独成路径，朗读时可以单独呼吸。
+ */
+export function IconSpeaker({ size, style, className }: P) {
+  return (
+    <svg {...base(size)} style={style} className={className} aria-hidden>
+      <path className="speaker-wave" d="M15 8a5 5 0 0 1 0 8" />
+      <path d="M6 15h-2a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1h2l3.5 -4.5a.8 .8 0 0 1 1.5 .5v14a.8 .8 0 0 1 -1.5 .5l-3.5 -4.5" />
     </svg>
   );
 }

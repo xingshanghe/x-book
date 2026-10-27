@@ -560,6 +560,7 @@
    ========================================================================== */
 
 .reader-main {
+  position: relative;
   flex: 1;
   min-height: 0;
   min-width: 0;
@@ -856,6 +857,124 @@
   border-radius: 2px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
+}
+
+/* 朗读：贴在正文右下角的小喇叭。只有正在出声时，声纹和光晕才呼吸。 */
+.read-fab-dock {
+  position: absolute;
+  z-index: calc(var(--z-rail) + 1);
+  right: calc(16px + var(--chrome-right));
+  bottom: calc(var(--reader-foot, 108px) + 12px);
+  width: min(22rem, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+.read-fab-dock .tts-panel {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  pointer-events: auto;
+  box-shadow: var(--shadow-lg);
+}
+.read-fab-note {
+  pointer-events: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper-0) 92%, transparent);
+  border: 1px solid var(--line-soft);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.read-fab-anchor {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex: none;
+}
+.read-fab {
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--seal);
+  background: color-mix(in srgb, var(--paper-0) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--seal) 32%, var(--line));
+  box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.read-fab:hover {
+  color: var(--seal);
+  background: var(--paper-1);
+}
+.read-fab:active {
+  transform: scale(0.96);
+}
+.read-fab-ring {
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--seal) 48%, transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+.read-fab-anchor[data-live="playing"] .read-fab {
+  color: var(--paper-0);
+  background: var(--seal);
+  border-color: transparent;
+  animation: read-fab-breathe 1.5s ease-in-out infinite;
+}
+.read-fab-anchor[data-live="playing"] .read-fab:active {
+  animation: none;
+}
+.read-fab-anchor[data-live="playing"] .read-fab-ring {
+  animation: read-fab-ring 1.5s ease-in-out infinite;
+}
+.read-fab-anchor[data-live="playing"] .read-fab-ring.late {
+  animation-delay: 0.75s;
+}
+.read-fab-anchor[data-live="playing"] .speaker-wave {
+  animation: speaker-wave 1.5s ease-in-out infinite;
+}
+@keyframes read-fab-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+@keyframes read-fab-ring {
+  0% {
+    transform: scale(0.78);
+    opacity: 0;
+  }
+  35% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.72);
+    opacity: 0;
+  }
+}
+@keyframes speaker-wave {
+  0%,
+  100% {
+    opacity: 0.28;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 /* 目录项：编号收窄一点，标题才是主体 */

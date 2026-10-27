@@ -55,6 +55,7 @@ import {
   IconMoon,
   IconSearch,
   IconSettings2,
+  IconSpeaker,
   IconSun,
 } from '@/ui/icons';
 import { AnnotatedLine } from './AnnotatedLine';
@@ -68,6 +69,8 @@ import './reader.css';
 
 const NO_HEADINGS: readonly string[] = [];
 const EMPTY_BREAKS: ReadonlyMap<number, number> = new Map();
+
+type ReadActivity = 'idle' | 'preparing' | 'playing' | 'paused';
 
 interface Loaded {
   book: Book;
@@ -147,6 +150,10 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   const noteOpenedAt = useRef<number | null>(null);
   const [barsVisible, setBarsVisible] = useState(true);
   const [aloudNote, setAloudNote] = useState<string | null>(null);
+  const [aloudOpen, setAloudOpen] = useState(false);
+  const [aloudLive, setAloudLive] = useState<ReadActivity>('idle');
+  const [footH, setFootH] = useState(108);
+  const footRef = useRef<HTMLElement>(null);
   const [readPlace, setReadPlace] = useState(0);
   const [Aloud, setAloud] = useState<ComponentType<{
     bookId: string;
@@ -158,7 +165,12 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     readLines: (block: number) => Promise<string[]>;
     onFollow: (charOffset: number) => void;
     onClose: () => void;
+    open: boolean;
+    onActivity: (activity: ReadActivity) => void;
   }> | null>(null);
+  const onAloudActivity = useCallback((next: ReadActivity) => {
+    setAloudLive((prev) => (prev === next ? prev : next));
+  }, []);
   const bookmarksRef = useRef<Bookmark[]>([]);
   const [, bumpBookmarks] = useState(0);
   const [currentText, setCurrentText] = useState('');
@@ -836,6 +848,21 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     };
   }, [scheduleSave]);
 
+  // 喇叭贴在正文右下角，底栏变高（提示、安全区）时跟着让开。
+  useEffect(() => {
+    if (!data) return;
+    const el = footRef.current;
+    if (!el) return;
+    const publish = () => {
+      const next = el.offsetHeight;
+      setFootH((prev) => (prev === next ? prev : next));
+    };
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [data]);
+
   /* ────────────── 渲染 ────────────── */
 
   if (missing) {
@@ -898,6 +925,22 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     if (x < 0.3) turn(-1);
     else if (x > 0.7) turn(1);
     else setBarsVisible((v) => !v);
+  };
+
+  const toggleAloud = () => {
+    if (!desktopReadingReady()) {
+      setAloudNote('朗读即将支持');
+      return;
+    }
+    setAloudNote(null);
+    if (!Aloud) {
+      void import('./ReadAloud').then((mod) => {
+        setAloud(() => mod.ReadAloud);
+        setAloudOpen(true);
+      });
+      return;
+    }
+    setAloudOpen((open) => !open);
   };
 
   const fontFamily =
@@ -1020,7 +1063,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
           </div>
         )}
 
-        <footer className={`reader-bar bottom${barsVisible ? '' : ' hidden'}`}>
+        <footer ref={footRef} className={`reader-bar bottom${barsVisible ? '' : ' hidden'}`}>
           <span className="chapter">
             {chapterName}
             {settings.pageMode === 'page' && pageInfo.count > 1 && (
@@ -1095,27 +1138,20 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
             <button
               type="button"
               className="qy-icon-btn"
-              aria-label="朗读"
-              onClick={() => {
-                if (!desktopReadingReady()) {
-                  setAloudNote('朗读即将支持');
-                  return;
-                }
-                void import('./ReadAloud').then((mod) => setAloud(() => mod.ReadAloud));
-              }}
-            >
-              读
-            </button>
-            <button
-              type="button"
-              className="qy-icon-btn"
               onClick={() => turn(1)}
               aria-label="下一页"
             >
               <IconChevronRight />
             </button>
           </div>
-          {aloudNote && <span className="hint">{aloudNote}</span>}
+          {settings.showProgressHints && percent > 0.9 && percent < 1 && (
+            <span className="hint">快读完啦，还剩 {formatRemaining(totalChars - currentChar)}</span>
+          )}
+        </footer>
+        <div
+          className="read-fab-dock"
+          style={{ '--reader-foot': `${footH}px` } as React.CSSProperties}
+        >
           {Aloud && (
             <Aloud
               bookId={book.id}
@@ -1125,13 +1161,31 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
               index={idx}
               readLines={(block) => reader.readLines(block)}
               onFollow={seek}
-              onClose={() => setAloud(null)}
+              open={aloudOpen}
+              onActivity={onAloudActivity}
+              onClose={() => {
+                setAloud(null);
+                setAloudOpen(false);
+                setAloudLive('idle');
+              }}
             />
           )}
-          {settings.showProgressHints && percent > 0.9 && percent < 1 && (
-            <span className="hint">快读完啦，还剩 {formatRemaining(totalChars - currentChar)}</span>
-          )}
-        </footer>
+          {aloudNote && <span className="read-fab-note">{aloudNote}</span>}
+          <div className="read-fab-anchor" data-live={aloudLive}>
+            <span className="read-fab-ring" aria-hidden />
+            <span className="read-fab-ring late" aria-hidden />
+            <button
+              type="button"
+              className="read-fab"
+              aria-label="朗读"
+              aria-expanded={aloudOpen}
+              title="朗读"
+              onClick={toggleAloud}
+            >
+              <IconSpeaker size={20} />
+            </button>
+          </div>
+        </div>
       </div>
 
       <SearchSheet
