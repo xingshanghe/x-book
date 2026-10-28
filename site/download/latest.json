@@ -1,0 +1,66 @@
+{
+  "name": "轻阅 QINGYUE",
+  "version": "1.0.25",
+  "tag": "v1.0.25",
+  "released": "2026-10-27",
+  "page": "http://118.25.79.136/",
+  "github": "https://github.com/xingshanghe/x-book/releases/tag/v1.0.25",
+  "files": [
+    {
+      "platform": "macOS",
+      "file": "qingyue-v1.0.25-macos-universal.dmg",
+      "url": "http://118.25.79.136/download/qingyue-v1.0.25-macos-universal.dmg",
+      "bytes": 4263435,
+      "note": "Intel 与 Apple 芯片通用。打开后拖入「应用程序」。"
+    },
+    {
+      "platform": "Windows",
+      "file": "qingyue-v1.0.25-windows-x86_64-setup.exe",
+      "url": "http://118.25.79.136/download/qingyue-v1.0.25-windows-x86_64-setup.exe",
+      "bytes": 1809364,
+      "note": "运行安装程序。"
+    },
+    {
+      "platform": "Linux",
+      "file": "qingyue-v1.0.25-linux-x86_64.deb",
+      "url": "http://118.25.79.136/download/qingyue-v1.0.25-linux-x86_64.deb",
+      "bytes": 2134814,
+      "note": "适用于 Debian、Ubuntu。"
+    },
+    {
+      "platform": "Linux",
+      "file": "qingyue-v1.0.25-linux-x86_64.AppImage",
+      "url": "http://118.25.79.136/download/qingyue-v1.0.25-linux-x86_64.AppImage",
+      "bytes": 80763384,
+      "note": "赋予执行权限后直接运行。"
+    },
+    {
+      "platform": "Android",
+      "file": "qingyue-v1.0.25-android-arm64.apk",
+      "url": "http://118.25.79.136/download/qingyue-v1.0.25-android-arm64.apk",
+      "bytes": 124506976,
+      "note": "常见 64 位手机。安装包未签名，若系统拦截请允许未知来源。"
+    },
+    {
+      "platform": "Android",
+      "file": "qingyue-v1.0.25-android-arm.apk",
+      "url": "http://118.25.79.136/download/qingyue-v1.0.25-android-arm.apk",
+      "bytes": 110608450,
+      "note": "32 位手机。安装包未签名。"
+    },
+    {
+      "platform": "iOS",
+      "file": "qingyue-v1.0.25-ios-unsigned.zip",
+      "url": "http://118.25.79.136/download/qingyue-v1.0.25-ios-unsigned.zip",
+      "bytes": 2161627,
+      "note": "未签名，需自行签名后安装。"
+    },
+    {
+      "platform": "网页",
+      "file": "qingyue-web-v1.0.25.zip",
+      "url": "http://118.25.79.136/download/qingyue-web-v1.0.25.zip",
+      "bytes": 650501,
+      "note": "解压后用浏览器打开，也可安装到桌面或主屏幕。"
+    }
+  ]
+}

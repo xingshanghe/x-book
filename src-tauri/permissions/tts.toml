@@ -1,4 +1,9 @@
 [[permission]]
+identifier = "allow-tts-host"
+description = "读取本机系统和处理器，用来选择朗读引擎。"
+commands.allow = ["tts_host"]
+
+[[permission]]
 identifier = "allow-tts-download-engine"
 description = "确认后把朗读引擎下载到应用数据目录。"
 commands.allow = ["tts_download_engine"]

@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
+    "allow-tts-host",
     "allow-tts-download-engine",
     "allow-tts-cancel-download",
     "allow-tts-delete-engine",

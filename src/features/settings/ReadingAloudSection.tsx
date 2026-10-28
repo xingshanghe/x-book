@@ -71,7 +71,9 @@ export function ReadingAloudSection({ toast }: { toast: (text: string) => void }
     <>
       <h2>朗读</h2>
       <p className="desc">
-        {ready ? engineDownloadLabel() : '朗读即将支持。当前只有 macOS 桌面版可以下载引擎。'}
+        {ready
+          ? engineDownloadLabel()
+          : '手机、鸿蒙和浏览器还不能在本机朗读。请用 Windows、Linux 或 macOS 桌面版。'}
       </p>
       <p className="desc">
         引擎状态：{readEnginePhase() === 'installed' ? '已下载' : '未下载'}

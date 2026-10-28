@@ -7,9 +7,12 @@ services:
     ports:
       - "80:8787"
     env_file: .env
+    environment:
+      ENROLL_SITE_DIR: /www
     volumes:
       - enroll-data:/data
       - /opt/qingyue-tts:/tts:ro
+      - /opt/qingyue-www:/www:ro
 
 volumes:
   enroll-data:

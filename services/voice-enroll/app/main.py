@@ -13,6 +13,7 @@ import jwt
 from fastapi import FastAPI, File, Form, Header, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 
@@ -98,6 +99,7 @@ def create_app(
     upload_dir: str | None = None,
     tts_dir: str | None = None,
     charge_credits: bool = True,
+    site_dir: str | None = None,
 ) -> FastAPI:
     if not jwt_secret.strip():
         raise RuntimeError("JWT_SECRET is required")
@@ -114,9 +116,11 @@ def create_app(
     app.state.upload_dir = upload_dir or str(Path(db_path).parent)
     app.state.tts_dir = tts_dir or ""
     app.state.charge_credits = charge_credits
+    app.state.site_dir = site_dir or ""
     Path(app.state.upload_dir).mkdir(parents=True, exist_ok=True)
     _migrate(db_path)
     _routes(app, admin_token)
+    _mount_site(app)
     return app
 
 
@@ -132,10 +136,18 @@ def serve() -> None:
     tts_dir = os.environ.get("ENROLL_TTS_DIR", "").strip() or None
     # 音色管理不再按次扣次数。这个开关只继续出现在健康检查里。
     charge_credits = os.environ.get("ENROLL_CHARGE_CREDITS", "0").strip().lower() in {"1", "true", "yes", "on"}
+    site_dir = os.environ.get("ENROLL_SITE_DIR", "").strip() or None
     import uvicorn
 
     uvicorn.run(
-        create_app(db_path, secret, admin, tts_dir=tts_dir, charge_credits=charge_credits),
+        create_app(
+            db_path,
+            secret,
+            admin,
+            tts_dir=tts_dir,
+            charge_credits=charge_credits,
+            site_dir=site_dir,
+        ),
         host=host,
         port=port,
     )
@@ -485,6 +497,49 @@ def _routes(app: FastAPI, admin_token: str | None) -> None:
         if not path.is_relative_to(root.resolve()) or not path.is_file():
             return _err(404, "没有这个引擎文件")
         return FileResponse(path)
+
+
+_SITE_FILES = {
+    "favicon.svg": "image/svg+xml",
+    "robots.txt": "text/plain; charset=utf-8",
+    "sitemap.xml": "application/xml; charset=utf-8",
+    "llms.txt": "text/plain; charset=utf-8",
+}
+
+
+def _site_file(path: Path, media_type: str):
+    def send():
+        return FileResponse(path, media_type=media_type)
+
+    return send
+
+
+def _mount_site(app: FastAPI) -> None:
+    """官网和安装包。只在配置了目录时挂上，不占用 /v1 与 /tts。"""
+    raw = app.state.site_dir
+    if not raw:
+        return
+    root = Path(raw)
+    index = root / "index.html"
+    if index.is_file():
+
+        @app.get("/")
+        def site_index():
+            return FileResponse(index, media_type="text/html; charset=utf-8")
+
+    for name, media_type in _SITE_FILES.items():
+        path = root / name
+        if path.is_file():
+            app.add_api_route(
+                f"/{name}",
+                _site_file(path, media_type),
+                methods=["GET"],
+                include_in_schema=False,
+            )
+
+    download = root / "download"
+    if download.is_dir():
+        app.mount("/download", StaticFiles(directory=str(download)), name="site-download")
 
 
 def _issue(app: FastAPI, username: str):

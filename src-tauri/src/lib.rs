@@ -12,6 +12,8 @@
 mod menu;
 #[cfg(desktop)]
 mod tts;
+#[cfg(desktop)]
+mod tts_runtime;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,6 +23,7 @@ pub fn run() {
 
     #[cfg(desktop)]
     let builder = builder.invoke_handler(tauri::generate_handler![
+        tts::tts_host,
         tts::tts_download_engine,
         tts::tts_cancel_download,
         tts::tts_delete_engine,

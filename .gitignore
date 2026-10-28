@@ -60,5 +60,9 @@ services/voice-enroll/.venv/
 release/
 .dmg-staging/
 
+# 官网安装包只放在服务器，清单留在仓库
+site/download/*
+!site/download/latest.json
+
 # 编辑器/工具生成
 .codegraph/

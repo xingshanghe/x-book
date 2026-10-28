@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createMemorySink, downloadEngine } from '@/tts/download';
-import { ENGINE_MANIFEST, manifestReady } from '@/tts/manifest';
+import { ENGINE_MANIFEST, manifestForHost, manifestReady } from '@/tts/manifest';
 import type { EngineFile, EngineManifest } from '@/tts/types';
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -11,6 +11,34 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 }
+
+describe('引擎包选择', () => {
+  it('为每个桌面系统和处理器准备一份可校验的引擎', () => {
+    for (const os of ['macos', 'windows', 'linux'] as const) {
+      for (const arch of ['aarch64', 'x86_64'] as const) {
+        const manifest = manifestForHost(os, arch);
+        expect(manifest, `${os}/${arch}`).not.toBeNull();
+        expect(manifestReady(manifest!)).toBe(true);
+        const runtime = manifest!.files.find((file) => file.name.includes('sherpa-onnx-v2'));
+        expect(runtime?.fallbackUrl).toMatch(/^https:\/\/github\.com\/k2-fsa\/sherpa-onnx\//);
+      }
+    }
+  });
+
+  it('继续使用已经钉住的 macOS arm64 包', () => {
+    const runtime = ENGINE_MANIFEST.files.find((file) => file.name.includes('osx-arm64'));
+    expect(runtime).toMatchObject({
+      bytes: 20_225_744,
+      sha256: 'ca352a87d313fb1cce311c7b5ddc2e48df3ff899fb2c43ce8076071f029d1d3f',
+    });
+  });
+
+  it('不为手机准备可执行引擎', () => {
+    expect(manifestForHost('android', 'aarch64')).toBeNull();
+    expect(manifestForHost('ios', 'aarch64')).toBeNull();
+    expect(manifestForHost('linux', 'arm')).toBeNull();
+  });
+});
 
 describe('引擎下载', () => {
   it('加载清单本身不发请求，未确认时也不发请求', async () => {

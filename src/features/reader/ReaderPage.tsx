@@ -43,7 +43,7 @@ import {
 } from '@/storage/repositories/bookRepo';
 import { getProgress, saveProgress } from '@/storage/repositories/progressRepo';
 import { clearReadMark } from '@/tts/resume';
-import { desktopReadingReady } from '@/tts/support';
+import { desktopReadingReady, READING_UNSUPPORTED } from '@/tts/support';
 import type { Book, Bookmark, Chapter } from '@/types/models';
 import { Button, EmptyState, useToast } from '@/ui';
 import {
@@ -165,6 +165,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     readLines: (block: number) => Promise<string[]>;
     onFollow: (charOffset: number) => void;
     onClose: () => void;
+    onCollapse: () => void;
     open: boolean;
     onActivity: (activity: ReadActivity) => void;
   }> | null>(null);
@@ -731,7 +732,8 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (footnote) setFootnote(null);
-        setSheet(null);
+        else if (aloudOpen) setAloudOpen(false);
+        else setSheet(null);
         return;
       }
       if (sheet || footnote) return;
@@ -756,7 +758,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [settings.enableShortcuts, turn, sheet, footnote]);
+  }, [aloudOpen, footnote, settings.enableShortcuts, sheet, turn]);
 
   // 水平滑动翻页
   useEffect(() => {
@@ -929,7 +931,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
 
   const toggleAloud = () => {
     if (!desktopReadingReady()) {
-      setAloudNote('朗读即将支持');
+      setAloudNote(READING_UNSUPPORTED);
       return;
     }
     setAloudNote(null);
@@ -1152,6 +1154,14 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
           className="read-fab-dock"
           style={{ '--reader-foot': `${footH}px` } as React.CSSProperties}
         >
+          {aloudOpen && (
+            <button
+              type="button"
+              className="read-fab-backdrop"
+              aria-label="收起朗读"
+              onClick={() => setAloudOpen(false)}
+            />
+          )}
           {Aloud && (
             <Aloud
               bookId={book.id}
@@ -1163,6 +1173,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
               onFollow={seek}
               open={aloudOpen}
               onActivity={onAloudActivity}
+              onCollapse={() => setAloudOpen(false)}
               onClose={() => {
                 setAloud(null);
                 setAloudOpen(false);
@@ -1177,9 +1188,9 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
             <button
               type="button"
               className="read-fab"
-              aria-label="朗读"
+              aria-label={aloudOpen ? '收起朗读' : '朗读'}
               aria-expanded={aloudOpen}
-              title="朗读"
+              title={aloudOpen ? '收起朗读' : '朗读'}
               onClick={toggleAloud}
             >
               <IconSpeaker size={20} />

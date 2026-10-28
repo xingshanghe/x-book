@@ -1,8 +1,14 @@
 import { invoke } from '@tauri-apps/api/core';
-import { BUILTIN_VOICE, ENGINE_MANIFEST, manifestBytes, manifestReady } from './manifest';
+import {
+  BUILTIN_VOICE,
+  ENGINE_VERSION,
+  manifestBytesUpperBound,
+  manifestForHost,
+  manifestReady,
+} from './manifest';
 import type { LexiconEntry } from './pronounce';
-import { desktopReadingReady } from './support';
-import type { EnginePhase, VoicePack } from './types';
+import { desktopReadingReady, READING_UNSUPPORTED } from './support';
+import type { EngineManifest, EnginePhase, VoicePack } from './types';
 
 const PHASE_KEY = 'qingyue.tts.engine-phase';
 
@@ -28,12 +34,12 @@ function writePhase(phase: EnginePhase): void {
   localStorage.setItem(PHASE_KEY, phase);
 }
 
-/** 只有 macOS 桌面壳、且用户已经确认时才调用。其他端直接返回说明，不发下载。 */
+/** 桌面壳里、用户已经确认后才调用。其他端直接返回说明，不发下载。 */
 export async function downloadDesktopEngine(
   onProgress?: (progress: EngineProgress) => void,
 ): Promise<string | null> {
-  if (!desktopReadingReady()) return '朗读即将支持';
-  if (!manifestReady()) return '引擎清单还没有校验值，暂不能下载';
+  const picked = await manifestForThisMachine();
+  if ('error' in picked) return picked.error;
   writePhase('downloading');
   const { listen } = await import('@tauri-apps/api/event');
   const unlisten = await listen<EngineProgress>('tts-download-progress', (event) => {
@@ -41,12 +47,13 @@ export async function downloadDesktopEngine(
   });
   try {
     await invoke('tts_download_engine', {
-      version: ENGINE_MANIFEST.version,
-      files: ENGINE_MANIFEST.files.map((file) => ({
+      version: picked.manifest.version,
+      files: picked.manifest.files.map((file) => ({
         name: file.name,
         url: file.url,
         sha256: file.sha256,
         bytes: file.bytes,
+        fallbackUrl: file.fallbackUrl ?? null,
       })),
     });
     writePhase('installed');
@@ -64,6 +71,19 @@ export async function cancelEngineDownload(): Promise<void> {
   await invoke('tts_cancel_download');
 }
 
+async function manifestForThisMachine(): Promise<{ manifest: EngineManifest } | { error: string }> {
+  if (!desktopReadingReady()) return { error: READING_UNSUPPORTED };
+  try {
+    const host = await invoke<{ os: string; arch: string }>('tts_host');
+    const manifest = manifestForHost(host.os, host.arch);
+    if (!manifest) return { error: '这个电脑的处理器还没有朗读引擎' };
+    if (!manifestReady(manifest)) return { error: '引擎清单还没有校验值，暂不能下载' };
+    return { manifest };
+  } catch (error) {
+    return { error: messageOf(error, '读不到这台电脑的系统信息') };
+  }
+}
+
 export function engineProgressLabel(progress: EngineProgress): string {
   const pct = progress.total > 0 ? Math.min(100, Math.round((progress.received / progress.total) * 100)) : 0;
   const got = (progress.received / (1024 * 1024)).toFixed(1);
@@ -75,7 +95,7 @@ export function engineProgressLabel(progress: EngineProgress): string {
 export async function deleteInstalledEngine(): Promise<void> {
   writePhase('absent');
   if (!desktopReadingReady()) return;
-  await invoke('tts_delete_engine', { version: ENGINE_MANIFEST.version });
+  await invoke('tts_delete_engine', { version: ENGINE_VERSION });
 }
 
 export async function speakSentence(
@@ -83,12 +103,12 @@ export async function speakSentence(
   pack: VoicePack | 'builtin',
   options?: { silenceScale?: number; pronunciations?: readonly LexiconEntry[] },
 ): Promise<Uint8Array> {
-  if (!desktopReadingReady()) throw new Error('朗读即将支持');
+  if (!desktopReadingReady()) throw new Error(READING_UNSUPPORTED);
   if (readEnginePhase() !== 'installed') throw new Error('请先下载朗读引擎');
   const builtin = pack === 'builtin';
   const wav = await invoke<number[]>('tts_speak', {
     request: {
-      version: ENGINE_MANIFEST.version,
+      version: ENGINE_VERSION,
       text,
       refText: builtin ? BUILTIN_VOICE.refText : pack.refText,
       builtinFile: builtin ? BUILTIN_VOICE.file : null,
@@ -107,6 +127,6 @@ function messageOf(error: unknown, fallback: string): string {
 }
 
 export function engineDownloadLabel(): string {
-  const mb = Math.max(1, Math.round(manifestBytes() / (1024 * 1024)));
+  const mb = Math.max(1, Math.round(manifestBytesUpperBound() / (1024 * 1024)));
   return `朗读引擎大约 ${mb} MB，只需下载一次。下载完成后可离线朗读。`;
 }

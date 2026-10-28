@@ -3,13 +3,18 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::thread;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
+
+use crate::tts_runtime::{
+    clear_download_mark, configure_runtime_libs, find_binary, find_file, mark_executable, sha256_file,
+    stop_pid, tool,
+};
 
 static CANCELLED: AtomicBool = AtomicBool::new(false);
 static DOWNLOAD_PID: AtomicU32 = AtomicU32::new(0);
@@ -24,6 +29,9 @@ pub(crate) struct EngineFileSpec {
     sha256: String,
     #[serde(default)]
     bytes: u64,
+    /// 主地址没有这份文件时再试。两边必须是同一份字节。
+    #[serde(default, rename = "fallbackUrl")]
+    fallback_url: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -76,9 +84,7 @@ fn engine_dir(app: &AppHandle, version: &str) -> Result<PathBuf, String> {
 pub fn tts_cancel_download() {
     CANCELLED.store(true, Ordering::SeqCst);
     let pid = DOWNLOAD_PID.swap(0, Ordering::SeqCst);
-    if pid > 0 {
-        let _ = Command::new("kill").arg(pid.to_string()).status();
-    }
+    stop_pid(pid);
 }
 
 #[tauri::command]
@@ -125,6 +131,11 @@ fn validate_file(file: &EngineFileSpec) -> Result<(), String> {
     if !allowed_download_url(&file.url) {
         return Err("下载地址不在允许的发布源里".into());
     }
+    if let Some(fallback) = file.fallback_url.as_deref() {
+        if !fallback.is_empty() && !allowed_download_url(fallback) {
+            return Err("下载地址不在允许的发布源里".into());
+        }
+    }
     Ok(())
 }
 
@@ -137,7 +148,6 @@ fn download_file(
     done_before: u64,
     grand: u64,
 ) -> Result<(), String> {
-    let part = dir.join(format!("{}.part", file.name));
     let dest = dir.join(&file.name);
     if dest.is_file() && sha256_file(&dest)?.eq_ignore_ascii_case(&file.sha256) {
         unpack_archive(dir, file, &dest)?;
@@ -145,13 +155,73 @@ fn download_file(
         return Ok(());
     }
     let _ = fs::remove_file(&dest);
+    let urls = source_urls(file);
+    let mut last = "下载没有完成".to_string();
+    for (attempt, url) in urls.iter().enumerate() {
+        match download_from(app, dir, file, url, index, count, done_before, grand) {
+            Ok(()) => return Ok(()),
+            Err(err) if err == "已取消" => return Err(err),
+            Err(err) => {
+                last = err;
+                let received = fs::metadata(part_path(dir, file)).map(|meta| meta.len()).unwrap_or(0);
+                if received >= 4_096 || attempt + 1 == urls.len() {
+                    return Err(last);
+                }
+            }
+        }
+    }
+    Err(last)
+}
+
+fn source_urls(file: &EngineFileSpec) -> Vec<&str> {
+    let mut urls = vec![file.url.as_str()];
+    if let Some(fallback) = file.fallback_url.as_deref() {
+        if !fallback.is_empty() && fallback != file.url {
+            urls.push(fallback);
+        }
+    }
+    urls
+}
+
+fn part_path(dir: &Path, file: &EngineFileSpec) -> PathBuf {
+    dir.join(format!("{}.part", file.name))
+}
+
+fn part_marker(dir: &Path, file: &EngineFileSpec) -> PathBuf {
+    dir.join(format!("{}.part.from", file.name))
+}
+
+/// 换了下载地址就丢掉上一个地址留下的半截文件，避免续传拼到另一份内容上。
+fn prepare_part(dir: &Path, file: &EngineFileSpec, url: &str) -> Result<PathBuf, String> {
+    let part = part_path(dir, file);
+    let marker = part_marker(dir, file);
+    let previous = fs::read_to_string(&marker).unwrap_or_default();
+    if previous.trim() != url {
+        let _ = fs::remove_file(&part);
+        fs::write(&marker, url).map_err(|err| err.to_string())?;
+    }
+    Ok(part)
+}
+
+fn download_from(
+    app: &AppHandle,
+    dir: &Path,
+    file: &EngineFileSpec,
+    url: &str,
+    index: usize,
+    count: usize,
+    done_before: u64,
+    grand: u64,
+) -> Result<(), String> {
+    let part = prepare_part(dir, file, url)?;
+    let dest = dir.join(&file.name);
     if cancelled() {
         return Err("已取消".into());
     }
-    let mut child = Command::new("curl")
+    let mut child = tool("curl")
         .args(["-L", "--fail", "--retry", "3", "--retry-delay", "1", "--continue-at", "-", "-o"])
         .arg(&part)
-        .arg(&file.url)
+        .arg(url)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -195,6 +265,7 @@ fn download_file(
         return Err("校验不一致，已删除未完成的文件".into());
     }
     fs::rename(&part, &dest).map_err(|err| err.to_string())?;
+    let _ = fs::remove_file(part_marker(dir, file));
     unpack_archive(dir, file, &dest)?;
     Ok(())
 }
@@ -203,21 +274,18 @@ fn unpack_archive(dir: &Path, file: &EngineFileSpec, dest: &Path) -> Result<(), 
     if !file.name.ends_with(".tar.bz2") {
         return Ok(());
     }
-    let unpacked = Command::new("tar")
+    let unpacked = tool("tar")
         .arg("-xf")
         .arg(dest)
         .current_dir(dir)
         .status()
-        .map_err(|err| err.to_string())?;
+        .map_err(|err| format!("解压引擎包失败：{err}"))?;
     if !unpacked.success() {
         return Err("解压引擎包失败".into());
     }
-    let _ = Command::new("xattr")
-        .args(["-dr", "com.apple.quarantine"])
-        .arg(dir)
-        .status();
+    clear_download_mark(dir);
     if let Some(binary) = find_binary(dir) {
-        let _ = Command::new("chmod").args(["a+x"]).arg(&binary).status();
+        mark_executable(&binary);
     }
     Ok(())
 }
@@ -294,7 +362,7 @@ fn speak_blocking(app: AppHandle, request: SpeakRequest) -> Result<Vec<u8>, Stri
         1.0
     };
     let scale = scale.clamp(0.2, 1.8);
-    let mut cmd = Command::new(&binary);
+    let mut cmd = tool(binary);
     cmd.arg(format!("--zipvoice-encoder={}", encoder.display()))
         .arg(format!("--zipvoice-decoder={}", decoder.display()))
         .arg(format!("--zipvoice-lexicon={lexicon_arg}"))
@@ -307,9 +375,7 @@ fn speak_blocking(app: AppHandle, request: SpeakRequest) -> Result<Vec<u8>, Stri
         .arg(format!("--tts-silence-scale={scale:.2}"))
         .arg(format!("--output-filename={}", out.path().display()))
         .arg(&request.text);
-    if let Some(lib) = find_file(&dir, "libonnxruntime.dylib").and_then(|path| path.parent().map(Path::to_path_buf)) {
-        cmd.env("DYLD_LIBRARY_PATH", lib);
-    }
+    configure_runtime_libs(&mut cmd, &dir);
     let output = cmd.output().map_err(|err| format!("无法启动朗读引擎：{err}"))?;
     if !output.status.success() {
         let detail = String::from_utf8_lossy(&output.stderr);
@@ -412,7 +478,7 @@ fn account_http_blocking(request: AccountHttpRequest) -> Result<AccountHttpRespo
     if let Some(bytes) = &body {
         fs::write(body_file.path(), bytes).map_err(|err| err.to_string())?;
     }
-    let mut cmd = Command::new("curl");
+    let mut cmd = tool("curl");
     cmd.args([
         "-sS",
         "--proto",
@@ -524,22 +590,6 @@ fn allowed_download_url(url: &str) -> bool {
     HOSTS.iter().any(|prefix| url.starts_with(prefix))
 }
 
-fn sha256_file(path: &Path) -> Result<String, String> {
-    let output = Command::new("shasum")
-        .args(["-a", "256"])
-        .arg(path)
-        .output()
-        .map_err(|err| format!("无法校验文件：{err}"))?;
-    if !output.status.success() {
-        return Err("无法校验文件".into());
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
-    text.split_whitespace()
-        .next()
-        .map(str::to_string)
-        .ok_or_else(|| "无法校验文件".into())
-}
-
 /// 用户词表单独写成一个小文件，排在原词表前面。路径里有逗号时改成合并成一份，避免被拆开。
 fn prepare_user_lexicon(
     dir: &Path,
@@ -621,34 +671,23 @@ fn valid_phones(phones: &str) -> bool {
     any
 }
 
-fn find_binary(dir: &Path) -> Option<PathBuf> {
-    find_file(dir, "sherpa-onnx-offline-tts")
+#[derive(Serialize)]
+pub struct SynthHost {
+    os: &'static str,
+    arch: &'static str,
 }
 
-fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(current) = stack.pop() {
-        let Ok(entries) = fs::read_dir(&current) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.file_name().and_then(|item| item.to_str()) == Some(name) {
-                return Some(path);
-            }
-        }
+#[tauri::command]
+pub fn tts_host() -> SynthHost {
+    SynthHost {
+        os: std::env::consts::OS,
+        arch: std::env::consts::ARCH,
     }
-    None
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        account_header_allowed, account_url_allowed, decode_base64, lexicon_body,
-        PronunciationEntry,
-    };
+    use super::{account_header_allowed, account_url_allowed, decode_base64, lexicon_body, PronunciationEntry};
 
     #[test]
     fn user_lexicon_keeps_the_first_reading_and_drops_junk() {

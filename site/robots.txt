@@ -1,0 +1,52 @@
+# 产品页、说明和安装包可以抓取。账号接口与朗读引擎文件不收录。
+User-agent: *
+Allow: /
+Disallow: /v1/
+Disallow: /tts/
+
+User-agent: GPTBot
+Allow: /
+Disallow: /v1/
+Disallow: /tts/
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /v1/
+Disallow: /tts/
+
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /v1/
+Disallow: /tts/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /v1/
+Disallow: /tts/
+
+User-agent: anthropic-ai
+Allow: /
+Disallow: /v1/
+Disallow: /tts/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /v1/
+Disallow: /tts/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /v1/
+Disallow: /tts/
+
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /v1/
+Disallow: /tts/
+
+User-agent: Bytespider
+Allow: /
+Disallow: /v1/
+Disallow: /tts/
+
+Sitemap: http://118.25.79.136/sitemap.xml

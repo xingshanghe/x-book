@@ -22,6 +22,8 @@ export interface EngineFile {
   bytes: number;
   /** 64 位十六进制。空字符串表示清单还没钉住，禁止下载。 */
   sha256: string;
+  /** 主地址没有这个文件时再试。两边必须是同一份字节。 */
+  fallbackUrl?: string;
 }
 
 export interface EngineManifest {

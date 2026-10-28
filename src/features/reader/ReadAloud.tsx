@@ -34,7 +34,7 @@ import {
   type SpokenSentence,
 } from '@/tts/script';
 import { prepareSpokenText, utteranceCount } from '@/tts/spoken';
-import { desktopReadingReady } from '@/tts/support';
+import { desktopReadingReady, READING_UNSUPPORTED } from '@/tts/support';
 import type { PlayerSnapshot, VoicePack } from '@/tts/types';
 import { Button, Slider } from '@/ui';
 import { IconVoice } from '@/ui/icons';
@@ -49,6 +49,7 @@ export function ReadAloud({
   readLines,
   onFollow,
   onClose,
+  onCollapse,
   open = true,
   onActivity,
 }: {
@@ -62,12 +63,14 @@ export function ReadAloud({
   readLines: (block: number) => Promise<string[]>;
   onFollow: (charOffset: number) => void;
   onClose: () => void;
+  /** 只收起面板，朗读继续。 */
+  onCollapse?: () => void;
   /** 面板收起时组件仍留着，朗读不会被卸掉。 */
   open?: boolean;
   onActivity?: (activity: 'idle' | 'preparing' | 'playing' | 'paused') => void;
 }) {
   const [phase, setPhase] = useState(readEnginePhase());
-  const [note, setNote] = useState<string | null>(desktopReadingReady() ? null : '朗读即将支持');
+  const [note, setNote] = useState<string | null>(desktopReadingReady() ? null : READING_UNSUPPORTED);
   const [snapshot, setSnapshot] = useState<PlayerSnapshot | null>(null);
   const [player, setPlayer] = useState<SentencePlayer | null>(null);
   const [preparing, setPreparing] = useState(false);
@@ -249,7 +252,7 @@ export function ReadAloud({
     previous?.stop();
     primePlayback();
     if (!desktopReadingReady()) {
-      setNote('朗读即将支持');
+      setNote(READING_UNSUPPORTED);
       return;
     }
     if (readEnginePhase() !== 'installed') {
@@ -499,15 +502,21 @@ export function ReadAloud({
                 删除引擎
               </Button>
             )}
-            <Button
-              size="sm"
-              onClick={() => {
-                stopReading();
-                onClose();
-              }}
-            >
-              关闭
-            </Button>
+            {active ? (
+              <Button size="sm" onClick={() => onCollapse?.()}>
+                收起
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={() => {
+                  stopReading();
+                  onClose();
+                }}
+              >
+                关闭
+              </Button>
+            )}
           </>
         )}
       </div>

@@ -321,6 +321,52 @@ def test_engine_file_can_be_fetched_in_ranges(tmp_path: Path):
     assert client.get("/tts/other.bin").status_code == 404
 
 
+def test_site_serves_page_and_downloads_without_covering_api(tmp_path: Path):
+    site = tmp_path / "www"
+    (site / "download").mkdir(parents=True)
+    (site / "index.html").write_text("<!doctype html><title>轻阅</title>", encoding="utf-8")
+    (site / "favicon.svg").write_text("<svg></svg>", encoding="utf-8")
+    (site / "robots.txt").write_text("User-agent: *\nAllow: /\n", encoding="utf-8")
+    (site / "llms.txt").write_text("轻阅\n", encoding="utf-8")
+    (site / "sitemap.xml").write_text("<urlset></urlset>", encoding="utf-8")
+    (site / "secret.txt").write_text("nope", encoding="utf-8")
+    (site / "download" / "latest.json").write_text('{"version":"1.0.25"}', encoding="utf-8")
+    (site / "download" / "app.dmg").write_bytes(b"dmg-bytes")
+    app = create_app(
+        str(tmp_path / "enroll.db"),
+        "test-secret",
+        None,
+        Clock(),
+        str(tmp_path / "uploads"),
+        site_dir=str(site),
+    )
+    client = TestClient(app)
+    home = client.get("/")
+    assert home.status_code == 200
+    assert "轻阅" in home.text
+    assert "text/html" in home.headers["content-type"]
+    assert client.get("/favicon.svg").status_code == 200
+    assert "Allow" in client.get("/robots.txt").text
+    assert "轻阅" in client.get("/llms.txt").text
+    assert client.get("/sitemap.xml").status_code == 200
+    assert client.get("/secret.txt").status_code == 404
+    listing = client.get("/download/latest.json")
+    assert listing.status_code == 200
+    assert listing.json()["version"] == "1.0.25"
+    assert client.get("/download/app.dmg").content == b"dmg-bytes"
+    assert client.get("/download/missing.bin").status_code == 404
+    health = client.get("/v1/health")
+    assert health.status_code == 200
+    assert health.json()["success"] is True
+    assert client.get("/v1/voices").status_code == 401
+
+
+def test_root_stays_absent_without_site(tmp_path: Path):
+    client, _, _ = build(tmp_path)
+    assert client.get("/").status_code == 404
+    assert client.get("/download/latest.json").status_code == 404
+
+
 def test_no_synthesis_route(tmp_path: Path):
     client, _, _ = build(tmp_path, admin=None)
     paths = {getattr(route, "path", "") for route in client.app.routes}

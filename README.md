@@ -7,7 +7,7 @@
 
 **免费、开源的本地 txt 阅读器。**
 
-书籍保存在本机，离线可用。
+书籍保存在本机，离线可用。官网：<http://118.25.79.136/>
 
 [![Release](https://img.shields.io/github/v/release/xingshanghe/x-book?label=release&color=B44326)](https://github.com/xingshanghe/x-book/releases/latest)
 [![Platforms](https://img.shields.io/badge/platform-Web%20%7C%20macOS%20%7C%20Windows%20%7C%20Linux%20%7C%20Android%20%7C%20iOS%20%7C%20HarmonyOS-3E5C97)](https://github.com/xingshanghe/x-book/releases)
@@ -53,7 +53,7 @@
 
 **朗读**
 
-macOS 桌面版可在设置中单独下载朗读引擎。安装包不包含该引擎。
+Windows、Linux 与 macOS 桌面版可在设置中单独下载朗读引擎。安装包不包含该引擎。手机、鸿蒙和浏览器还不能在本机朗读。
 
 - 从当前页面继续朗读，中断后可从该句续读
 - 可调节语速，以及句间、段间停顿
@@ -139,7 +139,7 @@ macOS 桌面版可在设置中单独下载朗读引擎。安装包不包含该�
 
 **哪些系统支持朗读？**
 
-目前为 macOS 桌面版。其他系统显示「朗读即将支持」。
+Windows、Linux 与 macOS 桌面版可以下载引擎后离线朗读。手机、鸿蒙和浏览器会提示改用桌面版。
 
 **是否必须注册账号？**
 
