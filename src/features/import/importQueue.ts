@@ -5,11 +5,19 @@
  */
 
 import { create } from 'zustand';
-import { nanoid } from '@/lib/id';
-import { formatBytes } from '@/lib/format';
+import { fingerprint } from '@/core/parser/indexer';
 import { runIndex } from '@/core/worker/client';
-import { newBookRecord, findByFingerprint, putBook, saveIndex } from '@/storage/repositories/bookRepo';
+import { probePdfMeta } from '@/features/comic/pdfEngine';
+import { formatBytes } from '@/lib/format';
+import { nanoid } from '@/lib/id';
 import { putBookFile, getBookBlob, deleteBookFile } from '@/storage/blobStore';
+import { putBookCover } from '@/storage/coverStore';
+import {
+  newBookRecord,
+  findByFingerprint,
+  putBook,
+  saveIndex,
+} from '@/storage/repositories/bookRepo';
 import { loadUserRules } from '@/storage/repositories/defaults';
 import { useSettings } from '@/app/store';
 import { toast } from '@/ui';
@@ -37,17 +45,30 @@ interface ImportStore {
 }
 
 const TXT_RE = /\.(txt|text|log|md)$/i;
+const PDF_RE = /\.pdf$/i;
+const LARGE_PDF_BYTES = 100 * 1024 * 1024;
+/** 超过此体积拒绝导入，避免移动端 OOM */
+const MAX_PDF_BYTES = 250 * 1024 * 1024;
+
+function isPdfFile(f: File): boolean {
+  return PDF_RE.test(f.name) || f.type === 'application/pdf';
+}
+
+function isTxtFile(f: File): boolean {
+  return TXT_RE.test(f.name) || (f.type.startsWith('text/') && !isPdfFile(f));
+}
 
 export const useImportQueue = create<ImportStore>((set) => ({
   tasks: [],
   dragging: false,
 
   add: (files) => {
-    const valid = files.filter((f) => TXT_RE.test(f.name) || f.type.startsWith('text/'));
+    const valid = files.filter((f) => isTxtFile(f) || isPdfFile(f));
     if (valid.length === 0) {
-      // 无反馈的静默失败最容易被当成「拖进来没反应」
       toast(
-        files.length ? `不支持的文件类型：${files[0].name || '未知文件'}（只收 txt / md / log）` : '没有读到文件',
+        files.length
+          ? `不支持的文件类型：${files[0].name || '未知文件'}（只收 txt / md / log / pdf）`
+          : '没有读到文件',
         'warn',
       );
       return;
@@ -133,6 +154,90 @@ function patchTask(id: string, patch: Partial<ImportTask>): void {
 }
 
 async function importOne(file: File, taskId: string): Promise<void> {
+  if (isPdfFile(file)) {
+    await importPdf(file, taskId);
+    return;
+  }
+  await importTxt(file, taskId);
+}
+
+async function importPdf(file: File, taskId: string): Promise<void> {
+  patchTask(taskId, { status: 'running', ratio: 0.05 });
+  try {
+    if (file.size > MAX_PDF_BYTES) {
+      throw new Error(`文件过大（${formatBytes(file.size)}），请控制在 ${formatBytes(MAX_PDF_BYTES)} 以内`);
+    }
+    if (file.size > LARGE_PDF_BYTES) {
+      toast(`${file.name} 约 ${formatBytes(file.size)}，导入与翻页可能较慢`, 'warn');
+    }
+
+    const body = file.slice(0, file.size, 'application/pdf');
+    if (!body.size) throw new Error('PDF 为空，未保存');
+
+    const head = new Uint8Array(await body.slice(0, Math.min(body.size, 64 * 1024)).arrayBuffer());
+    const fp = fingerprint(body.size, head);
+    patchTask(taskId, { ratio: 0.15 });
+
+    const dup = await findByFingerprint(fp);
+    if (dup) {
+      patchTask(taskId, { status: 'duplicate', bookId: dup.id, ratio: 1 });
+      return;
+    }
+
+    patchTask(taskId, { ratio: 0.4 });
+    let pageCount = 0;
+    let cover: Blob | null = null;
+    try {
+      const meta = await probePdfMeta(body);
+      pageCount = meta.pageCount;
+      cover = meta.cover;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(`无法解析 PDF：${msg}`);
+    }
+    if (pageCount < 1) throw new Error('PDF 没有可阅读的页面');
+
+    patchTask(taskId, { ratio: 0.7 });
+    const title = file.name.replace(/\.[^.]+$/, '') || '未命名';
+    const book: Book = newBookRecord({
+      title,
+      kind: 'pdf',
+      pageCount,
+      size: body.size,
+      encoding: 'utf-8',
+      fingerprint: fp,
+      blockCount: pageCount,
+      charCount: 0,
+      lineCount: 0,
+      chapterCount: 0,
+      cleanedLines: 0,
+      footnoteCount: 0,
+      blockSize: 0,
+    });
+
+    await putBookFile(book.id, body);
+    const stored = await getBookBlob(book.id);
+    if (!stored || stored.size !== body.size) {
+      await deleteBookFile(book.id);
+      throw new Error(`文件写入不完整（${stored?.size ?? 0}/${body.size} 字节）`);
+    }
+
+    let hasCover = false;
+    if (cover) {
+      await putBookCover(book.id, cover);
+      hasCover = true;
+    }
+
+    await putBook(hasCover ? { ...book, hasCover: true } : book);
+    patchTask(taskId, { status: 'done', ratio: 1, bookId: book.id });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    patchTask(taskId, { status: 'error', error: msg });
+    toast(`${file.name} 导入失败：${msg}`, 'warn');
+  }
+}
+
+async function importTxt(file: File, taskId: string): Promise<void> {
   patchTask(taskId, { status: 'running', ratio: 0.01 });
 
   try {
@@ -170,6 +275,8 @@ async function importOne(file: File, taskId: string): Promise<void> {
       // 书名缺失时退回文件名，绝不让 title 变成空值（书架渲染依赖它）
       title: (outcome.title ?? '').trim() || file.name.replace(/\.[^.]+$/, '') || '未命名',
       author: outcome.author,
+      kind: 'txt',
+      pageCount: 0,
       size: outcome.scan.byteCount,
       encoding: outcome.encoding,
       fingerprint: outcome.fingerprint,

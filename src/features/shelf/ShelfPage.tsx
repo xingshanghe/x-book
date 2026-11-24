@@ -16,7 +16,8 @@ import {
   IconSearch,
   LogoMark,
 } from '@/ui/icons';
-import { formatChars, formatPercent, formatRelative, formatRemaining } from '@/lib/format';
+import { isPdfBook } from '@/lib/bookKind';
+import { formatChars, formatPages, formatPercent, formatRelative, formatRemaining } from '@/lib/format';
 import { BookCover } from './BookCover';
 import { ShelfAccount } from './ShelfAccount';
 import { ImportTray, useDropImport } from './ImportDropzone';
@@ -177,7 +178,7 @@ export function ShelfPage() {
             hint="把 txt 文件拖进来，或点击右下角的 + 导入。导入完成后即可完全离线阅读。"
             action={
               <Button variant="primary" icon={<IconPlus />} onClick={pickFiles}>
-                导入 txt
+                导入书籍
               </Button>
             }
           />
@@ -200,7 +201,10 @@ export function ShelfPage() {
                     <span className="continue-title">{continueBook.title}</span>
                     <span className="continue-sub">
                       {continueBook.author ? `${continueBook.author} · ` : ''}
-                      共 {formatChars(continueBook.charCount)}
+                      共{' '}
+                      {isPdfBook(continueBook)
+                        ? formatPages(continueBook.pageCount ?? 0)
+                        : formatChars(continueBook.charCount)}
                     </span>
                     <span className="continue-progress">
                       <Progress
@@ -208,10 +212,11 @@ export function ShelfPage() {
                         style={{ flex: '1 1 auto', maxWidth: 260 }}
                       />
                       <span className="continue-stat">
-                        还剩{' '}
-                        {formatRemaining(
-                          (1 - (percentMap[continueBook.id] ?? 0)) * continueBook.charCount,
-                        )}
+                        {isPdfBook(continueBook)
+                          ? `${formatPercent(percentMap[continueBook.id] ?? 0)} 已读`
+                          : `还剩 ${formatRemaining(
+                              (1 - (percentMap[continueBook.id] ?? 0)) * continueBook.charCount,
+                            )}`}
                       </span>
                     </span>
                   </span>
@@ -273,9 +278,14 @@ export function ShelfPage() {
                   </div>
                   <span className="shelf-cell-title clamp-2">{book.title}</span>
                   <span className="shelf-cell-sub">
-                    {percentMap[book.id] != null && percentMap[book.id] > 0.001
-                      ? `${formatPercent(percentMap[book.id])} · ${formatChars(book.charCount)}`
-                      : formatChars(book.charCount)}
+                    {(() => {
+                      const sizeLabel = isPdfBook(book)
+                        ? formatPages(book.pageCount ?? 0)
+                        : formatChars(book.charCount);
+                      return percentMap[book.id] != null && percentMap[book.id] > 0.001
+                        ? `${formatPercent(percentMap[book.id])} · ${sizeLabel}`
+                        : sizeLabel;
+                    })()}
                   </span>
                 </div>
               ))}
@@ -290,7 +300,7 @@ export function ShelfPage() {
       <input
         ref={fileInput}
         type="file"
-        accept=".txt,.text,.md,.log,text/plain"
+        accept=".txt,.text,.md,.log,.pdf,text/plain,application/pdf"
         multiple
         hidden
         onChange={(e) => {

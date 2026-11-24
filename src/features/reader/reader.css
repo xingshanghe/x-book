@@ -991,3 +991,112 @@
 .toc-rail .toc-item .no {
   min-width: 1.6em;
 }
+
+/* ---------- 自动滚动控制条 ----------
+   双击正文后浮在底栏上方的一条小控制，暂停/继续、加减速、退出。
+   进度条式地不抢正文：只在自动滚动期间出现。 */
+.auto-scroll-hud {
+  position: absolute;
+  z-index: calc(var(--z-rail) + 1);
+  left: 50%;
+  bottom: calc(var(--reader-foot, 108px) + 12px);
+  transform: translateX(-50%);
+  max-width: calc(100% - 24px);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px 4px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper-0) 92%, transparent);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-lg);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  transition: opacity 0.2s ease;
+  /* 入场后 4.5 秒淡到 0.6，把正文让出来；碰一下或聚焦就复原 */
+  animation:
+    auto-scroll-hud-in 0.16s var(--ease),
+    auto-scroll-dim 0.5s ease 4.5s forwards;
+}
+.auto-scroll-hud:hover,
+.auto-scroll-hud:focus-within {
+  opacity: 1 !important;
+}
+@keyframes auto-scroll-hud-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+.auto-scroll-hud .auto-scroll-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.auto-scroll-hud .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--seal);
+  animation: auto-scroll-dot 1.6s ease-in-out infinite;
+}
+.auto-scroll-hud .dot.paused {
+  background: var(--ink-3);
+  animation: none;
+}
+@keyframes auto-scroll-dot {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.auto-scroll-hud .auto-scroll-speed {
+  padding: 0 8px 0 6px;
+  font-size: 12px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.auto-scroll-hud .auto-scroll-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  transition:
+    background-color var(--dur-fast),
+    color var(--dur-fast);
+}
+.auto-scroll-hud .auto-scroll-btn:hover {
+  background: var(--paper-2);
+  color: var(--ink-1);
+}
+.auto-scroll-hud .auto-scroll-btn:active {
+  transform: scale(0.94);
+}
+.auto-scroll-hud .auto-scroll-btn:disabled {
+  opacity: 0.32;
+  pointer-events: none;
+}
+@keyframes auto-scroll-dim {
+  to {
+    opacity: 0.62;
+  }
+}
+/* 窄屏上控制条抬高一行，让开右下角的朗读喇叭 */
+@media (max-width: 520px) {
+  .auto-scroll-hud {
+    bottom: calc(var(--reader-foot, 108px) + 64px);
+  }
+}

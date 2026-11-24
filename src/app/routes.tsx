@@ -1,14 +1,14 @@
 import { useEffect } from 'react';
 import { Route, Switch as WouterSwitch } from 'wouter';
 import { ShelfPage } from '@/features/shelf/ShelfPage';
-import { ReaderPage } from '@/features/reader/ReaderPage';
+import { ReadGate } from '@/features/reader/ReadGate';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 
 export function Routes() {
   return (
     <WouterSwitch>
       <Route path="/" component={ShelfPage} />
-      <Route path="/read/:id" component={ReaderPage} />
+      <Route path="/read/:id" component={ReadGate} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={ShelfPage} />
     </WouterSwitch>

@@ -177,6 +177,30 @@ export function IconSpark({ size, style, className }: P) {
   );
 }
 
+export function IconPlay({ size, style, className }: P) {
+  return (
+    <svg {...base(size)} style={style} className={className} aria-hidden>
+      <path d="M8 5.5v13l10-6.5z" />
+    </svg>
+  );
+}
+
+export function IconPause({ size, style, className }: P) {
+  return (
+    <svg {...base(size)} style={style} className={className} aria-hidden>
+      <path d="M9 5v14M15 5v14" />
+    </svg>
+  );
+}
+
+export function IconMinus({ size, style, className }: P) {
+  return (
+    <svg {...base(size)} style={style} className={className} aria-hidden>
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
 /**
  * 品牌符号（VI v2.0 §03）：一页纸的折角
  *   画布 80×104，页身 60×96，右上折角边长 22 严格 45°，填朱砂；

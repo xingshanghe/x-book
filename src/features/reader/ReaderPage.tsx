@@ -45,20 +45,33 @@ import { getProgress, saveProgress } from '@/storage/repositories/progressRepo';
 import { clearReadMark } from '@/tts/resume';
 import { desktopReadingReady, READING_UNSUPPORTED } from '@/tts/support';
 import type { Book, Bookmark, Chapter } from '@/types/models';
-import { Button, EmptyState, useToast } from '@/ui';
+import { Button, EmptyState, toast } from '@/ui';
 import {
-  IconBook,
   IconBookmark,
   IconChevronLeft,
   IconChevronRight,
+  IconClose,
   IconList,
+  IconMinus,
   IconMoon,
+  IconPause,
+  IconPlay,
+  IconPlus,
   IconSearch,
   IconSettings2,
   IconSpeaker,
   IconSun,
 } from '@/ui/icons';
 import { AnnotatedLine } from './AnnotatedLine';
+import {
+  AUTO_SCROLL_DEFAULT_LPM,
+  AUTO_SCROLL_MAX_LPM,
+  AUTO_SCROLL_MIN_LPM,
+  atScrollEnd,
+  autoScrollPxPerSec,
+  bumpAutoScrollSpeed,
+  clampAutoScrollSpeed,
+} from './autoScroll';
 import { ChapterHeading } from './ChapterHeading';
 import { type PagedHandle, PagedView } from './PagedView';
 import { type ScrollChapterMark, scrollChapterBreaks } from './pageLayout';
@@ -88,7 +101,6 @@ interface Loaded {
 export function ReaderPage({ id, params }: { id?: string; params?: { id: string } }) {
   const bookId = id ?? params?.id;
   const [, navigate] = useLocation();
-  const toast = useToast();
   const settings = useSettings((s) => s.settings);
   const updateSettings = useSettings((s) => s.update);
   const updateTypography = useSettings((s) => s.updateTypography);
@@ -149,6 +161,11 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   const noteCache = useRef(new Map<number, Map<string, CollectedNote>>());
   const noteOpenedAt = useRef<number | null>(null);
   const [barsVisible, setBarsVisible] = useState(true);
+  /** 非 null 表示自动滚动开着；paused 只停循环，不退出 */
+  const [autoScroll, setAutoScroll] = useState<{ paused: boolean } | null>(null);
+  const autoScrollRef = useRef<{ paused: boolean } | null>(null);
+  /** 正文总高（不含容器底部 30vh 留白），自动滚动据此判断是否到底 */
+  const totalRef = useRef(0);
   const [aloudNote, setAloudNote] = useState<string | null>(null);
   const [aloudOpen, setAloudOpen] = useState(false);
   const [aloudLive, setAloudLive] = useState<ReadActivity>('idle');
@@ -301,6 +318,9 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   }, [data, heightOf, titleH, heightVersion]);
 
   const total = tops[data?.idx.count ?? 0] ?? 0;
+  useEffect(() => {
+    totalRef.current = total;
+  }, [total]);
 
   const blockAtY = useCallback(
     (y: number): number => {
@@ -624,6 +644,137 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     [bookId, seek],
   );
 
+  /* ────────────── 自动滚动 ────────────── */
+
+  const autoScrollLpm = clampAutoScrollSpeed(settings.autoScrollLpm ?? AUTO_SCROLL_DEFAULT_LPM);
+
+  const stopAutoScroll = useCallback((message?: string) => {
+    if (!autoScrollRef.current) return;
+    autoScrollRef.current = null;
+    setAutoScroll(null);
+    if (message) toast(message);
+  }, []);
+
+  const setAutoScrollPaused = useCallback((paused: boolean) => {
+    const current = autoScrollRef.current;
+    if (!current || current.paused === paused) return;
+    autoScrollRef.current = { paused };
+    setAutoScroll({ paused });
+  }, []);
+
+  const startAutoScroll = useCallback(() => {
+    if (settings.pageMode === 'page') {
+      toast('自动滚动要在「上下滚动」阅读模式下使用', 'warn');
+      return;
+    }
+    const scroller = scrollRef.current;
+    if (!scroller || !data) return;
+    // 已经在末尾（或整本不足一屏）时开了也不会动，先提醒一句。
+    if (
+      atScrollEnd({
+        scrollTop: scroller.scrollTop,
+        clientHeight: scroller.clientHeight,
+        scrollHeight: totalRef.current,
+      })
+    ) {
+      toast('已到正文末尾，先往回读一点吧', 'warn');
+      return;
+    }
+    // 双击往往会选中一个词，先清掉选区，免得正文一直蓝着。
+    window.getSelection()?.removeAllRanges();
+    autoScrollRef.current = { paused: false };
+    setAutoScroll({ paused: false });
+    toast('自动滚动已开启 · 双击正文退出', 'ok');
+  }, [data, settings.pageMode]);
+
+  const changeAutoScrollSpeed = useCallback(
+    (delta: number) => {
+      const current = useSettings.getState().settings.autoScrollLpm;
+      updateSettings({ autoScrollLpm: bumpAutoScrollSpeed(current, delta) });
+    },
+    [updateSettings],
+  );
+
+  // 滚动循环：按帧累计亚像素位移，攒够 1px 再动 scrollTop，
+  // 避免速度慢时每帧的位移被取整成 0。
+  useEffect(() => {
+    if (!autoScroll || autoScroll.paused) return;
+    if (settings.pageMode === 'page') return;
+    const root = scrollRef.current;
+    if (!root || !data) return;
+    let raf = 0;
+    let last = performance.now();
+    let carry = 0;
+    const pxPerSec = autoScrollPxPerSec(autoScrollLpm, linePx);
+    const tick = (now: number) => {
+      // 后台标签页回来时 dt 可能是几秒，截断，别一帧跳出去半页
+      const dt = Math.min(120, Math.max(0, now - last));
+      last = now;
+      if (pendingSeek.current != null) {
+        // 正在落位，这一帧不动，等下一帧
+        raf = requestAnimationFrame(tick);
+        return;
+      }
+      carry += (pxPerSec * dt) / 1000;
+      const step = Math.floor(carry);
+      if (step > 0) {
+        carry -= step;
+        const before = root.scrollTop;
+        const max = Math.max(0, root.scrollHeight - root.clientHeight);
+        const next = Math.min(max, before + step);
+        if (next > before) root.scrollTop = next;
+        if (
+          root.scrollTop === before ||
+          atScrollEnd({
+            scrollTop: root.scrollTop,
+            clientHeight: root.clientHeight,
+            scrollHeight: totalRef.current,
+          })
+        ) {
+          stopAutoScroll('已读到末尾，自动滚动结束');
+          return;
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [autoScroll, autoScrollLpm, data, linePx, settings.pageMode, stopAutoScroll]);
+
+  // 手动滚轮 / 手指拖动 → 先暂停，别和读者的手抢方向。
+  useEffect(() => {
+    if (!autoScroll || autoScroll.paused) return;
+    const root = scrollRef.current;
+    if (!root) return;
+    const pause = () => setAutoScrollPaused(true);
+    root.addEventListener('wheel', pause, { passive: true });
+    root.addEventListener('touchmove', pause, { passive: true });
+    return () => {
+      root.removeEventListener('wheel', pause);
+      root.removeEventListener('touchmove', pause);
+    };
+  }, [autoScroll, setAutoScrollPaused]);
+
+  // 打开浮层先暂停，关掉后点「继续」即可
+  useEffect(() => {
+    if (sheet || footnote || aloudOpen) setAutoScrollPaused(true);
+  }, [sheet, footnote, aloudOpen, setAutoScrollPaused]);
+
+  // 切回分页模式时直接退出：自动滚动只在上下滚动里有意义
+  useEffect(() => {
+    if (settings.pageMode === 'page' && autoScrollRef.current) {
+      autoScrollRef.current = null;
+      setAutoScroll(null);
+    }
+  }, [settings.pageMode]);
+
+  // 换书时收起控制条，别让上一本的滚动继续跑在新书上
+  useEffect(() => {
+    if (!bookId) return;
+    autoScrollRef.current = null;
+    setAutoScroll(null);
+  }, [bookId]);
+
   const openNote = useCallback(
     (marker: string, rect: DOMRect, char: number, known?: string, noteChar?: number) => {
       noteOpenedAt.current = currentChar;
@@ -719,23 +870,27 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   /** 统一的「翻一页」：分页模式翻一屏（双页时两列），滚动模式滚一屏 */
   const turn = useCallback(
     (dir: 1 | -1) => {
+      // 手动翻动时自动滚动让位，别让两层滚动叠加
+      setAutoScrollPaused(true);
       if (settings.pageMode === 'page') pagedRef.current?.turn(dir);
       else turnPage(dir);
     },
-    [settings.pageMode, turnPage],
+    [settings.pageMode, setAutoScrollPaused, turnPage],
   );
 
   /* ────────────── 键盘与手势 ────────────── */
 
   useEffect(() => {
-    if (!settings.enableShortcuts) return;
     const onKey = (e: KeyboardEvent) => {
+      // Esc 退出浮层与自动滚动不归「快捷键」管：这是收起，不是阅读操作。
       if (e.key === 'Escape') {
         if (footnote) setFootnote(null);
         else if (aloudOpen) setAloudOpen(false);
-        else setSheet(null);
+        else if (sheet) setSheet(null);
+        else stopAutoScroll('已退出自动滚动');
         return;
       }
+      if (!settings.enableShortcuts) return;
       if (sheet || footnote) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
@@ -758,7 +913,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [aloudOpen, footnote, settings.enableShortcuts, sheet, turn]);
+  }, [aloudOpen, footnote, settings.enableShortcuts, sheet, stopAutoScroll, turn]);
 
   // 水平滑动翻页
   useEffect(() => {
@@ -922,11 +1077,22 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
 
   const onContentTap = (e: React.MouseEvent) => {
     if (window.getSelection()?.toString()) return;
-    if (!settings.tapToTurn) return;
     const x = e.clientX / window.innerWidth;
+    // 双击的第二下不再算单击：否则一次双击会把栏隐藏又显示回来。
+    // 只拦中间区域；左右翻页区保留连点翻两页的手感。
+    if (e.detail > 1 && x >= 0.3 && x <= 0.7) return;
+    if (!settings.tapToTurn) return;
     if (x < 0.3) turn(-1);
     else if (x > 0.7) turn(1);
     else setBarsVisible((v) => !v);
+  };
+
+  /** 双击正文：开启 / 退出自动滚动。落在按钮、链接上的双击留给控件自己。 */
+  const onContentDoubleClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('button, a, input, textarea, select, [role="button"]')) return;
+    if (autoScrollRef.current) stopAutoScroll('已退出自动滚动');
+    else startAutoScroll();
   };
 
   const toggleAloud = () => {
@@ -1003,7 +1169,11 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
         </header>
 
         {settings.pageMode === 'page' ? (
-          <div className="reader-paged-wrap" onClick={onContentTap}>
+          <div
+            className="reader-paged-wrap"
+            onClick={onContentTap}
+            onDoubleClick={onContentDoubleClick}
+          >
             <PagedView
               idx={idx}
               reader={reader}
@@ -1021,7 +1191,12 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
             />
           </div>
         ) : (
-          <div ref={scrollRef} className="reader-scroll" onClick={onContentTap}>
+          <div
+            ref={scrollRef}
+            className="reader-scroll"
+            onClick={onContentTap}
+            onDoubleClick={onContentDoubleClick}
+          >
             <div
               ref={contentRef}
               className="reader-content"
@@ -1150,6 +1325,59 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
             <span className="hint">快读完啦，还剩 {formatRemaining(totalChars - currentChar)}</span>
           )}
         </footer>
+        {autoScroll && !aloudOpen && settings.pageMode === 'scroll' && (
+          <div
+            className="auto-scroll-hud"
+            style={
+              {
+                '--reader-foot': barsVisible ? `${footH}px` : 'env(safe-area-inset-bottom, 0px)',
+              } as React.CSSProperties
+            }
+            role="toolbar"
+            aria-label="自动滚动控制"
+            aria-orientation="horizontal"
+          >
+            <span className="auto-scroll-state">
+              <span className={`dot${autoScroll.paused ? ' paused' : ''}`} aria-hidden />
+              {autoScroll.paused ? '已暂停' : '自动滚动'}
+            </span>
+            <span className="auto-scroll-speed">{autoScrollLpm} 行/分</span>
+            <button
+              type="button"
+              className="auto-scroll-btn"
+              onClick={() => changeAutoScrollSpeed(-1)}
+              disabled={autoScrollLpm <= AUTO_SCROLL_MIN_LPM}
+              aria-label="慢一点"
+            >
+              <IconMinus size={16} />
+            </button>
+            <button
+              type="button"
+              className="auto-scroll-btn"
+              onClick={() => changeAutoScrollSpeed(1)}
+              disabled={autoScrollLpm >= AUTO_SCROLL_MAX_LPM}
+              aria-label="快一点"
+            >
+              <IconPlus size={16} />
+            </button>
+            <button
+              type="button"
+              className="auto-scroll-btn"
+              onClick={() => setAutoScrollPaused(!autoScroll.paused)}
+              aria-label={autoScroll.paused ? '继续自动滚动' : '暂停自动滚动'}
+            >
+              {autoScroll.paused ? <IconPlay size={16} /> : <IconPause size={16} />}
+            </button>
+            <button
+              type="button"
+              className="auto-scroll-btn"
+              onClick={() => stopAutoScroll('已退出自动滚动')}
+              aria-label="退出自动滚动"
+            >
+              <IconClose size={16} />
+            </button>
+          </div>
+        )}
         <div
           className="read-fab-dock"
           style={{ '--reader-foot': `${footH}px` } as React.CSSProperties}
@@ -1256,10 +1484,6 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
         }}
         onClose={() => setFootnote(null)}
       />
-      {toast ? null : null}
-      <span hidden>
-        <IconBook />
-      </span>
     </div>
   );
 }

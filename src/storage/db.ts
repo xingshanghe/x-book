@@ -14,6 +14,7 @@ export interface QingyueDB extends DBSchema {
     indexes: { 'by-fingerprint': string; 'by-lastOpened': number };
   };
   files: { key: string; value: { id: string; blob: Blob } };
+  covers: { key: string; value: { id: string; blob: Blob } };
   chapters: { key: string; value: { bookId: string; items: Chapter[] } };
   blockIndex: { key: string; value: BlockIndex & { bookId: string } };
   footnotes: { key: string; value: { bookId: string; items: FootnoteEntry[] } };
@@ -29,7 +30,7 @@ export interface QingyueDB extends DBSchema {
 }
 
 const DB_NAME = 'qingyue';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBPDatabase<QingyueDB>> | null = null;
 
@@ -44,6 +45,8 @@ export function getDB(): Promise<IDBPDatabase<QingyueDB>> {
         }
         if (!db.objectStoreNames.contains('files'))
           db.createObjectStore('files', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('covers'))
+          db.createObjectStore('covers', { keyPath: 'id' });
         if (!db.objectStoreNames.contains('chapters'))
           db.createObjectStore('chapters', { keyPath: 'bookId' });
         if (!db.objectStoreNames.contains('blockIndex'))
@@ -94,6 +97,7 @@ export async function wipeAll(): Promise<void> {
   const names = [
     'books',
     'files',
+    'covers',
     'chapters',
     'blockIndex',
     'footnotes',

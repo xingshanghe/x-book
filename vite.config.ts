@@ -15,7 +15,7 @@ export default defineConfig({
       // 「渐进增强」的分界线：PWA 只是外壳交付形式，
       // 离线能力来自数据全在本地，而非任何 runtimeCaching 外部域名。
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2,json}'],
+        globPatterns: ['**/*.{js,mjs,css,html,svg,png,woff2,json}'],
         globIgnores: ['**/*.{onnx,bz2,tar}', '**/espeak-ng-data/**'],
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
@@ -66,6 +66,9 @@ export default defineConfig({
         manualChunks(id: string) {
           if (id.includes('node_modules/react-dom') || /[\\/]node_modules[\\/](react|scheduler)[\\/]/.test(id)) {
             return 'react';
+          }
+          if (id.includes('node_modules/pdfjs-dist')) {
+            return 'pdfjs';
           }
           return undefined;
         },

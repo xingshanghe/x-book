@@ -51,6 +51,8 @@ export function defaultSettings(): AppSettings {
     enableShortcuts: true,
     tapToTurn: true,
     volumeToTurn: false,
+    autoScrollLpm: 12,
+    comicFitMode: 'fitPage',
 
     storagePersisted: false,
     deviceId: nanoid(8),

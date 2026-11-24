@@ -12,6 +12,12 @@ export function formatChars(n: number): string {
   return `${n} 字`;
 }
 
+/** 连环画页数展示 */
+export function formatPages(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0 页';
+  return `${Math.trunc(n)} 页`;
+}
+
 export function formatPercent(p: number): string {
   return `${Math.round(Math.min(1, Math.max(0, p)) * 100)}%`;
 }

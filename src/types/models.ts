@@ -9,12 +9,25 @@ export type BookStatus = 'indexing' | 'ready' | 'error';
 
 export type ReadState = 'reading' | 'unread' | 'finished';
 
+/** txt = 纯文本；pdf = 扫描版/连环画（按页渲染） */
+export type BookKind = 'txt' | 'pdf';
+
+/** 连环画适屏：宽 / 高 / 整页 */
+export type ComicFitMode = 'fitWidth' | 'fitHeight' | 'fitPage';
+
 export interface Book {
   id: string;
   title: string;
   author?: string;
 
-  size: number; // 归一化后字节数
+  /** 缺省按 txt（兼容旧库） */
+  kind?: BookKind;
+  /** PDF 总页数；txt 为 0 */
+  pageCount?: number;
+  /** 是否已生成首页封面缩略图 */
+  hasCover?: boolean;
+
+  size: number; // 归一化后字节数（txt 为正文；pdf 为原文件）
   encoding: BookEncoding;
   fingerprint: string; // 去重：size + 前 64KB 哈希
 
@@ -77,9 +90,13 @@ export interface BlockIndex {
 export interface Progress {
   bookId: string;
   chapterIndex: number;
+  /**
+   * txt：块下标；pdf：0-based 页码（pageIndex）。
+   * 不另开字段，避免旧进度记录失效。
+   */
   blockIndex: number;
   lineInBlock: number;
-  /** 全书字符偏移 —— 跨字号、跨设备的最高优先级锚点 */
+  /** txt：全书字符偏移；pdf：与 blockIndex 相同的页码 */
   charOffset: number;
   /** 0–1 */
   percent: number;
@@ -157,6 +174,11 @@ export interface AppSettings {
   enableShortcuts: boolean;
   tapToTurn: boolean;
   volumeToTurn: boolean;
+  /** 双击正文开启自动滚动时的速度（行/分钟） */
+  autoScrollLpm: number;
+
+  /** 连环画默认适屏模式 */
+  comicFitMode: ComicFitMode;
 
   storagePersisted: boolean;
   deviceId: string;

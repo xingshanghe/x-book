@@ -428,6 +428,24 @@
   overflow: hidden;
   display: block;
 }
+.qy-cover-cloth.has-art {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+.qy-cover-badge {
+  position: absolute;
+  left: 8px;
+  bottom: 10px;
+  z-index: 2;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgb(0 0 0 / 55%);
+  color: rgb(251 245 231 / 95%);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
 .qy-cover-frame {
   position: absolute;
   top: 0;

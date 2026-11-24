@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Route, useLocation } from 'wouter';
-import { ReaderPage } from '@/features/reader/ReaderPage';
+import { ReadGate } from '@/features/reader/ReadGate';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 import { ShelfPage } from '@/features/shelf/ShelfPage';
 import { bootstrap } from './app/bootstrap';
@@ -31,7 +31,7 @@ export function App() {
       <Providers>
         <NativeMenuBridge />
         <Route path="/" component={ShelfPage} />
-        <Route path="/read/:id" component={ReaderPage} />
+        <Route path="/read/:id" component={ReadGate} />
         <Route path="/settings" component={SettingsPage} />
       </Providers>
     </ErrorBoundary>

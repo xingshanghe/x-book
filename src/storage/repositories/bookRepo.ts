@@ -1,9 +1,10 @@
 /** 书籍元数据 + 索引产物（块索引 / 章节 / 脚注） */
 
-import type { BlockIndex, Book, Chapter, FootnoteEntry } from '@/types/models';
+import type { BlockIndex, Book, BookKind, Chapter, FootnoteEntry } from '@/types/models';
 import { nanoid, coverHue } from '@/lib/id';
 import { getDB } from '../db';
 import { deleteBookFile } from '../blobStore';
+import { deleteBookCover } from '../coverStore';
 
 export async function listBooks(): Promise<Book[]> {
   const db = await getDB();
@@ -37,9 +38,20 @@ export async function touchBook(id: string, patch: Partial<Book>): Promise<Book 
 
 export async function deleteBook(id: string): Promise<void> {
   const db = await getDB();
-  const tx = db.transaction(['books', 'files', 'chapters', 'blockIndex', 'footnotes', 'progress', 'bookmarks'], 'readwrite');
+  const stores = [
+    'books',
+    'files',
+    'covers',
+    'chapters',
+    'blockIndex',
+    'footnotes',
+    'progress',
+    'bookmarks',
+  ] as const;
+  const tx = db.transaction([...stores], 'readwrite');
   await tx.objectStore('books').delete(id);
   await tx.objectStore('files').delete(id);
+  await tx.objectStore('covers').delete(id);
   await tx.objectStore('chapters').delete(id);
   await tx.objectStore('blockIndex').delete(id);
   await tx.objectStore('footnotes').delete(id);
@@ -61,6 +73,7 @@ export async function deleteBook(id: string): Promise<void> {
   }
   await tx.done;
   await deleteBookFile(id);
+  await deleteBookCover(id);
 }
 
 /* ───────────── 索引产物 ───────────── */
@@ -100,6 +113,9 @@ export async function getFootnotes(bookId: string): Promise<FootnoteEntry[]> {
 export function newBookRecord(partial: {
   title: string;
   author?: string;
+  kind?: BookKind;
+  pageCount?: number;
+  hasCover?: boolean;
   size: number;
   encoding: Book['encoding'];
   fingerprint: string;
@@ -112,10 +128,14 @@ export function newBookRecord(partial: {
   blockSize: number;
 }): Book {
   const now = Date.now();
+  const kind: BookKind = partial.kind ?? 'txt';
   return {
     id: nanoid(10),
     title: partial.title,
     author: partial.author,
+    kind,
+    pageCount: partial.pageCount ?? 0,
+    hasCover: partial.hasCover ?? false,
     size: partial.size,
     encoding: partial.encoding,
     fingerprint: partial.fingerprint,

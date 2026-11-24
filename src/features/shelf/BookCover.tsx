@@ -1,8 +1,12 @@
-/** 自动封面：靛蓝底 + 书名竖排/横排 + 朱红丝带 + 底部进度条（零图片素材） */
+/** 自动封面：靛蓝底 + 书名竖排/横排 + 朱红丝带 + 底部进度条（零图片素材）
+ *  PDF / 连环画：优先显示首页缩略图。
+ */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Book } from '@/types/models';
+import { isPdfBook } from '@/lib/bookKind';
 import { formatPercent } from '@/lib/format';
+import { getBookCover } from '@/storage/coverStore';
 import './shelf.css';
 
 const TITLE_BY_HUE: Record<number, string> = {};
@@ -25,6 +29,27 @@ export function BookCover({
 }) {
   const height = Math.round(width * 1.42);
   const hue = book.coverHue;
+  const pdf = isPdfBook(book);
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    let url: string | null = null;
+    if (!book.hasCover) {
+      setCoverUrl(null);
+      return;
+    }
+    void (async () => {
+      const blob = await getBookCover(book.id);
+      if (!alive || !blob) return;
+      url = URL.createObjectURL(blob);
+      setCoverUrl(url);
+    })();
+    return () => {
+      alive = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [book.id, book.hasCover]);
 
   // 每本书一个稳定但各异的靛蓝变体：在同一色族里微调明度/饱和
   const { top, bottom, ink } = useMemo(() => {
@@ -44,11 +69,16 @@ export function BookCover({
   const mark = variant === 'mark';
 
   const content = (
-    <span className="qy-cover-cloth" style={{ background: `linear-gradient(160deg, ${top}, ${bottom})` }}>
-      {/* 格纹窗框 */}
-      <span className="gingham qy-cover-frame" />
-      {/* 书名 */}
-      {mark ? null : vertical ? (
+    <span
+      className={`qy-cover-cloth${coverUrl ? ' has-art' : ''}`}
+      style={
+        coverUrl
+          ? { backgroundImage: `url(${coverUrl})` }
+          : { background: `linear-gradient(160deg, ${top}, ${bottom})` }
+      }
+    >
+      {!coverUrl && <span className="gingham qy-cover-frame" />}
+      {coverUrl ? null : mark ? null : vertical ? (
         <span className="qy-cover-title vert" style={{ color: ink }}>
           {rawTitle.split('').map((ch, i) => (
             <i key={i}>{ch}</i>
@@ -59,14 +89,13 @@ export function BookCover({
           {title}
         </span>
       )}
-      {!mark && book.author && (
+      {!coverUrl && !mark && book.author && (
         <span className="qy-cover-author" style={{ color: ink }}>
           {book.author.slice(0, 8)}
         </span>
       )}
-      {/* 朱红丝带 */}
       <span className="qy-ribbon" />
-      {/* 底部进度条 */}
+      {pdf && <span className="qy-cover-badge">PDF</span>}
       {percent != null && percent > 0.001 && (
         <span className="qy-cover-progress">
           <span style={{ width: formatPercent(percent) }} data-pct={formatPercent(percent)} />
