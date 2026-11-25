@@ -223,7 +223,9 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
     if (!el) return;
     const measure = () => {
       const r = el.getBoundingClientRect();
-      setViewport({ w: Math.max(1, r.width), h: Math.max(1, r.height) });
+      const w = Math.max(1, Math.round(r.width));
+      const h = Math.max(1, Math.round(r.height));
+      setViewport((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -233,7 +235,7 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
 
   /* ── 取页尺寸 + 渲染（同一效应，避免翻页闪旧尺寸） ── */
   useEffect(() => {
-    if (loadState !== 'ready' || !engineRef.current || viewport.w < 8) return;
+    if (loadState !== 'ready' || !engineRef.current || viewport.w < 8 || viewport.h < 8) return;
     let alive = true;
     const engine = engineRef.current;
     const index = pageIndex;
@@ -254,7 +256,11 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
         const blob = await new Promise<Blob | null>((resolve) =>
           rendered.canvas.toBlob((b) => resolve(b), 'image/png'),
         );
-        if (!alive || !blob) return;
+        if (!alive) return;
+        if (!blob) {
+          toast('渲染失败：无法生成页面图像', 'warn');
+          return;
+        }
         if (urlRef.current) URL.revokeObjectURL(urlRef.current);
         const url = URL.createObjectURL(blob);
         urlRef.current = url;

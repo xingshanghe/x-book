@@ -71,8 +71,14 @@ export function ShelfPage() {
   const [activeGroup, setActiveGroup] = useState<ShelfGroupFilter>('all');
   const [moveBook, setMoveBook] = useState<Book | null>(null);
   const [pendingDeleteGroup, setPendingDeleteGroup] = useState<string | null>(null);
+  /** Tauri / WKWebView 无 window.prompt，分组命名一律走应用内对话框 */
+  const [nameDialog, setNameDialog] = useState<null | {
+    mode: 'create' | 'rename' | 'moveCreate';
+    value: string;
+  }>(null);
   const [dropProps, dropping] = useDropImport();
   const fileInput = useRef<HTMLInputElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const tasks = useImportQueue((s) => s.tasks);
   /** fingerprint → 云端 meta；未启用或失败时为空 */
   const [remoteMap, setRemoteMap] = useState<Map<string, CloudBookMeta>>(() => new Map());
@@ -224,43 +230,57 @@ export function ShelfPage() {
 
   const freshCatalog = () => useSettings.getState().settings.shelfGroups ?? [];
 
-  const createGroup = () => {
+  const openCreateGroup = () => {
     if (groupMutating) return;
-    const raw = window.prompt('新分组名称');
-    if (raw == null) return;
+    setNameDialog({ mode: 'create', value: '' });
+  };
+
+  const openRenameGroup = () => {
+    if (groupMutating) return;
+    if (activeGroup === 'all' || activeGroup === 'ungrouped') return;
+    setNameDialog({ mode: 'rename', value: activeGroup });
+  };
+
+  const openMoveCreateGroup = () => {
+    if (groupMutating || !moveBook) return;
+    setNameDialog({ mode: 'moveCreate', value: '' });
+  };
+
+  const applyCreateGroup = (raw: string) => {
     const name = normalizeGroupName(raw);
     if (!name) {
       toast('分组名无效（勿用「全部」「未分组」）', 'warn');
-      return;
+      return false;
     }
     const catalog = listShelfGroups(freshCatalog(), []);
     if (catalog.includes(name)) {
       toast('已有同名分组', 'warn');
       setActiveGroup(name);
-      return;
+      setNameDialog(null);
+      return true;
     }
     saveCatalog(addGroupToCatalog(catalog, name));
     setActiveGroup(name);
+    setNameDialog(null);
     toast(`已创建「${name}」`);
+    return true;
   };
 
-  const renameActiveGroup = () => {
-    if (groupMutating) return;
-    if (activeGroup === 'all' || activeGroup === 'ungrouped') return;
-    const raw = window.prompt('重命名分组', activeGroup);
-    if (raw == null) return;
+  const applyRenameGroup = (raw: string) => {
+    if (activeGroup === 'all' || activeGroup === 'ungrouped') return false;
     const nextName = normalizeGroupName(raw);
     if (!nextName) {
       toast('分组名无效', 'warn');
-      return;
+      return false;
     }
     const catalog = freshCatalog();
     const nextCatalog = renameGroupInCatalog(catalog, activeGroup, nextName);
     if (!nextCatalog) {
       toast(listShelfGroups(catalog, []).includes(nextName) ? '已有同名分组' : '重命名失败', 'warn');
-      return;
+      return false;
     }
     const from = activeGroup;
+    setNameDialog(null);
     setGroupMutating(true);
     void (async () => {
       try {
@@ -281,6 +301,27 @@ export function ShelfPage() {
         setGroupMutating(false);
       }
     })();
+    return true;
+  };
+
+  const applyMoveCreateGroup = (raw: string) => {
+    if (!moveBook) return false;
+    const name = normalizeGroupName(raw);
+    if (!name) {
+      toast('分组名无效', 'warn');
+      return false;
+    }
+    setNameDialog(null);
+    void assignGroup(moveBook, name);
+    return true;
+  };
+
+  const submitNameDialog = () => {
+    if (!nameDialog || groupMutating) return;
+    const raw = nameDialog.value;
+    if (nameDialog.mode === 'create') applyCreateGroup(raw);
+    else if (nameDialog.mode === 'rename') applyRenameGroup(raw);
+    else applyMoveCreateGroup(raw);
   };
 
   const confirmDeleteGroup = async () => {
@@ -371,9 +412,13 @@ export function ShelfPage() {
   };
 
   useEffect(() => {
-    if (!pendingDelete && !pendingDeleteGroup && !moveBook) return;
+    if (!pendingDelete && !pendingDeleteGroup && !moveBook && !nameDialog) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || deleting || groupMutating) return;
+      if (nameDialog) {
+        setNameDialog(null);
+        return;
+      }
       setPendingDelete(null);
       setDeleteFromCloud(false);
       setPendingDeleteGroup(null);
@@ -381,7 +426,15 @@ export function ShelfPage() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [pendingDelete, pendingDeleteGroup, moveBook, deleting, groupMutating]);
+  }, [pendingDelete, pendingDeleteGroup, moveBook, nameDialog, deleting, groupMutating]);
+
+  // 只在打开/切换模式时聚焦；勿依赖 value，否则每个字都会抢焦点打断 IME
+  const nameDialogMode = nameDialog?.mode ?? null;
+  useEffect(() => {
+    if (!nameDialogMode) return;
+    const id = window.setTimeout(() => nameInputRef.current?.focus(), 30);
+    return () => window.clearTimeout(id);
+  }, [nameDialogMode]);
 
   const markFinished = async (book: Book, finished: boolean) => {
     await touchBook(book.id, { finished, finishedAt: finished ? Date.now() : undefined });
@@ -524,7 +577,7 @@ export function ShelfPage() {
                 <button
                   type="button"
                   className="shelf-group-chip add"
-                  onClick={createGroup}
+                  onClick={openCreateGroup}
                   disabled={groupMutating}
                   aria-label="新建分组"
                 >
@@ -547,7 +600,7 @@ export function ShelfPage() {
                     type="button"
                     className="shelf-group-link"
                     disabled={groupMutating}
-                    onClick={renameActiveGroup}
+                    onClick={openRenameGroup}
                   >
                     {groupMutating ? '处理中…' : '重命名'}
                   </button>
@@ -819,24 +872,72 @@ export function ShelfPage() {
               ))}
             </div>
             <div className="shelf-confirm-actions">
-              <Button
-                variant="ghost"
-                disabled={groupMutating}
-                onClick={() => {
-                  const raw = window.prompt('新分组名称');
-                  if (raw == null) return;
-                  const name = normalizeGroupName(raw);
-                  if (!name) {
-                    toast('分组名无效', 'warn');
-                    return;
-                  }
-                  void assignGroup(moveBook, name);
-                }}
-              >
+              <Button variant="ghost" disabled={groupMutating} onClick={openMoveCreateGroup}>
                 新建并移入
               </Button>
               <Button variant="ghost" disabled={groupMutating} onClick={() => setMoveBook(null)}>
                 取消
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {nameDialog && (
+        <div className="qy-overlay shelf-account-modal">
+          <button
+            type="button"
+            className="shelf-confirm-backdrop"
+            aria-label="取消"
+            disabled={groupMutating}
+            onClick={() => setNameDialog(null)}
+          />
+          <div
+            className="shelf-account-dialog shelf-confirm shelf-group-name"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="shelf-group-name-title"
+          >
+            <h2 id="shelf-group-name-title">
+              {nameDialog.mode === 'rename'
+                ? '重命名分组'
+                : nameDialog.mode === 'moveCreate'
+                  ? '新建分组并移入'
+                  : '新建分组'}
+            </h2>
+            <label className="shelf-group-name-field">
+              <span>分组名称</span>
+              <input
+                ref={nameInputRef}
+                value={nameDialog.value}
+                maxLength={24}
+                placeholder="例如：连环画"
+                disabled={groupMutating}
+                onChange={(e) =>
+                  setNameDialog((prev) => (prev ? { ...prev, value: e.target.value } : prev))
+                }
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitNameDialog();
+                  }
+                }}
+              />
+            </label>
+            <div className="shelf-confirm-actions">
+              <Button variant="ghost" disabled={groupMutating} onClick={() => setNameDialog(null)}>
+                取消
+              </Button>
+              <Button
+                variant="primary"
+                disabled={groupMutating || !nameDialog.value.trim()}
+                onClick={submitNameDialog}
+              >
+                {nameDialog.mode === 'rename'
+                  ? '保存'
+                  : nameDialog.mode === 'moveCreate'
+                    ? '创建并移入'
+                    : '创建'}
               </Button>
             </div>
           </div>

@@ -1,6 +1,6 @@
 {
   "name": "qingyue-harmony",
-  "version": "1.0.28",
+  "version": "1.0.29",
   "private": true,
   "description": "轻阅鸿蒙外壳构建依赖（与本机 DevEco 自带 hvigor 对齐）",
   "dependencies": {

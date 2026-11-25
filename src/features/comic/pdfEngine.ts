@@ -102,6 +102,9 @@ export class PdfEngine {
       }
     }
     this.renders.clear();
+    // 必须清掉 inflight：否则 StrictMode / 依赖重跑时会复用「已取消」的 Promise，
+    // 新一轮 renderPage 直接落到 reject，正文永远空白。
+    this.inflight.clear();
   }
 
   /** 关闭文档时取消缩略图渲染 */
@@ -154,8 +157,8 @@ export class PdfEngine {
       while (this.cache.length > CACHE_LIMIT) this.cache.shift();
       return page;
     } finally {
-      this.inflight.delete(key);
-      this.renders.delete(key);
+      // 只清自己这一份，避免 cancel 后新任务被旧 finally 误删
+      if (this.inflight.get(key) === job) this.inflight.delete(key);
     }
   }
 
@@ -246,13 +249,17 @@ export class PdfEngine {
     if (!ctx) throw new Error('无法创建 canvas 上下文');
     const task = page.render({ canvasContext: ctx, viewport, canvas });
     this.renders.set(key, task);
-    await task.promise;
-    return {
-      pageIndex,
-      canvas,
-      cssWidth: cssW,
-      cssHeight: cssH,
-    };
+    try {
+      await task.promise;
+      return {
+        pageIndex,
+        canvas,
+        cssWidth: cssW,
+        cssHeight: cssH,
+      };
+    } finally {
+      if (this.renders.get(key) === task) this.renders.delete(key);
+    }
   }
 
   private async drawThumb(

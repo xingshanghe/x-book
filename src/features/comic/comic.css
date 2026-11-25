@@ -24,9 +24,10 @@
   position: relative;
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  height: 100%;
+  align-self: stretch;
 }
 
 /* 顶栏/底栏默认占位，不盖住正文；隐藏时才绝对定位滑出，视口自动撑满 */

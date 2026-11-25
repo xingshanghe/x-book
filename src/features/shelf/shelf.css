@@ -315,6 +315,31 @@
   background: color-mix(in srgb, var(--indigo) 10%, var(--paper-1));
 }
 
+.shelf-group-name-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.shelf-group-name-field input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md, 10px);
+  background: var(--paper-1);
+  color: var(--ink-1);
+  font-size: 15px;
+}
+
+.shelf-group-name-field input:focus,
+.shelf-group-name-field input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--indigo) 45%, transparent);
+  outline-offset: 1px;
+}
+
 /* 继续阅读卡：左侧装饰封面 + 右侧一列信息，书名只出现一次 */
 .continue-card {
   display: flex;
