@@ -155,7 +155,7 @@ export interface AppSettings {
   typography: Typography;
 
   pageMode: 'scroll' | 'page';
-  /** 目录常驻在左侧（不遮罩正文），可随时收起 */
+  /** TXT 目录 / PDF 缩略图常驻左侧（不遮罩正文），可随时收起 */
   tocDocked: boolean;
   flipAnimation: boolean;
   showTitlePage: boolean;
@@ -170,6 +170,8 @@ export interface AppSettings {
 
   sortMode: ShelfSort;
   shelfDensity: 'comfortable' | 'compact';
+  /** 书架自定义分组目录（有序；可含尚无书的空组） */
+  shelfGroups: string[];
 
   enableShortcuts: boolean;
   tapToTurn: boolean;

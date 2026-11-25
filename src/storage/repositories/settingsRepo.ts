@@ -16,6 +16,7 @@ export async function loadSettings(): Promise<AppSettings> {
       ...base,
       ...parsed,
       typography: { ...base.typography, ...parsed.typography },
+      shelfGroups: Array.isArray(parsed.shelfGroups) ? parsed.shelfGroups : base.shelfGroups,
     };
     // v1 → v2：阅读器默认改为分页 + 左侧常驻目录。
     // 一次性的，之后用户自己改的选择会被尊重。

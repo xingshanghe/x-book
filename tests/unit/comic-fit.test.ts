@@ -5,6 +5,7 @@ import {
   fitScale,
   pagePercent,
   panBounds,
+  thumbCssSize,
 } from '@/features/comic/fit';
 
 describe('clampPageIndex', () => {
@@ -49,6 +50,17 @@ describe('fitScale', () => {
   it('fitPage uses min ratio', () => {
     expect(fitScale(200, 400, 100, 100, 'fitPage')).toBeCloseTo(0.25);
     expect(fitScale(200, 100, 100, 100, 'fitPage')).toBeCloseTo(0.5);
+  });
+});
+
+describe('thumbCssSize', () => {
+  it('fits longest edge', () => {
+    expect(thumbCssSize(300, 600, 150)).toEqual({ width: 75, height: 150 });
+    expect(thumbCssSize(800, 400, 100)).toEqual({ width: 100, height: 50 });
+  });
+
+  it('does not upscale small pages', () => {
+    expect(thumbCssSize(80, 60, 144)).toEqual({ width: 80, height: 60 });
   });
 });
 

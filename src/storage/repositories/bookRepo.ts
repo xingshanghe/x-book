@@ -31,7 +31,9 @@ export async function touchBook(id: string, patch: Partial<Book>): Promise<Book 
   const db = await getDB();
   const book = await db.get('books', id);
   if (!book) return undefined;
-  const next = { ...book, ...patch };
+  const next: Book = { ...book, ...patch };
+  // Partial 里 group: undefined 表示移出分组，需删掉字段否则会残留旧值
+  if ('group' in patch && patch.group == null) delete next.group;
   await db.put('books', next);
   return next;
 }

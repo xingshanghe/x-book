@@ -20,6 +20,7 @@ import {
   panBounds,
 } from '@/features/comic/fit';
 import { PdfEngine } from '@/features/comic/pdfEngine';
+import { PdfThumbRail } from '@/features/comic/PdfThumbRail';
 import { formatPercent } from '@/lib/format';
 import { getBookBlob } from '@/storage/blobStore';
 import { putBookCover } from '@/storage/coverStore';
@@ -32,6 +33,7 @@ import {
   IconBookmark,
   IconChevronLeft,
   IconChevronRight,
+  IconList,
   IconMinus,
   IconPlus,
 } from '@/ui/icons';
@@ -583,103 +585,130 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
   }
 
   const percent = pagePercent(pageIndex, pageCount);
+  const thumbsDocked = settings.tocDocked;
+  const engine = engineRef.current;
+  const showThumbs = thumbsDocked && loadState === 'ready' && engine != null;
 
   return (
-    <div className={`comic-reader${barsVisible ? '' : ' bars-hidden'}`}>
-      <header className="comic-top">
-        <button type="button" className="comic-icon-btn" onClick={goBack} aria-label="返回书架">
-          <IconChevronLeft size={20} />
-        </button>
-        <div className="comic-title">{book?.title ?? '…'}</div>
-        <button
-          type="button"
-          className="comic-icon-btn"
-          onClick={() => void toggleBookmark()}
-          aria-label={currentBookmark ? '移除书签' : '添加书签'}
-        >
-          <IconBookmark size={18} />
-        </button>
-      </header>
+    <div
+      className={`comic-reader${barsVisible ? '' : ' bars-hidden'}${showThumbs ? ' with-thumbs' : ''}`}
+    >
+      {showThumbs ? (
+        <PdfThumbRail
+          engine={engine}
+          pageCount={pageCount}
+          currentIndex={pageIndex}
+          bookmarks={bookmarks}
+          onJump={(index) => turnTo(index)}
+          onClose={() => updateSettings({ tocDocked: false })}
+        />
+      ) : null}
 
-      <div ref={viewportRef} className={`comic-viewport${panning ? ' panning' : ''}`}>
-        {loadState === 'loading' && <div className="comic-loading">正在打开…</div>}
-        {rendering && !bitmapUrl && <div className="comic-loading">渲染中…</div>}
-        <div
-          className={`comic-stage${animating ? ' animating' : ''}`}
-          style={{
-            transform: `translate(${pan.x}px, ${pan.y}px)`,
-            opacity: animating ? 0.88 : 1,
-          }}
-        >
-          {bitmapUrl && (
-            <img
-              src={bitmapUrl}
-              alt={`第 ${pageIndex + 1} 页`}
-              width={Math.round(displayW)}
-              height={Math.round(displayH)}
-              draggable={false}
-            />
-          )}
+      <div className="comic-main">
+        <header className="comic-top">
+          <button type="button" className="comic-icon-btn" onClick={goBack} aria-label="返回书架">
+            <IconChevronLeft size={20} />
+          </button>
+          <button
+            type="button"
+            className={`comic-icon-btn${thumbsDocked ? ' on' : ''}`}
+            onClick={() => updateSettings({ tocDocked: !thumbsDocked })}
+            aria-label={thumbsDocked ? '收起缩略图' : '展开缩略图'}
+            aria-pressed={thumbsDocked}
+          >
+            <IconList size={18} />
+          </button>
+          <div className="comic-title">{book?.title ?? '…'}</div>
+          <button
+            type="button"
+            className="comic-icon-btn"
+            onClick={() => void toggleBookmark()}
+            aria-label={currentBookmark ? '移除书签' : '添加书签'}
+          >
+            <IconBookmark size={18} />
+          </button>
+        </header>
+
+        <div ref={viewportRef} className={`comic-viewport${panning ? ' panning' : ''}`}>
+          {loadState === 'loading' && <div className="comic-loading">正在打开…</div>}
+          {rendering && !bitmapUrl && <div className="comic-loading">渲染中…</div>}
+          <div
+            className={`comic-stage${animating ? ' animating' : ''}`}
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px)`,
+              opacity: animating ? 0.88 : 1,
+            }}
+          >
+            {bitmapUrl && (
+              <img
+                src={bitmapUrl}
+                alt={`第 ${pageIndex + 1} 页`}
+                width={Math.round(displayW)}
+                height={Math.round(displayH)}
+                draggable={false}
+              />
+            )}
+          </div>
         </div>
+
+        <footer className="comic-foot">
+          <button
+            type="button"
+            className="comic-icon-btn"
+            onClick={prevPage}
+            disabled={pageIndex <= 0}
+            aria-label="上一页"
+          >
+            <IconChevronLeft size={18} />
+          </button>
+          <div className="comic-fit-seg" role="group" aria-label="适屏">
+            {FIT_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                className={fitMode === opt.id ? 'active' : ''}
+                onClick={() => setFit(opt.id)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <span className="comic-page-label">
+            {pageCount > 0 ? `${pageIndex + 1} / ${pageCount}` : '—'} · {formatPercent(percent)}
+          </span>
+          <button
+            type="button"
+            className="comic-icon-btn"
+            onClick={() => {
+              const next = Math.max(MIN_ZOOM, zoom - 0.25);
+              if (next <= 1) setPan({ x: 0, y: 0 });
+              commitRasterZoom(next);
+            }}
+            disabled={zoom <= MIN_ZOOM}
+            aria-label="缩小"
+          >
+            <IconMinus size={16} />
+          </button>
+          <button
+            type="button"
+            className="comic-icon-btn"
+            onClick={() => commitRasterZoom(zoom + 0.25)}
+            disabled={zoom >= MAX_ZOOM}
+            aria-label="放大"
+          >
+            <IconPlus size={16} />
+          </button>
+          <button
+            type="button"
+            className="comic-icon-btn"
+            onClick={nextPage}
+            disabled={pageIndex >= pageCount - 1}
+            aria-label="下一页"
+          >
+            <IconChevronRight size={18} />
+          </button>
+        </footer>
       </div>
-
-      <footer className="comic-foot">
-        <button
-          type="button"
-          className="comic-icon-btn"
-          onClick={prevPage}
-          disabled={pageIndex <= 0}
-          aria-label="上一页"
-        >
-          <IconChevronLeft size={18} />
-        </button>
-        <div className="comic-fit-seg" role="group" aria-label="适屏">
-          {FIT_OPTIONS.map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              className={fitMode === opt.id ? 'active' : ''}
-              onClick={() => setFit(opt.id)}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-        <span className="comic-page-label">
-          {pageCount > 0 ? `${pageIndex + 1} / ${pageCount}` : '—'} · {formatPercent(percent)}
-        </span>
-        <button
-          type="button"
-          className="comic-icon-btn"
-          onClick={() => {
-            const next = Math.max(MIN_ZOOM, zoom - 0.25);
-            if (next <= 1) setPan({ x: 0, y: 0 });
-            commitRasterZoom(next);
-          }}
-          disabled={zoom <= MIN_ZOOM}
-          aria-label="缩小"
-        >
-          <IconMinus size={16} />
-        </button>
-        <button
-          type="button"
-          className="comic-icon-btn"
-          onClick={() => commitRasterZoom(zoom + 0.25)}
-          disabled={zoom >= MAX_ZOOM}
-          aria-label="放大"
-        >
-          <IconPlus size={16} />
-        </button>
-        <button
-          type="button"
-          className="comic-icon-btn"
-          onClick={nextPage}
-          disabled={pageIndex >= pageCount - 1}
-          aria-label="下一页"
-        >
-          <IconChevronRight size={18} />
-        </button>
-      </footer>
     </div>
   );
 }

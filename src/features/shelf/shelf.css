@@ -189,12 +189,110 @@
   margin: 18px 0 14px;
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 10px;
 }
 .shelf-section-title small {
   color: var(--ink-3);
   font-family: var(--font-sans);
   font-size: var(--step--1);
+}
+
+/* ---------- 自定义分组 ---------- */
+
+.shelf-group-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 4px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.shelf-group-chip {
+  flex: 0 0 auto;
+  border: 1px solid var(--line-soft);
+  background: var(--paper-1);
+  color: var(--ink-2);
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition:
+    background var(--dur, 0.18s) var(--ease, ease),
+    border-color var(--dur, 0.18s) var(--ease, ease),
+    color var(--dur, 0.18s) var(--ease, ease);
+}
+
+.shelf-group-chip:hover {
+  border-color: color-mix(in srgb, var(--indigo) 35%, var(--line-soft));
+  color: var(--ink-1);
+}
+
+.shelf-group-chip.active {
+  background: color-mix(in srgb, var(--indigo) 14%, var(--paper-1));
+  border-color: color-mix(in srgb, var(--indigo) 45%, var(--line-soft));
+  color: var(--indigo);
+}
+
+.shelf-group-chip.add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink-3);
+  border-style: dashed;
+}
+
+.shelf-group-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 12px;
+  font-family: var(--font-sans);
+}
+
+.shelf-group-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.shelf-group-link:hover {
+  color: var(--indigo);
+}
+
+.shelf-group-link.danger:hover {
+  color: var(--seal, #c45);
+}
+
+.shelf-move-group .shelf-move-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(40vh, 280px);
+  overflow-y: auto;
+  margin: 8px 0 14px;
+}
+
+.shelf-move-group .shelf-move-list button {
+  text-align: left;
+  border: 1px solid var(--line-soft);
+  background: var(--paper-1);
+  color: var(--ink-1);
+  padding: 10px 12px;
+  border-radius: var(--r-md, 10px);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.shelf-move-group .shelf-move-list button:hover,
+.shelf-move-group .shelf-move-list button.active {
+  border-color: color-mix(in srgb, var(--indigo) 40%, var(--line-soft));
+  background: color-mix(in srgb, var(--indigo) 10%, var(--paper-1));
 }
 
 /* 继续阅读卡：左侧装饰封面 + 右侧一列信息，书名只出现一次 */
@@ -392,6 +490,53 @@
 }
 @media (hover: none) {
   .cell-more {
+    opacity: 1;
+  }
+}
+
+/* 云上传 / 下载角标：封面左上，与右上「更多」错开 */
+.cell-cloud {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  color: rgba(251, 245, 231, 0.95);
+  background: rgba(12, 18, 28, 0.48);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  opacity: 0.72;
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+.cell-cloud:hover:not(:disabled) {
+  opacity: 1;
+  background: rgba(12, 18, 28, 0.68);
+}
+.cell-cloud:disabled {
+  opacity: 0.4;
+  cursor: wait;
+}
+.shelf-cell:hover .cell-cloud {
+  opacity: 1;
+}
+.cell-cloud-up {
+  color: rgba(251, 245, 231, 0.95);
+}
+.cell-cloud-down {
+  background: rgba(180, 67, 38, 0.78);
+}
+.shelf-cell-cloud .qy-cover {
+  opacity: 0.88;
+}
+@media (hover: none) {
+  .cell-cloud {
     opacity: 1;
   }
 }

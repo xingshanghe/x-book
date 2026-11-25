@@ -47,6 +47,7 @@ export function defaultSettings(): AppSettings {
 
     sortMode: 'recent',
     shelfDensity: 'comfortable',
+    shelfGroups: [],
 
     enableShortcuts: true,
     tapToTurn: true,

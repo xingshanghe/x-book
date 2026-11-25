@@ -64,5 +64,9 @@ release/
 site/download/*
 !site/download/latest.json
 
+# MinIO 本机副本（密钥与数据只在服务器）
+deploy/site-47/.env
+deploy/site-47/minio-data/
+
 # 编辑器/工具生成
 .codegraph/

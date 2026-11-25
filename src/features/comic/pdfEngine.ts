@@ -11,11 +11,13 @@ import {
   type RenderTask,
 } from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { cappedDpr } from './fit';
+import { cappedDpr, thumbCssSize } from './fit';
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
 
 const CACHE_LIMIT = 5;
+/** 缩略图 blob 缓存上限（单张很小，可多留） */
+const THUMB_CACHE_LIMIT = 48;
 /** 单边 canvas 像素上限，避开 Safari/Chrome 硬限制 */
 const MAX_CANVAS_EDGE = 4096;
 
@@ -46,6 +48,10 @@ export class PdfEngine {
   private cache: CacheEntry[] = [];
   private inflight = new Map<string, Promise<RenderedPage>>();
   private renders = new Map<string, RenderTask>();
+  /** 缩略图与主画面分轨，翻页 cancel 不会打断侧栏 */
+  private thumbBlobs = new Map<number, Blob>();
+  private thumbInflight = new Map<number, Promise<Blob | null>>();
+  private thumbRenders = new Map<number, RenderTask>();
 
   get pageCount(): number {
     return this.doc?.numPages ?? 0;
@@ -67,8 +73,11 @@ export class PdfEngine {
 
   async close(): Promise<void> {
     this.cancelAllRenders();
+    this.cancelThumbRenders();
     this.inflight.clear();
+    this.thumbInflight.clear();
     this.cache = [];
+    this.thumbBlobs.clear();
     if (this.doc) {
       try {
         await this.doc.destroy();
@@ -83,7 +92,7 @@ export class PdfEngine {
     }
   }
 
-  /** 取消进行中的渲染任务（翻页 / 缩放切换时调用） */
+  /** 取消进行中的主画面渲染（翻页 / 缩放切换时调用） */
   cancelAllRenders(): void {
     for (const task of this.renders.values()) {
       try {
@@ -93,6 +102,18 @@ export class PdfEngine {
       }
     }
     this.renders.clear();
+  }
+
+  /** 关闭文档时取消缩略图渲染 */
+  cancelThumbRenders(): void {
+    for (const task of this.thumbRenders.values()) {
+      try {
+        task.cancel();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.thumbRenders.clear();
   }
 
   async pageSize(pageIndex: number): Promise<PageSize> {
@@ -148,14 +169,42 @@ export class PdfEngine {
   /** 渲第 1 页为 JPEG 封面（最长边 ≤ maxEdge） */
   async renderCoverBlob(maxEdge = 480, quality = 0.82): Promise<Blob | null> {
     if (!this.doc || this.doc.numPages < 1) return null;
-    const size = await this.pageSize(0);
-    const scale = Math.min(1, maxEdge / Math.max(size.width, size.height));
-    const cssW = Math.max(1, Math.round(size.width * scale));
-    const cssH = Math.max(1, Math.round(size.height * scale));
-    const rendered = await this.renderPage(0, cssW, cssH, 1);
-    return await new Promise((resolve) => {
-      rendered.canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
-    });
+    return this.renderThumbBlob(0, maxEdge, quality);
+  }
+
+  /**
+   * 渲一页缩略图 JPEG。与主画面缓存/cancel 分轨，
+   * 翻页时不会被 cancelAllRenders 打断。
+   */
+  async renderThumbBlob(
+    pageIndex: number,
+    maxEdge = 144,
+    quality = 0.72,
+  ): Promise<Blob | null> {
+    if (!this.doc) return null;
+    if (pageIndex < 0 || pageIndex >= this.doc.numPages) return null;
+    const hit = this.thumbBlobs.get(pageIndex);
+    if (hit) return hit;
+    const pending = this.thumbInflight.get(pageIndex);
+    if (pending) return pending;
+
+    const job = this.drawThumb(pageIndex, maxEdge, quality);
+    this.thumbInflight.set(pageIndex, job);
+    try {
+      const blob = await job;
+      if (blob) {
+        this.thumbBlobs.set(pageIndex, blob);
+        while (this.thumbBlobs.size > THUMB_CACHE_LIMIT) {
+          const oldest = this.thumbBlobs.keys().next().value;
+          if (oldest === undefined) break;
+          this.thumbBlobs.delete(oldest);
+        }
+      }
+      return blob;
+    } finally {
+      this.thumbInflight.delete(pageIndex);
+      this.thumbRenders.delete(pageIndex);
+    }
   }
 
   private touch(key: string): void {
@@ -204,6 +253,38 @@ export class PdfEngine {
       cssWidth: cssW,
       cssHeight: cssH,
     };
+  }
+
+  private async drawThumb(
+    pageIndex: number,
+    maxEdge: number,
+    quality: number,
+  ): Promise<Blob | null> {
+    const size = await this.pageSize(pageIndex);
+    const { width: cssW, height: cssH } = thumbCssSize(size.width, size.height, maxEdge);
+    const page = await this.getPage(pageIndex);
+    const base = page.getViewport({ scale: 1 });
+    let scale = Math.min(cssW / base.width, cssH / base.height);
+    const edge = Math.max(base.width * scale, base.height * scale);
+    if (edge > MAX_CANVAS_EDGE) scale *= MAX_CANVAS_EDGE / edge;
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.floor(viewport.width));
+    canvas.height = Math.max(1, Math.floor(viewport.height));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    const task = page.render({ canvasContext: ctx, viewport, canvas });
+    this.thumbRenders.set(pageIndex, task);
+    try {
+      await task.promise;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/cancel/i.test(msg)) return null;
+      throw e;
+    }
+    return await new Promise((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
+    });
   }
 }
 

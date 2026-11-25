@@ -34,6 +34,22 @@ export function cappedDpr(raw = typeof window !== 'undefined' ? window.devicePix
   return Math.min(MAX_DEVICE_PIXEL_RATIO, Math.max(1, raw || 1));
 }
 
+/** 缩略图 CSS 尺寸：最长边 ≤ maxEdge，保持页比例 */
+export function thumbCssSize(
+  pageW: number,
+  pageH: number,
+  maxEdge = 144,
+): { width: number; height: number } {
+  const w = Math.max(1, pageW);
+  const h = Math.max(1, pageH);
+  const edge = Math.max(1, maxEdge);
+  const scale = Math.min(1, edge / Math.max(w, h));
+  return {
+    width: Math.max(1, Math.round(w * scale)),
+    height: Math.max(1, Math.round(h * scale)),
+  };
+}
+
 export interface PanBounds {
   minX: number;
   maxX: number;

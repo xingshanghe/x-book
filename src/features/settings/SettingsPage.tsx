@@ -25,6 +25,7 @@ import type { CleanRule } from '@/types/models';
 import { Button, Segmented, Slider, Switch, useToast } from '@/ui';
 import { IconChevronLeft, LogoMark } from '@/ui/icons';
 import './settings.css';
+import { CloudSyncSection } from './CloudSyncSection';
 import { ThanksSection } from './ThanksSection';
 import { UserCenterSection } from './UserCenterSection';
 
@@ -247,13 +248,7 @@ export function SettingsPage() {
         <DataSection toast={toast} />
 
         {/* ── 同步 ── */}
-        <section id="sync" className="settings-section">
-          <h2>同步</h2>
-          <div className="qy-row">
-            <span className="qy-row-label">状态</span>
-            <span className="qy-row-hint">单机模式 · 未配置服务</span>
-          </div>
-        </section>
+        <CloudSyncSection toast={toast} />
 
         {/* ── 关于 ── */}
         <section id="about" className="settings-section">

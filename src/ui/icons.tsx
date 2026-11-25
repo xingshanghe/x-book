@@ -201,6 +201,26 @@ export function IconMinus({ size, style, className }: P) {
   );
 }
 
+/** 云上传：云 + 上箭头 */
+export function IconCloudUp({ size, style, className }: P) {
+  return (
+    <svg {...base(size)} style={style} className={className} aria-hidden>
+      <path d="M7.5 17H7a4 4 0 0 1-.3-8 5.5 5.5 0 0 1 10.6 1.5A3.5 3.5 0 0 1 17.5 17h-1" />
+      <path d="M12 15V9M9.5 11.5 12 9l2.5 2.5" />
+    </svg>
+  );
+}
+
+/** 云下载：云 + 下箭头 */
+export function IconCloudDown({ size, style, className }: P) {
+  return (
+    <svg {...base(size)} style={style} className={className} aria-hidden>
+      <path d="M7.5 17H7a4 4 0 0 1-.3-8 5.5 5.5 0 0 1 10.6 1.5A3.5 3.5 0 0 1 17.5 17h-1" />
+      <path d="M12 9v6M9.5 12.5 12 15l2.5-2.5" />
+    </svg>
+  );
+}
+
 /**
  * 品牌符号（VI v2.0 §03）：一页纸的折角
  *   画布 80×104，页身 60×96，右上折角边长 22 严格 45°，填朱砂；

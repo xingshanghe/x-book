@@ -1,0 +1,97 @@
+name: qingyue-site
+
+# 目标机器：47.108.79.158
+# 拓扑：
+#   edge(宿主 80) -> site(宿主 10080) 静态官网
+#   edge /s3/     -> minio(9000)      图书对象存储（仅服务端访问）
+#   edge /v1/books/ -> book-cloud     账号鉴权后的云书架 API
+services:
+  site:
+    build:
+      context: ./site
+    image: qingyue-site:latest
+    container_name: qingyue-site
+    restart: unless-stopped
+    ports:
+      - "10080:80"
+    volumes:
+      - ./downloads:/usr/share/nginx/html/download:ro
+    networks:
+      - qingyue
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  minio:
+    image: minio/minio:latest
+    container_name: qingyue-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    env_file:
+      - .env
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+    volumes:
+      - ./minio-data:/data
+    networks:
+      - qingyue
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  book-cloud:
+    build:
+      context: ./book-cloud
+    image: qingyue-book-cloud:latest
+    container_name: qingyue-book-cloud
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: qingyue-books
+      MINIO_SECURE: "0"
+      ACCOUNT_VERIFY_URL: ${ACCOUNT_VERIFY_URL:-http://118.25.79.136}
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - qingyue
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8790/v1/books/cloud/health')"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  edge:
+    image: nginx:1.27-alpine
+    container_name: qingyue-edge
+    restart: unless-stopped
+    depends_on:
+      site:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      book-cloud:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    volumes:
+      - ./edge:/etc/nginx/conf.d:ro
+    networks:
+      - qingyue
+
+networks:
+  qingyue:
+    driver: bridge
