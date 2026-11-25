@@ -159,3 +159,12 @@ export async function apiGetFile(fingerprint: string): Promise<Blob> {
   }
   return res.blob();
 }
+
+/** 删除云端书籍（meta + file）；幂等，不存在也算成功 */
+export async function apiDeleteBook(fingerprint: string): Promise<void> {
+  const result = await callJson<{ ok?: boolean }>(
+    `/v1/books/cloud/${encodeURIComponent(fingerprint)}`,
+    { method: 'DELETE' },
+  );
+  if (!result.ok) throw new CloudApiError(result.message, result.status);
+}

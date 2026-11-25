@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "net.xingshanghe.qingyue",
     "vendor": "xingshanghe",
-    "versionCode": 1000000,
-    "versionName": "1.0.0",
+    "versionCode": 1000028,
+    "versionName": "1.0.28",
     "icon": "$media:app_icon",
     "label": "$string:app_name",
     "minAPIVersion": 12,

@@ -2,7 +2,19 @@
   "string": [
     {
       "name": "web_version",
-      "value": "1.0.27"
+      "value": "1.0.28"
+    },
+    {
+      "name": "module_desc",
+      "value": "轻阅 QINGYUE 主模块"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "轻阅"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "轻阅"
     }
   ]
 }

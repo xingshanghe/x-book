@@ -25,6 +25,7 @@ import { accountSession } from '@/account/session';
 import {
   type CloudBookMeta,
   cloudConfigReady,
+  deleteCloudBook,
   downloadByFingerprint,
   listRemoteBooks,
   readCloudConfig,
@@ -61,6 +62,8 @@ export function ShelfPage() {
   const update = useSettings((s) => s.update);
   const [books, setBooks] = useState<Book[] | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Book | null>(null);
+  /** 删除确认框：「从云端删除」勾选；默认不勾，只删本地 */
+  const [deleteFromCloud, setDeleteFromCloud] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [groupMutating, setGroupMutating] = useState(false);
   const [percentMap, setPercentMap] = useState<Record<string, number>>({});
@@ -326,20 +329,42 @@ export function ShelfPage() {
   };
 
   const removeBook = (book: Book) => {
+    setDeleteFromCloud(false);
     setPendingDelete(book);
   };
 
   const confirmDelete = async () => {
     if (!pendingDelete || deleting) return;
     setDeleting(true);
+    const book = pendingDelete;
+    // 以勾选为准，不再二次依赖 remoteMap（对话框打开期间清单刷新可能把它清掉）
+    const alsoCloud = deleteFromCloud;
+    let cloudDeleted = false;
     try {
-      await deleteBook(pendingDelete.id);
-      toast('已删除', 'ok');
+      // 勾了云端：先删云端，失败则中止，避免本地已删、云端还在
+      if (alsoCloud) {
+        await deleteCloudBook(book.fingerprint);
+        cloudDeleted = true;
+        // 立刻从本地清单拿掉，避免本机先刷新时短暂冒出「仅云端」卡片
+        setRemoteMap((prev) => {
+          if (!prev.has(book.fingerprint)) return prev;
+          const next = new Map(prev);
+          next.delete(book.fingerprint);
+          return next;
+        });
+      }
+      await deleteBook(book.id);
+      toast(alsoCloud ? '已从本机与云端删除' : '已删除', 'ok');
       setPendingDelete(null);
-      void reload();
+      setDeleteFromCloud(false);
+      await reload();
+      if (alsoCloud) void refreshCloud();
     } catch (err) {
       const message = err instanceof Error && err.message ? err.message : '删除失败';
-      toast(message, 'warn');
+      toast(
+        cloudDeleted ? `云端已删除，本机删除失败：${message}` : message,
+        'warn',
+      );
     } finally {
       setDeleting(false);
     }
@@ -350,6 +375,7 @@ export function ShelfPage() {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || deleting || groupMutating) return;
       setPendingDelete(null);
+      setDeleteFromCloud(false);
       setPendingDeleteGroup(null);
       setMoveBook(null);
     };
@@ -674,7 +700,10 @@ export function ShelfPage() {
             className="shelf-confirm-backdrop"
             aria-label="取消删除"
             disabled={deleting}
-            onClick={() => setPendingDelete(null)}
+            onClick={() => {
+              setPendingDelete(null);
+              setDeleteFromCloud(false);
+            }}
           />
           <div
             className="shelf-account-dialog shelf-confirm"
@@ -684,8 +713,26 @@ export function ShelfPage() {
           >
             <h2 id="shelf-confirm-title">删除《{pendingDelete.title}》</h2>
             <p>阅读进度、书签与文件会一并移除，此操作不可撤销。</p>
+            {cloudConfigReady(readCloudConfig()) && remoteMap.has(pendingDelete.fingerprint) && (
+              <label className="shelf-confirm-check">
+                <input
+                  type="checkbox"
+                  checked={deleteFromCloud}
+                  disabled={deleting}
+                  onChange={(e) => setDeleteFromCloud(e.target.checked)}
+                />
+                <span>从云端删除</span>
+              </label>
+            )}
             <div className="shelf-confirm-actions">
-              <Button variant="ghost" disabled={deleting} onClick={() => setPendingDelete(null)}>
+              <Button
+                variant="ghost"
+                disabled={deleting}
+                onClick={() => {
+                  setPendingDelete(null);
+                  setDeleteFromCloud(false);
+                }}
+              >
                 取消
               </Button>
               <Button variant="danger" disabled={deleting} onClick={() => void confirmDelete()}>

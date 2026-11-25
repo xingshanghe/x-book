@@ -1,8 +1,10 @@
 {
-  "name": "5.0.0",
-  "version": "5.0.0",
+  "name": "qingyue-harmony",
+  "version": "1.0.28",
+  "private": true,
+  "description": "轻阅鸿蒙外壳构建依赖（与本机 DevEco 自带 hvigor 对齐）",
   "dependencies": {
-    "@ohos/hvigor-ohos-plugin": "5.0.0",
-    "@ohos/hvigor": "5.0.0"
+    "@ohos/hvigor": "file:/Applications/DevEco-Studio.app/Contents/tools/hvigor/hvigor",
+    "@ohos/hvigor-ohos-plugin": "file:/Applications/DevEco-Studio.app/Contents/tools/hvigor/hvigor-ohos-plugin"
   }
 }

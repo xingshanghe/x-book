@@ -273,6 +273,29 @@ def create_app() -> FastAPI:
         except S3Error:
             return _ok({"exists": False})
 
+    @app.delete("/v1/books/cloud/{fingerprint}")
+    async def delete_book(fingerprint: str, authorization: str = Header(default="")):
+        bad = check_fp(fingerprint)
+        if bad:
+            return _err(400, bad)
+        aid = await account_id(authorization)
+        if isinstance(aid, JSONResponse):
+            return aid
+        meta_key, file_key = object_keys(aid, fingerprint)
+        client = minio_client()
+        try:
+            ensure_bucket(client)
+            # MinIO remove_object 对不存在的对象也成功，幂等即可
+            for key in (meta_key, file_key):
+                try:
+                    client.remove_object(MINIO_BUCKET, key)
+                except S3Error as e:
+                    if e.code not in ("NoSuchKey", "NoSuchBucket"):
+                        return _err(502, f"删除失败：{e.code}")
+            return _ok({"ok": True})
+        except S3Error as e:
+            return _err(502, f"删除失败：{e.code}")
+
     return app
 
 

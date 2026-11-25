@@ -80,6 +80,26 @@
   color: var(--ink-2);
   line-height: 1.7;
 }
+.shelf-confirm-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  color: var(--ink-2);
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+.shelf-confirm-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--seal);
+  cursor: pointer;
+}
+.shelf-confirm-check:has(input:disabled) {
+  opacity: 0.55;
+  cursor: default;
+}
 .shelf-confirm-backdrop {
   position: absolute;
   inset: 0;

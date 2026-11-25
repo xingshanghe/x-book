@@ -34,10 +34,10 @@ export class Load {
       if (!fs.accessSync(`${target}/index.html`)) return false;
       const marker = `${target}/.version`;
       if (!fs.accessSync(marker)) return false;
-      const fd = fs.openSync(marker, fs.OpenMode.READ_ONLY);
+      const file = fs.openSync(marker, fs.OpenMode.READ_ONLY);
       const buf = new ArrayBuffer(64);
-      fs.readSync(fd, buf);
-      fs.closeSync(fd);
+      fs.readSync(file.fd, buf);
+      fs.closeSync(file.fd);
       const prev = Load.utf8(new Uint8Array(buf)).trim();
       const current = Load.version(context);
       return prev === current;
@@ -83,9 +83,9 @@ export class Load {
   }
 
   private static write(path: string, buf: ArrayBuffer | Uint8Array): void {
-    const fd = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
-    fs.writeSync(fd, buf instanceof Uint8Array ? buf.buffer : buf);
-    fs.closeSync(fd);
+    const file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+    fs.writeSync(file.fd, buf instanceof Uint8Array ? buf.buffer : buf);
+    fs.closeSync(file.fd);
   }
 
   private static version(context: common.UIAbilityContext): string {

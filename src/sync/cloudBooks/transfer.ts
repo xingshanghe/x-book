@@ -4,7 +4,7 @@ import { useImportQueue } from '@/features/import/importQueue';
 import { getBookBlob } from '@/storage/blobStore';
 import { getBook } from '@/storage/repositories/bookRepo';
 import type { Book } from '@/types/models';
-import { apiGetFile, apiGetMeta, apiPutFile, apiPutMeta, CloudApiError } from './api';
+import { apiDeleteBook, apiGetFile, apiGetMeta, apiPutFile, apiPutMeta, CloudApiError } from './api';
 import { type CloudBookMeta, listRemoteBooks } from './catalog';
 import { cloudConfigReady, readCloudConfig } from './config';
 
@@ -89,4 +89,15 @@ export async function listCloudOnly(localFingerprints: Set<string>): Promise<Clo
     if (!localFingerprints.has(fp)) out.push(meta);
   }
   return out.sort((a, b) => (b.uploadedAt ?? 0) - (a.uploadedAt ?? 0));
+}
+
+/** 按 fingerprint 删除云端书；需已启用云书架并登录 */
+export async function deleteCloudBook(fingerprint: string): Promise<void> {
+  requireReady();
+  try {
+    await apiDeleteBook(fingerprint);
+  } catch (err) {
+    if (err instanceof CloudApiError && err.status === 404) return;
+    throw err;
+  }
 }

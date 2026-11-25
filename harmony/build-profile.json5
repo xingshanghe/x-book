@@ -4,8 +4,8 @@
     "products": [
       {
         "name": "default",
-        "signingConfig": "default",
         "compatibleSdkVersion": "5.0.2(14)",
+        "targetSdkVersion": "5.0.2(14)",
         "runtimeOS": "HarmonyOS",
         "buildOption": {
           "strictMode": {
@@ -15,18 +15,21 @@
         }
       }
     ],
-    "modules": [
-      {
-        "name": "entry",
-        "srcPath": "./entry",
-        "targets": [
-          {
-            "name": "default",
-            "applyToProducts": ["default"]
-          }
-        ]
-      }
+    "buildModeSet": [
+      { "name": "debug" },
+      { "name": "release" }
     ]
   },
-  "modules": []
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": ["default"]
+        }
+      ]
+    }
+  ]
 }

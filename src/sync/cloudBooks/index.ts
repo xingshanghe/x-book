@@ -13,4 +13,4 @@ export {
   probeCloud,
   remoteHasFingerprint,
 } from './catalog';
-export { downloadByFingerprint, listCloudOnly, uploadBook } from './transfer';
+export { deleteCloudBook, downloadByFingerprint, listCloudOnly, uploadBook } from './transfer';
