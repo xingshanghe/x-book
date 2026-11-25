@@ -217,7 +217,8 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
     };
   }, [bookId]);
 
-  /* ── 视口尺寸 ── */
+  /* ── 视口尺寸（含侧栏开合：依赖 tocDocked，避免布局未稳时漏测） ── */
+  const thumbsDocked = settings.tocDocked;
   useLayoutEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
@@ -228,10 +229,15 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
       setViewport((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
     };
     measure();
+    // 侧栏切换后等一帧再测，确保 grid 列宽已结算
+    const raf = window.requestAnimationFrame(measure);
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
-  }, [loadState]);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [loadState, thumbsDocked]);
 
   /* ── 取页尺寸 + 渲染（同一效应，避免翻页闪旧尺寸） ── */
   useEffect(() => {
@@ -534,6 +540,15 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
     setPan({ x: 0, y: 0 });
   };
 
+  const toggleThumbs = useCallback(() => {
+    const next = !useSettings.getState().settings.tocDocked;
+    updateSettings({ tocDocked: next });
+    // 可用宽度变化后回到适屏，避免沿用旧缩放把页裁切在半屏外
+    setZoom(1);
+    setRasterZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [updateSettings]);
+
   const currentBookmark = bookmarks.find((b) => b.blockIndex === pageIndex);
 
   const toggleBookmark = async () => {
@@ -591,7 +606,6 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
   }
 
   const percent = pagePercent(pageIndex, pageCount);
-  const thumbsDocked = settings.tocDocked;
   const engine = engineRef.current;
   const showThumbs = thumbsDocked && loadState === 'ready' && engine != null;
 
@@ -606,7 +620,7 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
           currentIndex={pageIndex}
           bookmarks={bookmarks}
           onJump={(index) => turnTo(index)}
-          onClose={() => updateSettings({ tocDocked: false })}
+          onClose={toggleThumbs}
         />
       ) : null}
 
@@ -618,7 +632,7 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
           <button
             type="button"
             className={`comic-icon-btn${thumbsDocked ? ' on' : ''}`}
-            onClick={() => updateSettings({ tocDocked: !thumbsDocked })}
+            onClick={toggleThumbs}
             aria-label={thumbsDocked ? '收起缩略图' : '展开缩略图'}
             aria-pressed={thumbsDocked}
           >

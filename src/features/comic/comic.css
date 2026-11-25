@@ -1,10 +1,11 @@
 /* 连环画 / PDF 阅读器 */
 
 .comic-reader {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  min-height: 100dvh;
+  /* 与 TXT .reader 一致：锁死视口，侧栏开合时正文列才能正确让位 */
+  position: fixed;
+  inset: 0;
+  width: auto;
+  height: auto;
   display: flex;
   flex-direction: column;
   background: var(--paper-0, #1a1a1a);
@@ -12,12 +13,14 @@
   overflow: hidden;
   touch-action: none;
   user-select: none;
+  z-index: var(--z-content, 1);
 }
 
-/* 缩略图常驻时两列：侧栏 + 正文，正文让位 */
+/* 缩略图常驻时两列：侧栏 + 正文，正文让位（不撑破视口） */
 .comic-reader.with-thumbs {
   display: grid;
   grid-template-columns: 168px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .comic-main {
@@ -27,7 +30,10 @@
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+  width: 100%;
+  height: 100%;
   align-self: stretch;
+  overflow: hidden;
 }
 
 /* 顶栏/底栏默认占位，不盖住正文；隐藏时才绝对定位滑出，视口自动撑满 */
@@ -192,8 +198,11 @@
 .comic-thumb-rail {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
   height: 100%;
+  max-height: 100%;
+  overflow: hidden;
   background: color-mix(in srgb, var(--paper-0, #1a1a1a) 92%, #000);
   border-right: 1px solid var(--line-soft, rgb(255 255 255 / 8%));
   z-index: 5;
@@ -374,12 +383,18 @@
     flex-direction: column;
   }
 
+  .comic-reader.with-thumbs .comic-main {
+    /* 窄屏侧栏浮层：正文仍占满，不被侧栏挤出视口 */
+    width: 100%;
+  }
+
   .comic-reader.with-thumbs .comic-thumb-rail {
     position: absolute;
     top: 0;
     bottom: 0;
     left: 0;
     width: min(72vw, 200px);
+    max-height: none;
     z-index: 6;
     box-shadow: 0 12px 40px rgb(0 0 0 / 45%);
   }
