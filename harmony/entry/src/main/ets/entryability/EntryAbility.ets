@@ -15,7 +15,19 @@ export default class EntryAbility extends UIAbility {
         hilog.error(0x0000, TAG, `加载页面失败: ${err.message}`);
         return;
       }
-      windowStage.getMainWindowSync().setWindowLayoutFullScreen(true);
+      try {
+        const win = windowStage.getMainWindowSync();
+        // 全屏沉浸：内容延伸到状态栏下方，由 Web 用 --safe-t 自行让位
+        win.setWindowLayoutFullScreen(true);
+        win.setWindowSystemBarProperties({
+          statusBarColor: '#F7EFDC',
+          statusBarContentColor: '#1A1A1A',
+          navigationBarColor: '#F7EFDC',
+          navigationBarContentColor: '#1A1A1A'
+        });
+      } catch (e) {
+        hilog.warn(0x0000, TAG, `窗口沉浸配置失败: ${JSON.stringify(e)}`);
+      }
     });
   }
 }

@@ -46,12 +46,13 @@ describe('cloudBooks config', () => {
     expect(cfg.apiBase).toBe('http://47.108.79.158');
   });
 
-  it('persists apiBase without secrets', () => {
+  it('persists enabled flag but keeps hardcoded apiBase', () => {
     const s = memoryStorage();
     const next = writeCloudConfig({ enabled: false, apiBase: ' http://example.com/ ' }, s);
     expect(next.enabled).toBe(false);
-    expect(next.apiBase).toBe('http://example.com');
+    expect(next.apiBase).toBe('http://47.108.79.158');
     const raw = JSON.parse(s.getItem('qingyue.cloud.v1')!);
+    expect(raw.apiBase).toBe('http://47.108.79.158');
     expect(raw.accessKey).toBeUndefined();
     expect(raw.secretKey).toBeUndefined();
   });

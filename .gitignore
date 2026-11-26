@@ -28,11 +28,16 @@ src-tauri/gen/apple/*.xcworkspace/
 src-tauri/gen/apple/Pods/
 
 # HarmonyOS
+.hvigor/
 harmony/.hvigor/
 harmony/.cxx/
 harmony/oh_modules/
 harmony/node_modules/
 harmony/*/build/
+harmony/.sign/
+harmony/.preview/
+harmony/**/.preview/
+harmony/*.bak
 harmony/.clangd
 harmony/.clang-format
 harmony/.clang-tidy

@@ -29,19 +29,6 @@ import { CloudSyncSection } from './CloudSyncSection';
 import { ThanksSection } from './ThanksSection';
 import { UserCenterSection } from './UserCenterSection';
 
-const SECTIONS = [
-  { id: 'account', label: '账号' },
-  { id: 'thanks', label: '鸣谢' },
-  { id: 'appearance', label: '外观' },
-  { id: 'reading', label: '阅读' },
-  { id: 'recognition', label: '识别与清洗' },
-  { id: 'fonts', label: '字体' },
-  { id: 'aloud', label: '朗读' },
-  { id: 'data', label: '数据' },
-  { id: 'sync', label: '同步' },
-  { id: 'about', label: '关于' },
-] as const;
-
 type ToastFn = ReturnType<typeof useToast>['push'];
 
 export function SettingsPage() {
@@ -83,21 +70,6 @@ export function SettingsPage() {
       </header>
 
       <div className="settings-body">
-        <nav className="settings-nav">
-          {SECTIONS.map((s) => (
-            <Button
-              key={s.id}
-              size="sm"
-              onClick={() => {
-                if (s.id === 'aloud') openAloud();
-                document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth' });
-              }}
-            >
-              {s.label}
-            </Button>
-          ))}
-        </nav>
-
         <section id="account" className="settings-section">
           <UserCenterSection toast={toast} />
         </section>

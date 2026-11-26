@@ -1,5 +1,6 @@
 /** 云端书目清单：按 fingerprint 对齐 */
 
+import { accountSession } from '@/account/session';
 import type { BookEncoding, BookKind } from '@/types/models';
 import { apiListBooks, apiProbe } from './api';
 import { cloudConfigReady, readCloudConfig } from './config';
@@ -25,10 +26,14 @@ export function cloudObjectKeys(fingerprint: string): { meta: string; file: stri
   };
 }
 
-/** 列出云端书籍；失败返回空 Map（静默降级） */
+/** 列出云端书籍；未登录或失败返回空 Map（静默降级） */
 export async function listRemoteBooks(): Promise<Map<string, CloudBookMeta>> {
   const map = new Map<string, CloudBookMeta>();
   if (!cloudConfigReady(readCloudConfig())) return map;
+  // 没会话就不打 API，避免未登录时无意义的 401
+  if (!accountSession.client().accessToken() && !accountSession.hasStoredSession()) {
+    return map;
+  }
   try {
     const items = await apiListBooks();
     for (const meta of items) {

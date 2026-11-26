@@ -27,3 +27,8 @@ commands.allow = ["tts_speak"]
 identifier = "allow-account-http"
 description = "由本机代替窗口访问账号服务。"
 commands.allow = ["account_http"]
+
+[[permission]]
+identifier = "allow-cloud-http"
+description = "由本机代替窗口访问云书架 API。"
+commands.allow = ["cloud_http"]

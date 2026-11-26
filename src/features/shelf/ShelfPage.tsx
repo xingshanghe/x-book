@@ -1,10 +1,41 @@
 /** 书架页：导入、网格、继续阅读、搜索、排序、自定义分组 */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type DragEvent as ReactDragEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useLocation } from 'wouter';
+import { accountSession } from '@/account/session';
 import { useSettings } from '@/app/store';
-import { listBooks, deleteBook, touchBook } from '@/storage/repositories/bookRepo';
+import { APP_VERSION } from '@/app/version';
+import { useImportQueue } from '@/features/import/importQueue';
+import { useAccountProfile } from '@/features/settings/useAccountProfile';
+import { isPdfBook } from '@/lib/bookKind';
+import {
+  formatBytes,
+  formatChars,
+  formatPages,
+  formatPercent,
+  formatRelative,
+  formatRemaining,
+} from '@/lib/format';
+import { coverHue } from '@/lib/id';
+import { deleteBook, listBooks, touchBook } from '@/storage/repositories/bookRepo';
 import { allProgress } from '@/storage/repositories/progressRepo';
+import {
+  type CloudBookMeta,
+  cloudConfigReady,
+  cloudOpsReady,
+  deleteCloudBook,
+  downloadByFingerprint,
+  listRemoteBooks,
+  readCloudConfig,
+  uploadBook,
+} from '@/sync/cloudBooks';
 import type { Book, ShelfSort } from '@/types/models';
 import { Button, EmptyState, Menu, Progress, Segmented, useToast } from '@/ui';
 import {
@@ -18,33 +49,23 @@ import {
   IconSearch,
   LogoMark,
 } from '@/ui/icons';
-import { isPdfBook } from '@/lib/bookKind';
-import { coverHue } from '@/lib/id';
-import { formatBytes, formatChars, formatPages, formatPercent, formatRelative, formatRemaining } from '@/lib/format';
-import { accountSession } from '@/account/session';
-import {
-  type CloudBookMeta,
-  cloudConfigReady,
-  deleteCloudBook,
-  downloadByFingerprint,
-  listRemoteBooks,
-  readCloudConfig,
-  uploadBook,
-} from '@/sync/cloudBooks';
 import { BookCover } from './BookCover';
 import {
   addGroupToCatalog,
+  BOOK_DRAG_MIME,
+  encodeBookDragPayload,
   filterBooksByGroup,
   groupSectionTitle,
   listShelfGroups,
   normalizeGroupName,
+  parseBookDragPayload,
   removeGroupFromCatalog,
   renameGroupInCatalog,
+  resolveDragBookIds,
   type ShelfGroupFilter,
 } from './groups';
-import { ShelfAccount } from './ShelfAccount';
 import { ImportTray, useDropImport } from './ImportDropzone';
-import { useImportQueue } from '@/features/import/importQueue';
+import { ShelfAccount } from './ShelfAccount';
 import './shelf.css';
 
 const SORTS: { value: ShelfSort; label: string }[] = [
@@ -60,6 +81,9 @@ export function ShelfPage() {
   const toast = useToast().push;
   const settings = useSettings((s) => s.settings);
   const update = useSettings((s) => s.update);
+  const profile = useAccountProfile();
+  /** 启用云书架且已登录 → 才显示/允许上传下载 */
+  const cloudOps = cloudOpsReady(readCloudConfig(), Boolean(profile));
   const [books, setBooks] = useState<Book[] | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Book | null>(null);
   /** 删除确认框：「从云端删除」勾选；默认不勾，只删本地 */
@@ -69,13 +93,19 @@ export function ShelfPage() {
   const [percentMap, setPercentMap] = useState<Record<string, number>>({});
   const [query, setQuery] = useState('');
   const [activeGroup, setActiveGroup] = useState<ShelfGroupFilter>('all');
-  const [moveBook, setMoveBook] = useState<Book | null>(null);
+  /** 移到分组对话框目标（支持多本） */
+  const [moveTargets, setMoveTargets] = useState<Book[] | null>(null);
   const [pendingDeleteGroup, setPendingDeleteGroup] = useState<string | null>(null);
   /** Tauri / WKWebView 无 window.prompt，分组命名一律走应用内对话框 */
   const [nameDialog, setNameDialog] = useState<null | {
     mode: 'create' | 'rename' | 'moveCreate';
     value: string;
   }>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  /** 拖放到芯片时的高亮目标：'ungrouped' | 组名 */
+  const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
+  const [draggingBook, setDraggingBook] = useState(false);
   const [dropProps, dropping] = useDropImport();
   const fileInput = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -112,10 +142,11 @@ export function ShelfPage() {
     void reload();
   }, [reload]);
 
-  // 进入书架时拉一次云端清单（不轮询）
+  // 进入书架 / 登录态变化时拉云端清单（不轮询）
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 登录切换需重拉，refreshCloud 闭包读的是 session 而非 profile
   useEffect(() => {
     void refreshCloud();
-  }, [refreshCloud]);
+  }, [refreshCloud, profile?.id]);
 
   // 导入任务完成后刷新书架
   useEffect(() => {
@@ -132,7 +163,7 @@ export function ShelfPage() {
   }, [books]);
 
   const cloudOnly = useMemo(() => {
-    if (!cloudConfigReady(readCloudConfig())) return [] as CloudBookMeta[];
+    if (!cloudOps) return [] as CloudBookMeta[];
     // 仅在「全部」或搜索时展示仅云端书，避免打乱分组
     if (activeGroup !== 'all') return [] as CloudBookMeta[];
     const q = query.trim().toLowerCase();
@@ -149,10 +180,22 @@ export function ShelfPage() {
       list.push(meta);
     }
     return list.sort((a, b) => (b.uploadedAt ?? 0) - (a.uploadedAt ?? 0));
-  }, [remoteMap, localFingerprints, activeGroup, query]);
+  }, [cloudOps, remoteMap, localFingerprints, activeGroup, query]);
+
+  const cloudGateToast = () => {
+    if (!cloudConfigReady(readCloudConfig())) {
+      toast('请先在「同步」里启用云书架', 'warn');
+    } else {
+      toast('请先登录账号', 'warn');
+    }
+  };
 
   const onUpload = async (book: Book) => {
     if (cloudBusy) return;
+    if (!cloudOps) {
+      cloudGateToast();
+      return;
+    }
     setCloudBusy(book.fingerprint);
     try {
       await uploadBook(book.id);
@@ -167,6 +210,10 @@ export function ShelfPage() {
 
   const onDownload = async (meta: CloudBookMeta) => {
     if (cloudBusy) return;
+    if (!cloudOps) {
+      cloudGateToast();
+      return;
+    }
     setCloudBusy(meta.fingerprint);
     try {
       await downloadByFingerprint(meta.fingerprint);
@@ -203,11 +250,14 @@ export function ShelfPage() {
     let list = filterBooksByGroup(books, activeGroup);
     if (q) {
       list = list.filter(
-        (b) => (b.title ?? '').toLowerCase().includes(q) || (b.author ?? '').toLowerCase().includes(q),
+        (b) =>
+          (b.title ?? '').toLowerCase().includes(q) || (b.author ?? '').toLowerCase().includes(q),
       );
     }
     return sortBooks(list, percentMap, settings.sortMode);
   }, [books, query, percentMap, settings.sortMode, activeGroup]);
+
+  const visibleIds = useMemo(() => (filtered ?? []).map((b) => b.id), [filtered]);
 
   const continueBook = useMemo(() => {
     if (!books || activeGroup !== 'all' || query) return null;
@@ -241,9 +291,44 @@ export function ShelfPage() {
     setNameDialog({ mode: 'rename', value: activeGroup });
   };
 
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const enterSelectMode = () => {
+    setSelectMode(true);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
   const openMoveCreateGroup = () => {
-    if (groupMutating || !moveBook) return;
+    if (groupMutating || !moveTargets?.length) return;
     setNameDialog({ mode: 'moveCreate', value: '' });
+  };
+
+  const openMoveForBook = (book: Book) => {
+    if (selectMode && selectedIds.has(book.id) && selectedIds.size > 0) {
+      const targets = (books ?? []).filter((b) => selectedIds.has(b.id));
+      setMoveTargets(targets.length > 0 ? targets : [book]);
+      return;
+    }
+    setMoveTargets([book]);
+  };
+
+  const openMoveForSelection = () => {
+    if (!books || selectedIds.size === 0) return;
+    const targets = books.filter((b) => selectedIds.has(b.id));
+    if (targets.length === 0) return;
+    setMoveTargets(targets);
   };
 
   const applyCreateGroup = (raw: string) => {
@@ -276,7 +361,10 @@ export function ShelfPage() {
     const catalog = freshCatalog();
     const nextCatalog = renameGroupInCatalog(catalog, activeGroup, nextName);
     if (!nextCatalog) {
-      toast(listShelfGroups(catalog, []).includes(nextName) ? '已有同名分组' : '重命名失败', 'warn');
+      toast(
+        listShelfGroups(catalog, []).includes(nextName) ? '已有同名分组' : '重命名失败',
+        'warn',
+      );
       return false;
     }
     const from = activeGroup;
@@ -305,14 +393,17 @@ export function ShelfPage() {
   };
 
   const applyMoveCreateGroup = (raw: string) => {
-    if (!moveBook) return false;
+    if (!moveTargets?.length) return false;
     const name = normalizeGroupName(raw);
     if (!name) {
       toast('分组名无效', 'warn');
       return false;
     }
     setNameDialog(null);
-    void assignGroup(moveBook, name);
+    void assignGroups(
+      moveTargets.map((b) => b.id),
+      name,
+    );
     return true;
   };
 
@@ -348,22 +439,43 @@ export function ShelfPage() {
     }
   };
 
-  const assignGroup = async (book: Book, group: string | undefined) => {
-    if (groupMutating) return;
+  const assignGroups = async (ids: readonly string[], group: string | undefined) => {
+    if (groupMutating || ids.length === 0) return;
     setGroupMutating(true);
     try {
-      await touchBook(book.id, { group });
+      const results = await Promise.all(ids.map((id) => touchBook(id, { group })));
+      const updated = results.filter(Boolean).length;
+      if (updated === 0) {
+        toast('没有可移动的书', 'warn');
+        setMoveTargets(null);
+        await reload();
+        return;
+      }
       if (group) {
         const catalog = freshCatalog();
         if (!listShelfGroups(catalog, []).includes(group)) {
           saveCatalog(addGroupToCatalog(catalog, group));
         }
       }
-      setMoveBook(null);
+      setMoveTargets(null);
+      setSelectedIds((prev) => {
+        if (prev.size === 0) return prev;
+        const next = new Set(prev);
+        for (const id of ids) next.delete(id);
+        return next;
+      });
       await reload();
-      toast(group ? `已移到「${group}」` : '已移出分组');
+      if (group) {
+        toast(updated === 1 ? `已移到「${group}」` : `已将 ${updated} 本移到「${group}」`);
+      } else {
+        toast(updated === 1 ? '已移出分组' : `已将 ${updated} 本移出分组`);
+      }
+      if (updated < ids.length) {
+        toast(`其中 ${ids.length - updated} 本未找到`, 'warn');
+      }
     } catch (err) {
       toast(err instanceof Error ? err.message : '移动失败', 'warn');
+      await reload();
     } finally {
       setGroupMutating(false);
     }
@@ -402,31 +514,41 @@ export function ShelfPage() {
       if (alsoCloud) void refreshCloud();
     } catch (err) {
       const message = err instanceof Error && err.message ? err.message : '删除失败';
-      toast(
-        cloudDeleted ? `云端已删除，本机删除失败：${message}` : message,
-        'warn',
-      );
+      toast(cloudDeleted ? `云端已删除，本机删除失败：${message}` : message, 'warn');
     } finally {
       setDeleting(false);
     }
   };
 
   useEffect(() => {
-    if (!pendingDelete && !pendingDeleteGroup && !moveBook && !nameDialog) return;
+    if (!pendingDelete && !pendingDeleteGroup && !moveTargets && !nameDialog && !selectMode) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || deleting || groupMutating) return;
       if (nameDialog) {
         setNameDialog(null);
         return;
       }
-      setPendingDelete(null);
-      setDeleteFromCloud(false);
-      setPendingDeleteGroup(null);
-      setMoveBook(null);
+      if (pendingDelete || pendingDeleteGroup || moveTargets) {
+        setPendingDelete(null);
+        setDeleteFromCloud(false);
+        setPendingDeleteGroup(null);
+        setMoveTargets(null);
+        return;
+      }
+      if (selectMode) exitSelectMode();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [pendingDelete, pendingDeleteGroup, moveBook, nameDialog, deleting, groupMutating]);
+  }, [
+    pendingDelete,
+    pendingDeleteGroup,
+    moveTargets,
+    nameDialog,
+    selectMode,
+    deleting,
+    groupMutating,
+    exitSelectMode,
+  ]);
 
   // 只在打开/切换模式时聚焦；勿依赖 value，否则每个字都会抢焦点打断 IME
   const nameDialogMode = nameDialog?.mode ?? null;
@@ -441,18 +563,69 @@ export function ShelfPage() {
     void reload();
   };
 
-  const emptyShelf =
-    books !== null && books.length === 0 && cloudOnly.length === 0 && !query;
+  const emptyShelf = books !== null && books.length === 0 && cloudOnly.length === 0 && !query;
   const sectionTitle = query ? '搜索结果' : groupSectionTitle(activeGroup);
   const gridEmpty = (filtered?.length ?? 0) === 0 && cloudOnly.length === 0;
+  const selectedCount = selectedIds.size;
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+
+  const onBookDragStart = (e: ReactDragEvent, book: Book) => {
+    const ids = resolveDragBookIds(book.id, selectedIds);
+    e.dataTransfer.setData(BOOK_DRAG_MIME, encodeBookDragPayload(ids));
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggingBook(true);
+  };
+
+  const onBookDragEnd = () => {
+    setDraggingBook(false);
+    setDragOverGroup(null);
+  };
+
+  const allowBookDrop = (e: ReactDragEvent) => {
+    // WKWebView/Safari 在 dragover 阶段常不暴露自定义 MIME，靠 draggingBook 放行
+    const types = [...e.dataTransfer.types];
+    if (!draggingBook && !types.includes(BOOK_DRAG_MIME)) return false;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    return true;
+  };
+
+  const onGroupChipDragOver = (e: ReactDragEvent, target: string) => {
+    if (!allowBookDrop(e)) return;
+    setDragOverGroup(target);
+  };
+
+  const onGroupChipDragLeave = (e: ReactDragEvent, target: string) => {
+    const next = e.relatedTarget as Node | null;
+    if (next && e.currentTarget.contains(next)) return;
+    setDragOverGroup((cur) => (cur === target ? null : cur));
+  };
+
+  const onGroupChipDrop = (e: ReactDragEvent, target: 'ungrouped' | string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverGroup(null);
+    setDraggingBook(false);
+    const ids = parseBookDragPayload(e.dataTransfer.getData(BOOK_DRAG_MIME));
+    if (ids.length === 0) return;
+    void assignGroups(ids, target === 'ungrouped' ? undefined : target);
+  };
 
   return (
-    <div className="shelf" {...dropProps}>
+    <div
+      className={`shelf${selectMode ? ' shelf-selecting' : ''}${draggingBook ? ' shelf-dragging-book' : ''}`}
+      {...dropProps}
+    >
       <header className="shelf-top" data-tauri-drag-region="">
         <span className="brand" data-tauri-drag-region="">
           <LogoMark size={18} />
           <span className="brand-word">
-            轻阅
+            <span className="brand-title">
+              轻阅
+              <sup className="brand-ver" title={`版本 v${APP_VERSION}`}>
+                v{APP_VERSION}
+              </sup>
+            </span>
             <small>QINGYUE</small>
           </span>
         </span>
@@ -465,19 +638,41 @@ export function ShelfPage() {
             aria-label="搜索"
           />
           {query && (
-            <button type="button" className="qy-icon-btn" style={{ width: 28, height: 28 }} onClick={() => setQuery('')}>
+            <button
+              type="button"
+              className="qy-icon-btn"
+              style={{ width: 28, height: 28 }}
+              onClick={() => setQuery('')}
+            >
               <IconClose size={15} />
             </button>
           )}
         </div>
         <span className="spacer" data-tauri-drag-region="" />
-        <Segmented
-          size="sm"
-          value={settings.sortMode}
-          options={SORTS}
-          onChange={(v) => update({ sortMode: v })}
-        />
-        <button type="button" className="qy-icon-btn" onClick={() => navigate('/settings')} aria-label="个人中心">
+        {!selectMode && (
+          <Segmented
+            size="sm"
+            value={settings.sortMode}
+            options={SORTS}
+            onChange={(v) => update({ sortMode: v })}
+          />
+        )}
+        {!emptyShelf && books !== null && (
+          <button
+            type="button"
+            className={`shelf-select-toggle${selectMode ? ' active' : ''}`}
+            onClick={() => (selectMode ? exitSelectMode() : enterSelectMode())}
+            aria-pressed={selectMode}
+          >
+            {selectMode ? '完成' : '选择'}
+          </button>
+        )}
+        <button
+          type="button"
+          className="qy-icon-btn"
+          onClick={() => navigate('/settings')}
+          aria-label="个人中心"
+        >
           <IconGear />
         </button>
         <ShelfAccount />
@@ -486,18 +681,68 @@ export function ShelfPage() {
       <main className="shelf-body">
         {filtered === null ? (
           <EmptyState title="书页翻动中…" />
-        ) : emptyShelf ? (
-          <EmptyState
-            title="书架还是空的"
-            hint="把 txt 文件拖进来，或点击右下角的 + 导入。导入完成后即可完全离线阅读。"
-            action={
-              <Button variant="primary" icon={<IconPlus />} onClick={pickFiles}>
-                导入书籍
-              </Button>
-            }
-          />
         ) : (
           <>
+            {!query && (
+              <div className="shelf-group-bar" role="toolbar" aria-label="书架分组">
+                <button
+                  type="button"
+                  aria-pressed={activeGroup === 'all'}
+                  className={`shelf-group-chip${activeGroup === 'all' ? ' active' : ''}`}
+                  onClick={() => setActiveGroup('all')}
+                >
+                  全部
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={activeGroup === 'ungrouped'}
+                  className={`shelf-group-chip${activeGroup === 'ungrouped' ? ' active' : ''}${dragOverGroup === 'ungrouped' ? ' drop-target' : ''}`}
+                  onClick={() => setActiveGroup('ungrouped')}
+                  onDragOver={(e) => onGroupChipDragOver(e, 'ungrouped')}
+                  onDragLeave={(e) => onGroupChipDragLeave(e, 'ungrouped')}
+                  onDrop={(e) => onGroupChipDrop(e, 'ungrouped')}
+                >
+                  未分组
+                </button>
+                {groups.map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    aria-pressed={activeGroup === g}
+                    className={`shelf-group-chip${activeGroup === g ? ' active' : ''}${dragOverGroup === g ? ' drop-target' : ''}`}
+                    onClick={() => setActiveGroup(g)}
+                    onDragOver={(e) => onGroupChipDragOver(e, g)}
+                    onDragLeave={(e) => onGroupChipDragLeave(e, g)}
+                    onDrop={(e) => onGroupChipDrop(e, g)}
+                  >
+                    {g}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="shelf-group-chip add"
+                  onClick={openCreateGroup}
+                  disabled={groupMutating}
+                  aria-label="新建分组"
+                >
+                  <IconPlus size={14} />
+                  新建
+                </button>
+              </div>
+            )}
+
+            {emptyShelf ? (
+              <EmptyState
+                title="书架还是空的"
+                hint="把 txt 文件拖进来，或点击右下角的 + 导入。也可先「新建」分组，导入后再把书拖进去。"
+                action={
+                  <Button variant="primary" icon={<IconPlus />} onClick={pickFiles}>
+                    导入书籍
+                  </Button>
+                }
+              />
+            ) : (
+              <>
             {continueBook && (
               <>
                 <h2 className="shelf-section-title">继续阅读</h2>
@@ -510,12 +755,12 @@ export function ShelfPage() {
                   <BookCover book={continueBook} variant="mark" width={76} />
                   <span className="continue-meta">
                     <span className="continue-kicker">
-                      上次阅读 · {formatRelative(continueBook.lastOpenedAt ?? continueBook.createdAt)}
+                      上次阅读 ·{' '}
+                      {formatRelative(continueBook.lastOpenedAt ?? continueBook.createdAt)}
                     </span>
                     <span className="continue-title">{continueBook.title}</span>
                     <span className="continue-sub">
-                      {continueBook.author ? `${continueBook.author} · ` : ''}
-                      共{' '}
+                      {continueBook.author ? `${continueBook.author} · ` : ''}共{' '}
                       {isPdfBook(continueBook)
                         ? formatPages(continueBook.pageCount ?? 0)
                         : formatChars(continueBook.charCount)}
@@ -543,48 +788,6 @@ export function ShelfPage() {
                   </span>
                 </button>
               </>
-            )}
-
-            {!query && (
-              <div className="shelf-group-bar" role="toolbar" aria-label="书架分组">
-                <button
-                  type="button"
-                  aria-pressed={activeGroup === 'all'}
-                  className={`shelf-group-chip${activeGroup === 'all' ? ' active' : ''}`}
-                  onClick={() => setActiveGroup('all')}
-                >
-                  全部
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={activeGroup === 'ungrouped'}
-                  className={`shelf-group-chip${activeGroup === 'ungrouped' ? ' active' : ''}`}
-                  onClick={() => setActiveGroup('ungrouped')}
-                >
-                  未分组
-                </button>
-                {groups.map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    aria-pressed={activeGroup === g}
-                    className={`shelf-group-chip${activeGroup === g ? ' active' : ''}`}
-                    onClick={() => setActiveGroup(g)}
-                  >
-                    {g}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className="shelf-group-chip add"
-                  onClick={openCreateGroup}
-                  disabled={groupMutating}
-                  aria-label="新建分组"
-                >
-                  <IconPlus size={14} />
-                  新建
-                </button>
-              </div>
             )}
 
             <h2 className="shelf-section-title">
@@ -619,23 +822,36 @@ export function ShelfPage() {
             {gridEmpty ? (
               <EmptyState
                 title={query ? '没有匹配的书' : '这个分组还是空的'}
-                hint={query ? '换个关键词试试' : '用封面右上角菜单把书移进来'}
+                hint={query ? '换个关键词试试' : '把书拖到上方分组，或点「选择」批量移入'}
               />
             ) : (
               <div className={`shelf-grid${settings.shelfDensity === 'compact' ? ' compact' : ''}`}>
                 {filtered.map((book) => {
-                  const canUpload =
-                    cloudConfigReady(readCloudConfig()) && !remoteMap.has(book.fingerprint);
+                  const canUpload = cloudOps && !remoteMap.has(book.fingerprint);
                   const busy = cloudBusy === book.fingerprint;
+                  const selected = selectedIds.has(book.id);
                   return (
-                    <div className="shelf-cell" key={book.id}>
-                      <div className="cell-cover">
+                    <div className={`shelf-cell${selected ? ' selected' : ''}`} key={book.id}>
+                      {/* biome-ignore lint/a11y/noStaticElementInteractions: HTML5 拖放到分组，封面为拖拽源 */}
+                      <div
+                        className="cell-cover"
+                        draggable
+                        onDragStart={(e) => onBookDragStart(e, book)}
+                        onDragEnd={onBookDragEnd}
+                      >
                         <BookCover
                           book={book}
                           percent={percentMap[book.id]}
-                          onClick={() => void openBook(book.id)}
+                          onClick={() =>
+                            selectMode ? toggleSelect(book.id) : void openBook(book.id)
+                          }
                         />
-                        {canUpload && (
+                        {selectMode && (
+                          <span className={`cell-check${selected ? ' on' : ''}`} aria-hidden>
+                            {selected ? '✓' : ''}
+                          </span>
+                        )}
+                        {canUpload && !selectMode && (
                           <button
                             type="button"
                             className="cell-cloud cell-cloud-up"
@@ -651,37 +867,43 @@ export function ShelfPage() {
                           </button>
                         )}
                         {/* 操作入口独立于封面，点封面只负责打开，不会把菜单一起点开 */}
-                        <Menu
-                          align="end"
-                          trigger={
-                            <button
-                              type="button"
-                              className="cell-more"
-                              aria-label={`《${book.title}》更多操作`}
-                            >
-                              <IconMore size={16} />
-                            </button>
-                          }
-                          items={[
-                            { key: 'open', label: '开始阅读', onSelect: () => void openBook(book.id) },
-                            {
-                              key: 'group',
-                              label: '移到分组…',
-                              onSelect: () => setMoveBook(book),
-                            },
-                            {
-                              key: 'finish',
-                              label: book.finished ? '标记未读完' : '标记已读完',
-                              onSelect: () => void markFinished(book, !book.finished),
-                            },
-                            {
-                              key: 'del',
-                              label: '删除本书',
-                              danger: true,
-                              onSelect: () => void removeBook(book),
-                            },
-                          ]}
-                        />
+                        {!selectMode && (
+                          <Menu
+                            align="end"
+                            trigger={
+                              <button
+                                type="button"
+                                className="cell-more"
+                                aria-label={`《${book.title}》更多操作`}
+                              >
+                                <IconMore size={16} />
+                              </button>
+                            }
+                            items={[
+                              {
+                                key: 'open',
+                                label: '开始阅读',
+                                onSelect: () => void openBook(book.id),
+                              },
+                              {
+                                key: 'group',
+                                label: '移到分组…',
+                                onSelect: () => openMoveForBook(book),
+                              },
+                              {
+                                key: 'finish',
+                                label: book.finished ? '标记未读完' : '标记已读完',
+                                onSelect: () => void markFinished(book, !book.finished),
+                              },
+                              {
+                                key: 'del',
+                                label: '删除本书',
+                                danger: true,
+                                onSelect: () => void removeBook(book),
+                              },
+                            ]}
+                          />
+                        )}
                       </div>
                       <span className="shelf-cell-title clamp-2">{book.title}</span>
                       <span className="shelf-cell-sub">
@@ -716,21 +938,64 @@ export function ShelfPage() {
                         </button>
                       </div>
                       <span className="shelf-cell-title clamp-2">{meta.title}</span>
-                      <span className="shelf-cell-sub">
-                        云端 · {formatBytes(meta.size)}
-                      </span>
+                      <span className="shelf-cell-sub">云端 · {formatBytes(meta.size)}</span>
                     </div>
                   );
                 })}
               </div>
             )}
+              </>
+            )}
           </>
         )}
       </main>
 
-      <button type="button" className="fab" onClick={pickFiles} aria-label="导入书籍">
-        <IconPlus size={24} />
-      </button>
+      {selectMode && (
+        <div className="shelf-select-bar" role="toolbar" aria-label="批量操作">
+          <span className="shelf-select-count">
+            {selectedCount > 0 ? `已选 ${selectedCount} 本` : '点选要移动的书'}
+          </span>
+          <button
+            type="button"
+            className="shelf-select-action"
+            disabled={visibleIds.length === 0}
+            onClick={() => {
+              if (allVisibleSelected) {
+                setSelectedIds((prev) => {
+                  const next = new Set(prev);
+                  for (const id of visibleIds) next.delete(id);
+                  return next;
+                });
+              } else {
+                setSelectedIds((prev) => {
+                  const next = new Set(prev);
+                  for (const id of visibleIds) next.add(id);
+                  return next;
+                });
+              }
+            }}
+          >
+            {allVisibleSelected ? '取消全选' : '全选'}
+          </button>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={selectedCount === 0 || groupMutating}
+            onClick={openMoveForSelection}
+          >
+            移到分组
+          </Button>
+          <Button variant="ghost" size="sm" onClick={exitSelectMode}>
+            完成
+          </Button>
+        </div>
+      )}
+
+      {!selectMode && (
+        <button type="button" className="fab" onClick={pickFiles} aria-label="导入书籍">
+          <IconPlus size={24} />
+        </button>
+      )}
       <input
         ref={fileInput}
         type="file"
@@ -766,7 +1031,7 @@ export function ShelfPage() {
           >
             <h2 id="shelf-confirm-title">删除《{pendingDelete.title}》</h2>
             <p>阅读进度、书签与文件会一并移除，此操作不可撤销。</p>
-            {cloudConfigReady(readCloudConfig()) && remoteMap.has(pendingDelete.fingerprint) && (
+            {cloudOps && remoteMap.has(pendingDelete.fingerprint) && (
               <label className="shelf-confirm-check">
                 <input
                   type="checkbox"
@@ -833,14 +1098,14 @@ export function ShelfPage() {
         </div>
       )}
 
-      {moveBook && (
+      {moveTargets && moveTargets.length > 0 && (
         <div className="qy-overlay shelf-account-modal">
           <button
             type="button"
             className="shelf-confirm-backdrop"
             aria-label="取消"
             disabled={groupMutating}
-            onClick={() => setMoveBook(null)}
+            onClick={() => setMoveTargets(null)}
           />
           <div
             className="shelf-account-dialog shelf-confirm shelf-move-group"
@@ -849,13 +1114,26 @@ export function ShelfPage() {
             aria-labelledby="shelf-move-group-title"
           >
             <h2 id="shelf-move-group-title">移到分组</h2>
-            <p>《{moveBook.title}》</p>
+            <p>
+              {moveTargets.length === 1
+                ? `《${moveTargets[0].title}》`
+                : `已选 ${moveTargets.length} 本`}
+            </p>
             <div className="shelf-move-list">
               <button
                 type="button"
-                className={!normalizeGroupName(moveBook.group ?? '') ? 'active' : ''}
+                className={
+                  moveTargets.length === 1 && !normalizeGroupName(moveTargets[0].group ?? '')
+                    ? 'active'
+                    : ''
+                }
                 disabled={groupMutating}
-                onClick={() => void assignGroup(moveBook, undefined)}
+                onClick={() =>
+                  void assignGroups(
+                    moveTargets.map((b) => b.id),
+                    undefined,
+                  )
+                }
               >
                 未分组
               </button>
@@ -863,9 +1141,18 @@ export function ShelfPage() {
                 <button
                   key={g}
                   type="button"
-                  className={normalizeGroupName(moveBook.group ?? '') === g ? 'active' : ''}
+                  className={
+                    moveTargets.length === 1 && normalizeGroupName(moveTargets[0].group ?? '') === g
+                      ? 'active'
+                      : ''
+                  }
                   disabled={groupMutating}
-                  onClick={() => void assignGroup(moveBook, g)}
+                  onClick={() =>
+                    void assignGroups(
+                      moveTargets.map((b) => b.id),
+                      g,
+                    )
+                  }
                 >
                   {g}
                 </button>
@@ -875,7 +1162,7 @@ export function ShelfPage() {
               <Button variant="ghost" disabled={groupMutating} onClick={openMoveCreateGroup}>
                 新建并移入
               </Button>
-              <Button variant="ghost" disabled={groupMutating} onClick={() => setMoveBook(null)}>
+              <Button variant="ghost" disabled={groupMutating} onClick={() => setMoveTargets(null)}>
                 取消
               </Button>
             </div>

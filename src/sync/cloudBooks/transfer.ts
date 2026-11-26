@@ -4,13 +4,30 @@ import { useImportQueue } from '@/features/import/importQueue';
 import { getBookBlob } from '@/storage/blobStore';
 import { getBook } from '@/storage/repositories/bookRepo';
 import type { Book } from '@/types/models';
-import { apiDeleteBook, apiGetFile, apiGetMeta, apiPutFile, apiPutMeta, CloudApiError } from './api';
+import {
+  apiDeleteBook,
+  apiGetFile,
+  apiGetMeta,
+  apiPutFile,
+  apiPutMeta,
+  CloudApiError,
+  ensureAccessToken,
+} from './api';
 import { type CloudBookMeta, listRemoteBooks } from './catalog';
 import { cloudConfigReady, readCloudConfig } from './config';
 
-function requireReady(): void {
+/** 启用云书架且能拿到登录态，否则抛可读错误（避免先读本地文件再 401） */
+async function requireReady(): Promise<void> {
   if (!cloudConfigReady(readCloudConfig())) {
     throw new Error('请先在「同步」里启用云书架');
+  }
+  try {
+    await ensureAccessToken();
+  } catch (err) {
+    if (err instanceof CloudApiError && err.status === 401) {
+      throw new Error('请先登录账号');
+    }
+    throw err;
   }
 }
 
@@ -37,7 +54,7 @@ function suggestFileName(meta: CloudBookMeta): string {
 
 /** 上传本地书到云端（覆盖同 fingerprint） */
 export async function uploadBook(bookId: string): Promise<CloudBookMeta> {
-  requireReady();
+  await requireReady();
   const book = await getBook(bookId);
   if (!book) throw new Error('本地没有这本书');
   const blob = await getBookBlob(bookId);
@@ -57,7 +74,7 @@ export async function uploadBook(bookId: string): Promise<CloudBookMeta> {
 
 /** 从云端下载并丢进导入队列（复用现有索引 / 去重） */
 export async function downloadByFingerprint(fingerprint: string): Promise<void> {
-  requireReady();
+  await requireReady();
   let meta: CloudBookMeta;
   try {
     meta = await apiGetMeta(fingerprint);
@@ -93,7 +110,7 @@ export async function listCloudOnly(localFingerprints: Set<string>): Promise<Clo
 
 /** 按 fingerprint 删除云端书；需已启用云书架并登录 */
 export async function deleteCloudBook(fingerprint: string): Promise<void> {
-  requireReady();
+  await requireReady();
   try {
     await apiDeleteBook(fingerprint);
   } catch (err) {

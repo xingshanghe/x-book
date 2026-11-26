@@ -1,8 +1,9 @@
 /** 云书架 HTTP API：Bearer = 账号 accessToken */
 
 import { accountSession } from '@/account/session';
-import { readCloudConfig } from './config';
 import type { CloudBookMeta } from './catalog';
+import { readCloudConfig } from './config';
+import { cloudFetch } from './nativeFetch';
 
 export class CloudApiError extends Error {
   constructor(
@@ -14,7 +15,8 @@ export class CloudApiError extends Error {
   }
 }
 
-async function ensureAccessToken(): Promise<string> {
+/** 取可用 accessToken；必要时 restore；未登录抛 401 */
+export async function ensureAccessToken(): Promise<string> {
   let token = accountSession.client().accessToken();
   if (token) return token;
   if (accountSession.hasStoredSession()) {
@@ -41,12 +43,12 @@ async function callJson<T>(
   }
   let res: Response;
   try {
-    res = await fetch(`${apiRoot()}${path}`, { ...init, headers });
+    res = await cloudFetch(`${apiRoot()}${path}`, { ...init, headers });
   } catch (err) {
     return {
       ok: false,
       status: 0,
-      message: err instanceof Error ? err.message : '网络错误',
+      message: netErrorMessage(err),
     };
   }
   // 二进制下载不走这里
@@ -78,7 +80,7 @@ export async function apiListBooks(): Promise<CloudBookMeta[]> {
 export async function apiProbe(): Promise<{ ok: boolean; reason?: string }> {
   try {
     const token = await ensureAccessToken();
-    const res = await fetch(`${apiRoot()}/v1/books/cloud`, {
+    const res = await cloudFetch(`${apiRoot()}/v1/books/cloud`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.status === 401) return { ok: false, reason: '请先登录账号' };
@@ -92,8 +94,19 @@ export async function apiProbe(): Promise<{ ok: boolean; reason?: string }> {
     }
     return { ok: true };
   } catch (err) {
-    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    return { ok: false, reason: netErrorMessage(err) };
   }
+}
+
+/** WebKit 拦截明文 http 时常见文案是 Load failed，换成可读提示 */
+function netErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err ?? '');
+  const text = raw.trim();
+  if (!text) return '网络错误';
+  if (/load failed|failed to fetch|networkerror|网络/i.test(text)) {
+    return '连不上云书架，请检查网络后重试';
+  }
+  return text;
 }
 
 export async function apiPutFile(
@@ -102,14 +115,17 @@ export async function apiPutFile(
   contentType: string,
 ): Promise<void> {
   const token = await ensureAccessToken();
-  const res = await fetch(`${apiRoot()}/v1/books/cloud/${encodeURIComponent(fingerprint)}/file`, {
-    method: 'PUT',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': contentType,
+  const res = await cloudFetch(
+    `${apiRoot()}/v1/books/cloud/${encodeURIComponent(fingerprint)}/file`,
+    {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': contentType,
+      },
+      body: blob,
     },
-    body: blob,
-  });
+  );
   if (!res.ok) {
     let message = `上传失败（${res.status}）`;
     try {
@@ -144,9 +160,12 @@ export async function apiGetMeta(fingerprint: string): Promise<CloudBookMeta> {
 
 export async function apiGetFile(fingerprint: string): Promise<Blob> {
   const token = await ensureAccessToken();
-  const res = await fetch(`${apiRoot()}/v1/books/cloud/${encodeURIComponent(fingerprint)}/file`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await cloudFetch(
+    `${apiRoot()}/v1/books/cloud/${encodeURIComponent(fingerprint)}/file`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
   if (!res.ok) {
     let message = `下载失败（${res.status}）`;
     try {

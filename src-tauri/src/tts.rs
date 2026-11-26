@@ -517,6 +517,189 @@ fn account_http_blocking(request: AccountHttpRequest) -> Result<AccountHttpRespo
     Ok(AccountHttpResponse { status, body: text })
 }
 
+/// 云书架请求：桌面壳里 WebView 直连 http:// 会被系统拦住（表现就是 Load failed），
+/// 跟账号一样改走本机 curl。响应一律 base64，避免 PDF 被当成 UTF-8 弄坏。
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CloudHttpRequest {
+    method: String,
+    url: String,
+    body_base64: Option<String>,
+    headers: HashMap<String, String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CloudHttpResponse {
+    status: u16,
+    body_base64: String,
+    content_type: String,
+}
+
+#[tauri::command]
+pub async fn cloud_http(request: CloudHttpRequest) -> Result<CloudHttpResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || cloud_http_blocking(request))
+        .await
+        .map_err(|err| format!("连不上云书架：{err}"))?
+}
+
+fn cloud_http_blocking(request: CloudHttpRequest) -> Result<CloudHttpResponse, String> {
+    let method = request.method.to_ascii_uppercase();
+    if method != "GET" && method != "PUT" && method != "DELETE" && method != "POST" {
+        return Err("不支持的云书架请求".into());
+    }
+    if !cloud_url_allowed(&request.url) {
+        return Err("云书架地址不正确".into());
+    }
+    let body = match request.body_base64.as_deref() {
+        Some(raw) if !raw.is_empty() => Some(decode_base64(raw)?),
+        _ => None,
+    };
+    // 与 nginx / book-cloud 的 300MB 上限对齐
+    if body.as_ref().is_some_and(|bytes| bytes.len() > 300 * 1024 * 1024) {
+        return Err("上传内容太大".into());
+    }
+    let seq = FILE_SEQ.fetch_add(1, Ordering::Relaxed);
+    let body_file = RemoveOnDrop(std::env::temp_dir().join(format!("qingyue-cloud-{seq}.bin")));
+    let out_file = RemoveOnDrop(std::env::temp_dir().join(format!("qingyue-cloud-{seq}.out")));
+    let hdr_file = RemoveOnDrop(std::env::temp_dir().join(format!("qingyue-cloud-{seq}.hdr")));
+    if let Some(bytes) = &body {
+        fs::write(body_file.path(), bytes).map_err(|err| err.to_string())?;
+    }
+    const MAX_BYTES: u64 = 300 * 1024 * 1024;
+    let mut cmd = tool("curl");
+    cmd.args([
+        "-sS",
+        "--proto",
+        "=http,https",
+        "--proto-redir",
+        "=http,https",
+        "--max-time",
+        "600",
+        "--max-filesize",
+        "314572800",
+        "-D",
+    ])
+    .arg(hdr_file.path())
+    .arg("-o")
+    .arg(out_file.path())
+    .args(["-w", "%{http_code}", "-X", &method]);
+    for (name, value) in &request.headers {
+        if !cloud_header_allowed(name) || value.contains('\n') || value.contains('\r') || value.len() > 4096 {
+            continue;
+        }
+        cmd.arg("-H").arg(format!("{name}: {value}"));
+    }
+    if body.is_some() {
+        cmd.arg("--data-binary").arg(format!("@{}", body_file.path().display()));
+    }
+    cmd.arg(&request.url);
+    let output = cmd.output().map_err(|_| "连不上云书架".to_string())?;
+    if !output.status.success() {
+        return Err("连不上云书架".into());
+    }
+    let status = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse::<u16>()
+        .unwrap_or(0);
+    if status == 0 {
+        return Err("连不上云书架".into());
+    }
+    let content_type = read_content_type(hdr_file.path()).unwrap_or_else(|| {
+        if status >= 400 {
+            "application/json".into()
+        } else {
+            "application/octet-stream".into()
+        }
+    });
+    if let Ok(meta) = fs::metadata(out_file.path()) {
+        if meta.len() > MAX_BYTES {
+            return Err("云书架响应过大".into());
+        }
+    }
+    let payload = fs::read(out_file.path()).map_err(|err| format!("读取云书架响应失败：{err}"))?;
+    Ok(CloudHttpResponse {
+        status,
+        body_base64: encode_base64(&payload),
+        content_type,
+    })
+}
+
+fn cloud_url_allowed(url: &str) -> bool {
+    if url.len() > 2000 || url.starts_with('-') || url.chars().any(|ch| ch.is_control()) {
+        return false;
+    }
+    if url.contains('@') {
+        // 拒绝 userinfo，避免 http://user@host 绕过
+        return false;
+    }
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"));
+    let Some(rest) = rest else {
+        return false;
+    };
+    let Some((host_port, path_and_query)) = rest.split_once('/') else {
+        return false;
+    };
+    let host = host_port.split(':').next().unwrap_or(host_port);
+    let host_ok = matches!(host, "47.108.79.158" | "127.0.0.1" | "localhost");
+    if !host_ok {
+        return false;
+    }
+    let path = path_and_query.split(['?', '#']).next().unwrap_or(path_and_query);
+    if path.split('/').any(|seg| seg == "..") {
+        return false;
+    }
+    // 路径前缀匹配，禁止把 /v1/books/ 塞进 query 绕过
+    path == "v1/books" || path.starts_with("v1/books/")
+}
+
+fn cloud_header_allowed(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    name == "content-type" || name == "authorization"
+}
+
+fn read_content_type(path: &Path) -> Option<String> {
+    let text = fs::read_to_string(path).ok()?;
+    for line in text.lines() {
+        let lower = line.to_ascii_lowercase();
+        if !lower.starts_with("content-type:") {
+            continue;
+        }
+        let raw = line.split_once(':').map(|(_, v)| v.trim()).unwrap_or("");
+        let mime = raw.split(';').next().unwrap_or(raw).trim();
+        if !mime.is_empty() {
+            return Some(mime.to_string());
+        }
+    }
+    None
+}
+
+fn encode_base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[((n >> 18) & 63) as usize] as char);
+        out.push(TABLE[((n >> 12) & 63) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[((n >> 6) & 63) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[(n & 63) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
 fn account_url_allowed(url: &str) -> bool {
     if url.len() > 2000 || url.starts_with('-') || url.chars().any(|ch| ch.is_control()) {
         return false;
@@ -687,7 +870,10 @@ pub fn tts_host() -> SynthHost {
 
 #[cfg(test)]
 mod tests {
-    use super::{account_header_allowed, account_url_allowed, decode_base64, lexicon_body, PronunciationEntry};
+    use super::{
+        account_header_allowed, account_url_allowed, cloud_header_allowed, cloud_url_allowed,
+        decode_base64, encode_base64, lexicon_body, PronunciationEntry,
+    };
 
     #[test]
     fn user_lexicon_keeps_the_first_reading_and_drops_junk() {
@@ -732,5 +918,32 @@ mod tests {
     fn base64_roundtrip_matches_login_json() {
         let decoded = decode_base64("aGVsbG8=").expect("decode");
         assert_eq!(decoded, b"hello");
+        assert_eq!(encode_base64(b"hello"), "aGVsbG8=");
+        assert_eq!(encode_base64(b"hi"), "aGk=");
+    }
+
+    #[test]
+    fn cloud_url_only_allows_book_api_on_known_hosts() {
+        assert!(cloud_url_allowed("http://47.108.79.158/v1/books/cloud"));
+        assert!(cloud_url_allowed(
+            "http://47.108.79.158/v1/books/cloud/abc-def/file"
+        ));
+        assert!(cloud_url_allowed("http://127.0.0.1:8790/v1/books/cloud"));
+        assert!(!cloud_url_allowed("http://47.108.79.158/v1/auth/login"));
+        assert!(!cloud_url_allowed("http://evil.example/v1/books/cloud"));
+        assert!(!cloud_url_allowed("file:///etc/passwd"));
+        assert!(!cloud_url_allowed("http://47.108.79.158/health?x=/v1/books/"));
+        assert!(!cloud_url_allowed("http://127.0.0.1/admin?=/v1/books/"));
+        assert!(!cloud_url_allowed(
+            "http://47.108.79.158/v1/books/../auth/login"
+        ));
+        assert!(!cloud_url_allowed("http://user@47.108.79.158/v1/books/cloud"));
+    }
+
+    #[test]
+    fn cloud_headers_stay_narrow() {
+        assert!(cloud_header_allowed("Content-Type"));
+        assert!(cloud_header_allowed("Authorization"));
+        assert!(!cloud_header_allowed("Cookie"));
     }
 }

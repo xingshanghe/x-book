@@ -5,6 +5,7 @@ name: qingyue-site
 #   edge(宿主 80) -> site(宿主 10080) 静态官网
 #   edge /s3/     -> minio(9000)      图书对象存储（仅服务端访问）
 #   edge /v1/books/ -> book-cloud     账号鉴权后的云书架 API
+#   edge /v1/auth|voices|…|/tts/ -> enroll  本机账号 / 建档（不再依赖 118）
 services:
   site:
     build:
@@ -47,6 +48,34 @@ services:
       retries: 5
       start_period: 10s
 
+  enroll:
+    build:
+      context: ./voice-enroll
+    image: qingyue-enroll:latest
+    container_name: qingyue-enroll
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      ENROLL_ADMIN_TOKEN: ${ENROLL_ADMIN_TOKEN:-}
+      ENROLL_DB: /data/enroll.db
+      ENROLL_HOST: 0.0.0.0
+      ENROLL_PORT: "8787"
+      ENROLL_CHARGE_CREDITS: "0"
+      ENROLL_TTS_DIR: /tts
+    volumes:
+      - ./enroll-data:/data
+      - ./tts:/tts:ro
+    networks:
+      - qingyue
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/v1/health')"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
   book-cloud:
     build:
       context: ./book-cloud
@@ -61,9 +90,11 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: qingyue-books
       MINIO_SECURE: "0"
-      ACCOUNT_VERIFY_URL: ${ACCOUNT_VERIFY_URL:-http://118.25.79.136}
+      ACCOUNT_VERIFY_URL: ${ACCOUNT_VERIFY_URL:-http://enroll:8787}
     depends_on:
       minio:
+        condition: service_healthy
+      enroll:
         condition: service_healthy
     networks:
       - qingyue
@@ -84,6 +115,8 @@ services:
       minio:
         condition: service_healthy
       book-cloud:
+        condition: service_healthy
+      enroll:
         condition: service_healthy
     ports:
       - "80:80"

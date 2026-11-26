@@ -29,6 +29,7 @@ pub fn run() {
         tts::tts_delete_engine,
         tts::tts_speak,
         tts::account_http,
+        tts::cloud_http,
     ]);
 
     builder

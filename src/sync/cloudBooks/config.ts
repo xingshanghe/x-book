@@ -18,25 +18,18 @@ export function defaultCloudConfig(): CloudBooksConfig {
   };
 }
 
-export function readCloudConfig(storage: Pick<Storage, 'getItem'> = localStorage): CloudBooksConfig {
+export function readCloudConfig(
+  storage: Pick<Storage, 'getItem'> = localStorage,
+): CloudBooksConfig {
   const base = defaultCloudConfig();
   try {
     const raw = storage.getItem(STORAGE_KEY);
     if (!raw) return base;
-    const parsed = JSON.parse(raw) as Partial<CloudBooksConfig> & {
-      /** 旧版字段，迁移时忽略 */
-      endpoint?: string;
-      accessKey?: string;
-      secretKey?: string;
-    };
-    const apiBase = (parsed.apiBase ?? parsed.endpoint ?? base.apiBase)
-      .trim()
-      .replace(/\/+$/, '')
-      // 旧版 endpoint 可能是 …/s3，迁到 API 根
-      .replace(/\/s3$/i, '');
+    const parsed = JSON.parse(raw) as Partial<CloudBooksConfig>;
     return {
       enabled: parsed.enabled !== false,
-      apiBase: apiBase || base.apiBase,
+      // 服务地址写死，忽略本地旧值
+      apiBase: DEFAULT_CLOUD_API_BASE,
     };
   } catch {
     return base;
@@ -50,8 +43,8 @@ export function writeCloudConfig(
   const next: CloudBooksConfig = {
     ...readCloudConfig(storage),
     ...patch,
+    apiBase: DEFAULT_CLOUD_API_BASE,
   };
-  next.apiBase = next.apiBase.trim().replace(/\/+$/, '').replace(/\/s3$/i, '') || DEFAULT_CLOUD_API_BASE;
   storage.setItem(STORAGE_KEY, JSON.stringify({ enabled: next.enabled, apiBase: next.apiBase }));
   return next;
 }
@@ -59,4 +52,15 @@ export function writeCloudConfig(
 /** 开关打开即可尝试（真正请求还要登录） */
 export function cloudConfigReady(cfg: CloudBooksConfig = readCloudConfig()): boolean {
   return Boolean(cfg.enabled && cfg.apiBase);
+}
+
+/**
+ * 上传 / 下载 / 删云端的完整门槛：开关打开且已登录。
+ * UI 用 profile 是否存在；传输层在 ensure 登录后再调用。
+ */
+export function cloudOpsReady(
+  cfg: CloudBooksConfig = readCloudConfig(),
+  loggedIn = false,
+): boolean {
+  return cloudConfigReady(cfg) && loggedIn;
 }

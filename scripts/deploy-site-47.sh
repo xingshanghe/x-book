@@ -106,7 +106,7 @@ fi
 
 echo "==> 准备远程目录"
 "${SSH[@]}" "$HOST" \
-  "mkdir -p '$REMOTE/site/html/app' '$REMOTE/downloads' '$REMOTE/edge' '$REMOTE/minio-data'"
+  "mkdir -p '$REMOTE/site/html/app' '$REMOTE/downloads' '$REMOTE/edge' '$REMOTE/minio-data' '$REMOTE/enroll-data' '$REMOTE/tts'"
 
 if [[ "$MIGRATE_DOWNLOADS" == 1 ]]; then
   migrate_downloads
@@ -148,8 +148,23 @@ echo "==> 同步云书架 API"
 rsync -az --delete -e "$RSYNC_SSH" \
   --exclude '__pycache__' --exclude '.venv' --exclude '*.pyc' \
   "$ROOT/services/book-cloud/" "$HOST:$REMOTE/book-cloud/"
-# 确保 .env 含账号校验地址（不覆盖已有密钥）
-"${SSH[@]}" "$HOST" "grep -q '^ACCOUNT_VERIFY_URL=' '$REMOTE/.env' 2>/dev/null || echo 'ACCOUNT_VERIFY_URL=http://118.25.79.136' >> '$REMOTE/.env'"
+echo "==> 同步账号 / 建档服务"
+rsync -az --delete -e "$RSYNC_SSH" \
+  --exclude '__pycache__' --exclude '.venv' --exclude '*.pyc' --exclude '.pytest_cache' --exclude '*.db' --exclude '.env' \
+  "$ROOT/services/voice-enroll/" "$HOST:$REMOTE/voice-enroll/"
+# 账号服务与校验地址：本机 enroll 容器（118 已不可达）
+"${SSH[@]}" "$HOST" "set -e
+  umask 077
+  touch '$REMOTE/.env'
+  grep -q '^ACCOUNT_VERIFY_URL=' '$REMOTE/.env' || echo 'ACCOUNT_VERIFY_URL=http://enroll:8787' >> '$REMOTE/.env'
+  sed -i 's|^ACCOUNT_VERIFY_URL=.*|ACCOUNT_VERIFY_URL=http://enroll:8787|' '$REMOTE/.env'
+  if ! grep -q '^JWT_SECRET=' '$REMOTE/.env'; then
+    echo \"JWT_SECRET=\$(openssl rand -hex 32)\" >> '$REMOTE/.env'
+  fi
+  if ! grep -q '^ENROLL_ADMIN_TOKEN=' '$REMOTE/.env'; then
+    echo \"ENROLL_ADMIN_TOKEN=\$(openssl rand -hex 24)\" >> '$REMOTE/.env'
+  fi
+"
 
 echo "==> 同步官网静态文件"
 rsync -az -e "$RSYNC_SSH" "$STAGE/pages/" "$HOST:$REMOTE/site/html/"
@@ -173,6 +188,9 @@ echo "==> 健康检查"
   curl -fsS -o /dev/null -w 'manifest  (80)     %{http_code}\n' -H 'Host: www.qingyue.com' http://127.0.0.1/download/latest.json
   curl -fsS -o /dev/null -w 'health    (80)     %{http_code}\n' -H 'Host: www.qingyue.com' http://127.0.0.1/healthz
   curl -fsS -o /dev/null -w 'minio     (s3)     %{http_code}\n' http://127.0.0.1/s3/minio/health/live
+  curl -fsS -o /dev/null -w 'enroll    (health) %{http_code}\n' http://127.0.0.1/v1/health
+  curl -sS -o /tmp/auth.json -w 'auth      (login)  %{http_code}\n' -X POST http://127.0.0.1/v1/auth/login -H 'Content-Type: application/json' -d '{\"username\":\"x\",\"password\":\"xxxxxxxx\"}'
+  head -c 180 /tmp/auth.json; echo
   echo '--- 安装包挂载 ---'
   ls -1sh '$REMOTE/downloads' | head -12
 "

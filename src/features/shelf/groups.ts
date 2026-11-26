@@ -6,7 +6,41 @@ import type { Book } from '@/types/models';
 
 export type ShelfGroupFilter = 'all' | 'ungrouped' | string;
 
+/** 书本拖放到分组芯片的自定义 MIME，与文件导入拖放隔离 */
+export const BOOK_DRAG_MIME = 'application/x-qingyue-book-ids';
+
 const RESERVED = new Set(['全部', '全部书籍', '未分组']);
+
+/** 拖起时：若拖的是已选书，带上全部选中；否则只带这一本 */
+export function resolveDragBookIds(draggedId: string, selectedIds: ReadonlySet<string>): string[] {
+  if (selectedIds.has(draggedId) && selectedIds.size > 0) {
+    return [...selectedIds];
+  }
+  return [draggedId];
+}
+
+export function encodeBookDragPayload(ids: readonly string[]): string {
+  return JSON.stringify([...ids]);
+}
+
+/** 解析拖放 payload；非法或空则返回 [] */
+export function parseBookDragPayload(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const item of parsed) {
+      if (typeof item !== 'string' || !item || seen.has(item)) continue;
+      seen.add(item);
+      out.push(item);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
 
 /** 清洗组名：去空白、截断；空或保留名返回 null */
 export function normalizeGroupName(raw: string): string | null {
@@ -34,10 +68,7 @@ export function listShelfGroups(
   return out;
 }
 
-export function filterBooksByGroup(
-  books: readonly Book[],
-  filter: ShelfGroupFilter,
-): Book[] {
+export function filterBooksByGroup(books: readonly Book[], filter: ShelfGroupFilter): Book[] {
   if (filter === 'all') return [...books];
   if (filter === 'ungrouped') {
     return books.filter((b) => !normalizeGroupName(b.group ?? ''));

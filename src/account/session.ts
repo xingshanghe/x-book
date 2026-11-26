@@ -11,16 +11,18 @@ import {
   createAccountClient,
 } from '@/tts/account';
 
-const ENDPOINT_KEY = 'qingyue.tts.endpoint';
 const REFRESH_KEY = 'qingyue.tts.refresh';
+/** 旧版可改地址时写入的键；现已写死，读取时会清掉。 */
+const LEGACY_ENDPOINT_KEY = 'qingyue.tts.endpoint';
 
-/** 未单独填写服务地址时，账号和建档都走这台机器。 */
-export const DEFAULT_ENROLL_ENDPOINT = 'http://118.25.79.136';
+/** 账号 / 建档 / 云书架统一入口，客户端不可改。 */
+export const DEFAULT_ENROLL_ENDPOINT = 'http://47.108.79.158';
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 export interface AccountSession {
   readEndpoint(): string;
+  /** @deprecated 服务地址已写死，调用无效 */
   writeEndpoint(value: string): void;
   hasStoredSession(): boolean;
   profile(): AccountProfile | null;
@@ -49,8 +51,11 @@ export function createAccountSession(opts: {
   };
 
   const endpoint = () => {
-    const stored = (opts.storage.getItem(ENDPOINT_KEY) ?? '').trim().replace(/\/$/, '');
-    return stored || DEFAULT_ENROLL_ENDPOINT;
+    // 清掉旧版用户自定义地址，避免继续打到错误主机
+    if (opts.storage.getItem(LEGACY_ENDPOINT_KEY)) {
+      opts.storage.removeItem(LEGACY_ENDPOINT_KEY);
+    }
+    return DEFAULT_ENROLL_ENDPOINT;
   };
 
   const currentClient = () => {
@@ -79,15 +84,8 @@ export function createAccountSession(opts: {
 
   return {
     readEndpoint: endpoint,
-    writeEndpoint(value) {
-      const next = value.trim().replace(/\/$/, '');
-      if (next === endpoint()) return;
-      opts.storage.setItem(ENDPOINT_KEY, next);
-      currentClient().clearLocal();
-      client = null;
-      clientHost = '';
-      profile = null;
-      emit();
+    writeEndpoint(_value) {
+      // 服务地址写死，忽略外部写入
     },
     hasStoredSession() {
       return Boolean(opts.storage.getItem(REFRESH_KEY));

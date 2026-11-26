@@ -16,8 +16,9 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  /* 顶部让出系统按钮（macOS 红绿灯），左右同理；Web 端三个值都是 0 */
-  padding: calc(12px + var(--chrome-top)) calc(clamp(14px, 4vw, 44px) + var(--chrome-right)) 16px
+  /* 顶部同时让出：safe-area（刘海/状态栏）+ chrome（macOS 红绿灯） */
+  padding: calc(12px + var(--safe-t) + var(--chrome-top))
+    calc(clamp(14px, 4vw, 44px) + var(--chrome-right)) 16px
     calc(clamp(14px, 4vw, 44px) + var(--chrome-left));
   background: color-mix(in srgb, var(--paper-0) 90%, transparent);
   -webkit-backdrop-filter: saturate(150%) blur(14px);
@@ -128,6 +129,40 @@
     repeating-linear-gradient(90deg, var(--gingham-sq) 0 3px, transparent 3px 6px);
   opacity: 0.9;
 }
+
+/* 窄屏：顶栏拆成「品牌+操作」与「搜索 / 排序」两行，工具栏整体落到第二行 */
+@media (max-width: 720px) {
+  .shelf-top {
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 10px;
+    column-gap: 8px;
+    padding-bottom: 12px;
+  }
+  .shelf-top .spacer {
+    flex: 1 1 auto;
+    min-width: 8px;
+  }
+  .shelf-search {
+    order: 10;
+    flex: 1 1 calc(100% - 160px);
+    min-width: 120px;
+    max-width: none;
+  }
+  .shelf-top > .qy-seg {
+    order: 11;
+    flex: 0 1 auto;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .shelf-top > .qy-seg::-webkit-scrollbar {
+    display: none;
+  }
+  .shelf-select-toggle {
+    order: 12;
+  }
+}
 /* 品牌主标：VI v2.0 横向 lockup —— 折角书页 + 「轻阅」（楷体）+ 下方 QINGYUE */
 .brand {
   display: flex;
@@ -151,6 +186,25 @@
   line-height: 1.02;
   letter-spacing: 0.1em;
   white-space: nowrap;
+}
+.brand-title {
+  position: relative;
+  display: inline-block;
+  /* 给右上角完整版本号留出空隙，避免压住末字 */
+  padding-right: 2.6em;
+}
+.brand-ver {
+  position: absolute;
+  top: -0.05em;
+  right: 0;
+  font-family: var(--font-sans);
+  font-size: 7.5px;
+  font-weight: 500;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  vertical-align: baseline;
 }
 .brand-word small {
   font-family: var(--font-sans);
@@ -228,6 +282,23 @@
   overflow-x: auto;
   padding-bottom: 4px;
   scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.shelf-group-bar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .shelf-group-bar {
+    margin: 4px 0 10px;
+    gap: 8px;
+    padding: 2px 2px 8px;
+  }
+  .shelf-group-chip {
+    min-height: 36px;
+    padding: 7px 14px;
+    font-size: 14px;
+  }
 }
 
 .shelf-group-chip {
@@ -257,12 +328,126 @@
   color: var(--indigo);
 }
 
+.shelf-group-chip.drop-target {
+  border-color: var(--indigo);
+  background: color-mix(in srgb, var(--indigo) 22%, var(--paper-1));
+  color: var(--indigo);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--indigo) 28%, transparent);
+}
+
 .shelf-group-chip.add {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   color: var(--ink-3);
   border-style: dashed;
+}
+
+.shelf-select-toggle {
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-0);
+  color: var(--ink-1);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.shelf-select-toggle.active {
+  border-color: color-mix(in srgb, var(--indigo) 45%, var(--line));
+  background: color-mix(in srgb, var(--indigo) 12%, var(--paper-0));
+  color: var(--indigo);
+}
+
+.shelf-select-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px calc(clamp(14px, 4vw, 44px) + var(--chrome-right))
+    calc(12px + var(--safe-b) + var(--chrome-bottom, 0px))
+    calc(clamp(14px, 4vw, 44px) + var(--chrome-left));
+  background: color-mix(in srgb, var(--paper-0) 92%, transparent);
+  -webkit-backdrop-filter: saturate(150%) blur(14px);
+  backdrop-filter: saturate(150%) blur(14px);
+  border-top: 1px solid var(--line-soft);
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.06);
+}
+
+.shelf-select-count {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+}
+
+.shelf-select-action {
+  border: 0;
+  background: transparent;
+  padding: 6px 4px;
+  font-size: 13px;
+  color: var(--indigo);
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.shelf-select-action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.shelf.shelf-dragging-book .shelf-group-chip:not(.add) {
+  transition:
+    box-shadow var(--dur-fast, 0.12s) var(--ease, ease),
+    border-color var(--dur-fast, 0.12s) var(--ease, ease);
+}
+
+.shelf-cell.selected .qy-cover {
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
+}
+
+.cell-check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(251, 245, 231, 0.85);
+  background: rgba(12, 18, 28, 0.35);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.cell-check.on {
+  border-color: var(--indigo);
+  background: var(--indigo);
+}
+
+.shelf-selecting .qy-cover {
+  cursor: pointer;
+}
+
+.cell-cover[draggable='true'] {
+  cursor: grab;
+}
+
+.cell-cover[draggable='true']:active {
+  cursor: grabbing;
 }
 
 .shelf-group-actions {

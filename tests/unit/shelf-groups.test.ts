@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   addGroupToCatalog,
+  encodeBookDragPayload,
   filterBooksByGroup,
   groupSectionTitle,
   listShelfGroups,
   normalizeGroupName,
+  parseBookDragPayload,
   removeGroupFromCatalog,
   renameGroupInCatalog,
+  resolveDragBookIds,
 } from '@/features/shelf/groups';
 import type { Book } from '@/types/models';
 
@@ -86,5 +89,22 @@ describe('catalog mutations', () => {
     expect(renameGroupInCatalog(['名著'], '名著', '诗')).toEqual(['诗']);
     expect(renameGroupInCatalog(['名著', '诗'], '名著', '诗')).toBeNull();
     expect(removeGroupFromCatalog(['名著', '诗'], '名著')).toEqual(['诗']);
+  });
+});
+
+describe('book drag payload', () => {
+  it('resolveDragBookIds expands selection when dragged id is selected', () => {
+    expect(resolveDragBookIds('a', new Set(['a', 'b', 'c']))).toEqual(['a', 'b', 'c']);
+    expect(resolveDragBookIds('x', new Set(['a', 'b']))).toEqual(['x']);
+    expect(resolveDragBookIds('a', new Set())).toEqual(['a']);
+  });
+
+  it('round-trips encode/parse and rejects junk', () => {
+    expect(parseBookDragPayload(encodeBookDragPayload(['a', 'b']))).toEqual(['a', 'b']);
+    expect(parseBookDragPayload(encodeBookDragPayload(['a', 'a', '']))).toEqual(['a']);
+    expect(parseBookDragPayload(null)).toEqual([]);
+    expect(parseBookDragPayload('not-json')).toEqual([]);
+    expect(parseBookDragPayload('{"a":1}')).toEqual([]);
+    expect(parseBookDragPayload('[1,"ok",null]')).toEqual(['ok']);
   });
 });

@@ -49,10 +49,11 @@ describe('建档与账号', () => {
     });
     expect(await session.restore()).toBeNull();
     expect(calls).toBe(0);
-    expect(session.readEndpoint()).toBe('http://118.25.79.136');
+    expect(session.readEndpoint()).toBe('http://47.108.79.158');
     session.writeEndpoint('http://127.0.0.1:8787');
     expect(calls).toBe(0);
-    expect(session.readEndpoint()).toBe('http://127.0.0.1:8787');
+    // 服务地址写死，writeEndpoint 无效
+    expect(session.readEndpoint()).toBe('http://47.108.79.158');
   });
 
   it('改口令才会请求', async () => {

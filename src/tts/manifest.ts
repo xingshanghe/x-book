@@ -1,7 +1,7 @@
 import type { EngineFile, EngineManifest } from './types';
 
 /** 引擎文件放在建档同一台机器上，避免阅读端直连 GitHub。 */
-export const ENGINE_DOWNLOAD_ORIGIN = 'http://118.25.79.136/tts';
+export const ENGINE_DOWNLOAD_ORIGIN = 'http://47.108.79.158/tts';
 
 const RUNTIME_RELEASE = 'https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.0';
 

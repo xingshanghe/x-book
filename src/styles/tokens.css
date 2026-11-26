@@ -179,6 +179,30 @@ html[data-shell='tauri'][data-os='macos'] {
   --chrome-top: 28px;
 }
 
+/* 鸿蒙 / 全面屏 WebView：系统状态栏浮在内容之上。
+   ArkWeb 常把 env(safe-area-inset-top) 报成 0，且对 CSS max() / calc(var()) 支持不稳，
+   因此变量 + 顶栏实值双写（JS / HAP boot 还会再兜一层）。 */
+html[data-os='harmony'],
+html[data-arkweb='1'] {
+  /* 状态栏约 40–48 CSS px；再留呼吸，避免品牌/账号贴住系统时间 */
+  --safe-t: 56px;
+  --safe-b: 20px;
+}
+
+/* 不用 calc(var(--safe-t))：部分 ArkWeb 会把整段 padding 算丢，顶栏仍贴到状态栏下 */
+html[data-os='harmony'] .shelf-top,
+html[data-arkweb='1'] .shelf-top {
+  padding-top: 72px;
+}
+html[data-os='harmony'] .settings-top,
+html[data-arkweb='1'] .settings-top {
+  padding-top: 72px;
+}
+html[data-os='harmony'] .reader-bar.top,
+html[data-arkweb='1'] .reader-bar.top {
+  padding-top: 64px;
+}
+
 /* 原生拖拽区（Tauri 识别 data-tauri-drag-region，双击即最大化） */
 [data-tauri-drag-region] {
   cursor: default;

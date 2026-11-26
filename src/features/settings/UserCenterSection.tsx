@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { accountSession, DEFAULT_ENROLL_ENDPOINT } from '@/account/session';
+import { accountSession } from '@/account/session';
 import { Button } from '@/ui';
 import { useAccountProfile } from './useAccountProfile';
 
 export function UserCenterSection({ toast }: { toast: (text: string) => void }) {
   const profile = useAccountProfile();
-  const [endpoint, setEndpoint] = useState(() => accountSession.readEndpoint());
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [oldPassword, setOldPassword] = useState('');
@@ -15,15 +14,16 @@ export function UserCenterSection({ toast }: { toast: (text: string) => void }) 
     if (accountSession.hasStoredSession()) void accountSession.restore();
   }, []);
 
-  const saveEndpoint = () => {
-    accountSession.writeEndpoint(endpoint);
-  };
-
   return (
     <>
       <h2>账号</h2>
+      <p className="desc">阅读无需登录。登录后可在「同步」里多端上传 / 下载书籍。</p>
       {profile ? (
         <>
+          <div className="qy-row">
+            <span className="qy-row-label">当前</span>
+            <span className="qy-row-hint">{profile.username}</span>
+          </div>
           <h3>修改口令</h3>
           <label className="qy-row">
             <span className="qy-row-label">原口令</span>
@@ -93,11 +93,6 @@ export function UserCenterSection({ toast }: { toast: (text: string) => void }) 
             <Button
               size="sm"
               onClick={() => {
-                saveEndpoint();
-                if (!accountSession.readEndpoint()) {
-                  toast('请先填写服务地址');
-                  return;
-                }
                 void accountSession.register(username, password).then((result) => {
                   toast(result.ok ? '已注册并登录' : result.message);
                 });
@@ -108,11 +103,6 @@ export function UserCenterSection({ toast }: { toast: (text: string) => void }) 
             <Button
               size="sm"
               onClick={() => {
-                saveEndpoint();
-                if (!accountSession.readEndpoint()) {
-                  toast('请先填写服务地址');
-                  return;
-                }
                 void accountSession.login(username, password).then(async (result) => {
                   if (!result.ok) {
                     toast(result.message);
@@ -132,18 +122,6 @@ export function UserCenterSection({ toast }: { toast: (text: string) => void }) 
           </div>
         </>
       )}
-      <details className="sponsor-advanced">
-        <summary>服务地址</summary>
-        <label className="qy-row">
-          <span className="qy-row-label">地址</span>
-          <input
-            value={endpoint}
-            placeholder={DEFAULT_ENROLL_ENDPOINT}
-            onChange={(event) => setEndpoint(event.target.value)}
-            onBlur={saveEndpoint}
-          />
-        </label>
-      </details>
     </>
   );
 }

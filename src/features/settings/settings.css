@@ -41,20 +41,44 @@
   gap: 10px;
 }
 
-.settings-nav {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 6px;
-  scrollbar-width: none;
-}
-
 .settings-section {
   background: var(--paper-1);
   border: 1px solid var(--line-soft);
   border-radius: var(--r-xl);
   padding: 18px 20px;
   scroll-margin-top: 80px;
+}
+
+/* 表单行：标签不换行，输入占余下宽度 */
+.settings-section .qy-row > input,
+.settings-section .qy-row > .qy-seg,
+.settings-section .qy-row > .qy-slider {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.settings-section .qy-row > input {
+  width: auto;
+  max-width: none;
+}
+
+@media (max-width: 560px) {
+  .settings-body {
+    padding: 14px 14px 88px;
+    gap: 12px;
+  }
+  .settings-section {
+    padding: 16px 14px;
+  }
+  /* 窄屏允许换行：短标签+输入仍同行；分段/滑条不够宽时落到下一行 */
+  .settings-section .qy-row {
+    flex-wrap: wrap;
+    gap: 10px 12px;
+  }
+  .settings-section .qy-row > .qy-seg,
+  .settings-section .qy-row > .qy-slider {
+    flex: 1 1 100%;
+    max-width: none;
+  }
 }
 .settings-section > h2 {
   font-family: var(--font-kai);
@@ -416,6 +440,14 @@
 .settings-section input:not([type]) {
   width: min(100%, 320px);
   font: inherit;
+}
+.settings-section .qy-row > input[type="text"],
+.settings-section .qy-row > input[type="password"],
+.settings-section .qy-row > input:not([type]) {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  max-width: none;
 }
 .settings-section .pronounce-form input {
   width: min(100%, 180px);
