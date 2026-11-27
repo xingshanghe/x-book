@@ -1,7 +1,9 @@
-/** 拖放导入 + 导入任务托盘 */
+/** 拖放导入 + 导入 / 云传输任务托盘 */
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { describeTask, totalBytes, useImportQueue } from '@/features/import/importQueue';
+import { formatBytes } from '@/lib/format';
+import { describeTransfer, useTransferQueue } from '@/sync/cloudBooks/transferQueue';
 import { Progress } from '@/ui';
 import { IconClose } from '@/ui/icons';
 
@@ -17,41 +19,84 @@ export function useDropImport() {
 }
 
 export function ImportTray() {
-  const tasks = useImportQueue((s) => s.tasks);
-  const clearFinished = useImportQueue((s) => s.clearFinished);
+  const importTasks = useImportQueue((s) => s.tasks);
+  const clearImports = useImportQueue((s) => s.clearFinished);
+  const transferTasks = useTransferQueue((s) => s.tasks);
+  const clearTransfers = useTransferQueue((s) => s.clearFinished);
 
-  const active = tasks.filter((t) => t.status === 'running' || t.status === 'queued');
-  const finished = tasks.length - active.length;
+  const activeImports = importTasks.filter((t) => t.status === 'running' || t.status === 'queued');
+  const activeTransfers = transferTasks.filter((t) => t.status === 'running');
+  const activeCount = activeImports.length + activeTransfers.length;
+  const finishedImports = importTasks.length - activeImports.length;
+  const finishedTransfers = transferTasks.length - activeTransfers.length;
+
+  const headLabel = useMemo(() => {
+    const bits: string[] = [];
+    if (activeTransfers.length) bits.push(`传输 ${activeTransfers.length}`);
+    if (activeImports.length) bits.push(`导入 ${activeImports.length}`);
+    if (!bits.length) {
+      if (transferTasks.length) bits.push('传输完成');
+      if (importTasks.length) bits.push('导入完成');
+    }
+    const bytes =
+      (importTasks.length ? totalBytes(importTasks) : '') ||
+      (transferTasks.length ? formatBytes(transferTasks.reduce((acc, t) => acc + t.size, 0)) : '');
+    return `${bits.join(' · ') || '任务'}${bytes ? ` · ${bytes}` : ''}`;
+  }, [activeTransfers.length, activeImports.length, transferTasks, importTasks]);
 
   useEffect(() => {
-    if (active.length === 0 && tasks.length > 0) {
-      const timer = setTimeout(() => clearFinished(), 6000);
-      return () => clearTimeout(timer);
-    }
-  }, [active.length, tasks.length, clearFinished]);
+    if (activeCount > 0) return;
+    const hasDoneOnly =
+      importTasks.every((t) => t.status !== 'error') &&
+      transferTasks.every((t) => t.status !== 'error');
+    // 失败项留着让用户看清原因；仅成功时自动收起
+    if (!hasDoneOnly) return;
+    if (importTasks.length === 0 && transferTasks.length === 0) return;
+    const timer = setTimeout(() => {
+      clearImports();
+      clearTransfers();
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [activeCount, importTasks, transferTasks, clearImports, clearTransfers]);
 
-  if (tasks.length === 0) return null;
+  if (importTasks.length === 0 && transferTasks.length === 0) return null;
+
+  const transferSlice = transferTasks.slice(-3);
+  const importSlice = importTasks.slice(-3);
 
   return (
     <aside className="import-tray" aria-live="polite">
       <div className="import-tray-head">
-        <span>
-          导入中 {active.length > 0 ? `· ${active.length}` : ''} · {totalBytes(tasks)}
-        </span>
-        {active.length === 0 && (
+        <span>{headLabel}</span>
+        {activeCount === 0 && (
           <button
             type="button"
             className="qy-icon-btn"
             style={{ width: 26, height: 26 }}
-            onClick={clearFinished}
+            onClick={() => {
+              clearImports();
+              clearTransfers();
+            }}
             aria-label="收起"
           >
             <IconClose size={14} />
           </button>
         )}
       </div>
-      {tasks.slice(-4).map((t) => (
-        <div key={t.id} className={`import-item ${t.status === 'error' ? 'error' : ''}`}>
+      {transferSlice.map((t) => (
+        <div key={`xfer:${t.id}`} className={`import-item ${t.status === 'error' ? 'error' : ''}`}>
+          <div className="name">
+            {t.kind === 'upload' ? '↑' : '↓'} {t.title}
+          </div>
+          {t.status === 'running' ? (
+            <Progress value={t.ratio} thin />
+          ) : (
+            <div className="state">{describeTransfer(t)}</div>
+          )}
+        </div>
+      ))}
+      {importSlice.map((t) => (
+        <div key={`imp:${t.id}`} className={`import-item ${t.status === 'error' ? 'error' : ''}`}>
           <div className="name">{t.fileName}</div>
           {t.status === 'running' ? (
             <Progress value={t.ratio} thin />
@@ -60,9 +105,9 @@ export function ImportTray() {
           )}
         </div>
       ))}
-      {finished > 0 && active.length > 0 && (
+      {(finishedImports > 0 || finishedTransfers > 0) && activeCount > 0 && (
         <div className="import-item">
-          <div className="state">另有 {finished} 项已完成</div>
+          <div className="state">另有 {finishedImports + finishedTransfers} 项已完成</div>
         </div>
       )}
     </aside>

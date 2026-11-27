@@ -27,15 +27,31 @@
 .shelf-account {
   position: relative;
   flex: 0 0 auto;
+  margin-left: 4px;
 }
-.shelf-account-btn {
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
+.shelf-account-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
   border-radius: 999px;
-  background: var(--paper-0);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    color var(--dur, 0.18s) var(--ease, ease),
+    background var(--dur, 0.18s) var(--ease, ease);
+}
+.shelf-account-icon:hover {
   color: var(--ink-1);
-  font-size: 13px;
+  background: color-mix(in srgb, var(--ink-1) 6%, transparent);
+}
+.shelf-account-icon:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--indigo) 45%, transparent);
+  outline-offset: 2px;
 }
 .shelf-account-modal {
   align-items: center;
@@ -130,39 +146,193 @@
   opacity: 0.9;
 }
 
-/* 窄屏：顶栏拆成「品牌+操作」与「搜索 / 排序」两行，工具栏整体落到第二行 */
-@media (max-width: 720px) {
+/* 排序：宽屏跟账号同排；窄屏 / 鸿蒙折到 logo、账号下一整行 */
+.shelf-sort {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(52vw, 420px);
+}
+.shelf-sort .qy-seg {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.shelf-sort .qy-seg::-webkit-scrollbar {
+  display: none;
+}
+
+/* 移动端顶栏两行：① 品牌 | 账号  ② 排序整行（在蓝布条之上） */
+@media (max-width: 900px) {
   .shelf-top {
     flex-wrap: wrap;
     align-items: center;
-    row-gap: 10px;
-    column-gap: 8px;
-    padding-bottom: 12px;
+    column-gap: 6px;
+    row-gap: 8px;
+    padding-bottom: 10px;
   }
   .shelf-top .spacer {
     flex: 1 1 auto;
-    min-width: 8px;
+    min-width: 4px;
   }
-  .shelf-search {
-    order: 10;
-    flex: 1 1 calc(100% - 160px);
-    min-width: 120px;
-    max-width: none;
+  .brand {
+    gap: 6px;
   }
-  .shelf-top > .qy-seg {
-    order: 11;
-    flex: 0 1 auto;
-    max-width: 100%;
-    overflow-x: auto;
-    scrollbar-width: none;
+  .brand-word {
+    font-size: 16px;
+    letter-spacing: 0.06em;
   }
-  .shelf-top > .qy-seg::-webkit-scrollbar {
+  .brand-word small {
     display: none;
   }
-  .shelf-select-toggle {
-    order: 12;
+  .brand-title {
+    padding-right: 2.2em;
+  }
+  .shelf-account {
+    order: 3;
+    margin-left: 0;
+  }
+  .shelf-account-icon {
+    width: 40px;
+    height: 40px;
+  }
+  .shelf-sort {
+    order: 4;
+    flex: 0 0 100%;
+    width: 100%;
+    max-width: none;
+  }
+  .shelf-sort .qy-seg {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: none;
+    -webkit-overflow-scrolling: touch;
   }
 }
+
+/* 鸿蒙 ArkWeb 视口宽度常偏大，不靠媒体查询也能折行 */
+html[data-arkweb='1'] .shelf-top,
+html[data-os='harmony'] .shelf-top {
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 8px;
+  padding-bottom: 10px;
+}
+html[data-arkweb='1'] .shelf-top .spacer,
+html[data-os='harmony'] .shelf-top .spacer {
+  flex: 1 1 auto;
+  min-width: 4px;
+}
+html[data-arkweb='1'] .brand-word small,
+html[data-os='harmony'] .brand-word small {
+  display: none;
+}
+html[data-arkweb='1'] .shelf-account,
+html[data-os='harmony'] .shelf-account {
+  order: 3;
+  margin-left: 0;
+}
+html[data-arkweb='1'] .shelf-sort,
+html[data-os='harmony'] .shelf-sort {
+  order: 4;
+  flex: 0 0 100%;
+  width: 100%;
+  max-width: none;
+}
+html[data-arkweb='1'] .shelf-sort .qy-seg,
+html[data-os='harmony'] .shelf-sort .qy-seg {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/*
+ * 手机横屏：顶栏压矮，排序收回与品牌同一行，把高度还给书封。
+ * 仅矮窗（≤560px）生效，桌面横屏不受影响。
+ * data-landscape-compact 给 ArkWeb（orientation 媒体查询常失效）兜底。
+ */
+@media (orientation: landscape) and (max-height: 560px) {
+  .shelf-top {
+    flex-wrap: nowrap;
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 0;
+    padding-top: calc(4px + min(16px, var(--safe-t, 0px)) + var(--chrome-top, 0px));
+    padding-bottom: 6px;
+  }
+  .shelf-top::after {
+    height: 4px;
+  }
+  .brand {
+    gap: 4px;
+  }
+  .brand-word {
+    font-size: 15px;
+  }
+  .shelf-account {
+    order: 0;
+    margin-left: 0;
+  }
+  .shelf-account-icon {
+    width: 32px;
+    height: 32px;
+  }
+  .shelf-sort {
+    order: 0;
+    flex: 1 1 auto;
+    width: auto;
+    max-width: min(58vw, 440px);
+  }
+  .shelf-sort .qy-seg {
+    width: auto;
+  }
+}
+
+html[data-landscape-compact='1'] .shelf-top,
+html[data-landscape-compact='1'][data-os='harmony'] .shelf-top,
+html[data-landscape-compact='1'][data-arkweb='1'] .shelf-top {
+  flex-wrap: nowrap;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 0;
+  padding-top: 18px;
+  padding-bottom: 6px;
+}
+html[data-landscape-compact='1'] .shelf-top::after {
+  height: 4px;
+}
+html[data-landscape-compact='1'] .brand {
+  gap: 4px;
+}
+html[data-landscape-compact='1'] .brand-word {
+  font-size: 15px;
+}
+html[data-landscape-compact='1'] .shelf-account,
+html[data-landscape-compact='1'][data-os='harmony'] .shelf-account,
+html[data-landscape-compact='1'][data-arkweb='1'] .shelf-account {
+  order: 0;
+  margin-left: 0;
+}
+html[data-landscape-compact='1'] .shelf-account-icon {
+  width: 32px;
+  height: 32px;
+}
+html[data-landscape-compact='1'] .shelf-sort,
+html[data-landscape-compact='1'][data-os='harmony'] .shelf-sort,
+html[data-landscape-compact='1'][data-arkweb='1'] .shelf-sort {
+  order: 0;
+  flex: 1 1 auto;
+  width: auto;
+  max-width: min(58vw, 440px);
+}
+html[data-landscape-compact='1'] .shelf-sort .qy-seg,
+html[data-landscape-compact='1'][data-os='harmony'] .shelf-sort .qy-seg,
+html[data-landscape-compact='1'][data-arkweb='1'] .shelf-sort .qy-seg {
+  width: auto;
+}
+
 /* 品牌主标：VI v2.0 横向 lockup —— 折角书页 + 「轻阅」（楷体）+ 下方 QINGYUE */
 .brand {
   display: flex;
@@ -216,33 +386,6 @@
   /* 「轻阅」末字带字距，回退一格让英文与字标左沿对齐 */
   margin-left: -1px;
 }
-.shelf-search {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 420px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--paper-1);
-  border: 1px solid var(--line-soft);
-  border-radius: 10px;
-  padding: 0 12px;
-  height: 40px;
-  color: var(--ink-3);
-  transition: border-color var(--dur-fast);
-}
-.shelf-search:focus-within {
-  border-color: var(--indigo-line);
-  color: var(--ink-2);
-}
-.shelf-search input {
-  flex: 1;
-  border: none;
-  outline: none;
-  background: none;
-  color: var(--ink-1);
-  font-size: var(--step-0);
-}
 .spacer {
   flex: 1;
 }
@@ -277,27 +420,55 @@
 .shelf-group-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin: 8px 0 4px;
+  min-width: 0;
+}
+
+.shelf-group-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
   overflow-x: auto;
   padding-bottom: 4px;
   scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
 }
-.shelf-group-bar::-webkit-scrollbar {
+.shelf-group-chips::-webkit-scrollbar {
   display: none;
 }
 
 @media (max-width: 720px) {
+  .shelf-body {
+    padding-top: 8px;
+  }
+  .shelf-section-title {
+    margin: 8px 0 10px;
+  }
   .shelf-group-bar {
-    margin: 4px 0 10px;
-    gap: 8px;
-    padding: 2px 2px 8px;
+    margin: 0 0 6px;
+    gap: 6px;
+    padding: 0;
+  }
+  .shelf-group-chips {
+    gap: 6px;
+    padding: 0 0 2px;
   }
   .shelf-group-chip {
-    min-height: 36px;
-    padding: 7px 14px;
-    font-size: 14px;
+    min-height: 32px;
+    padding: 5px 11px;
+    font-size: 13px;
+  }
+  .shelf-select-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    min-height: 32px;
+    padding: 0 8px;
+    font-size: 13px;
   }
 }
 
@@ -343,24 +514,34 @@
   border-style: dashed;
 }
 
-.shelf-select-toggle {
+.shelf-select-link {
   flex: 0 0 auto;
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--paper-0);
-  color: var(--ink-1);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  padding: 0 4px;
+  min-height: 32px;
+  color: var(--ink-3);
   font-size: 13px;
   font-family: var(--font-sans);
   cursor: pointer;
+  transition: color var(--dur, 0.18s) var(--ease, ease);
+  /* 与滚动芯片并排时不被挤扁 */
+  white-space: nowrap;
 }
 
-.shelf-select-toggle.active {
-  border-color: color-mix(in srgb, var(--indigo) 45%, var(--line));
-  background: color-mix(in srgb, var(--indigo) 12%, var(--paper-0));
+.shelf-select-link:hover {
+  color: var(--ink-1);
+}
+
+.shelf-select-link.active {
   color: var(--indigo);
 }
+
 
 .shelf-select-bar {
   position: sticky;
@@ -401,6 +582,52 @@
 .shelf-select-action:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+@media (max-width: 720px) {
+  .shelf-select-bar {
+    gap: 8px;
+    padding-top: 10px;
+    padding-bottom: calc(10px + var(--safe-b) + var(--chrome-bottom, 0px));
+  }
+  .shelf-select-count {
+    flex: 1 1 100%;
+    font-size: 14px;
+  }
+  .shelf-select-action {
+    min-height: 44px;
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+  .shelf-select-bar .qy-btn {
+    min-height: 44px;
+  }
+  .shelf-group-actions {
+    width: 100%;
+    margin-left: 0;
+    margin-top: 4px;
+    gap: 16px;
+  }
+  .shelf-group-link {
+    min-height: 36px;
+    font-size: 13px;
+  }
+}
+
+@media (hover: none) {
+  .shelf-select-link:active {
+    color: var(--ink-1);
+  }
+  .shelf-select-link.active:active {
+    color: var(--indigo);
+  }
+  .shelf-account-icon:active {
+    color: var(--ink-1);
+    background: color-mix(in srgb, var(--ink-1) 8%, transparent);
+  }
+  .shelf-group-link:active {
+    color: var(--indigo);
+  }
 }
 
 .shelf.shelf-dragging-book .shelf-group-chip:not(.add) {
@@ -761,6 +988,29 @@
 }
 .cell-cloud-down {
   background: rgba(180, 67, 38, 0.78);
+}
+.cell-xfer {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 8px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 7px;
+  border-radius: 8px;
+  background: rgba(12, 18, 28, 0.72);
+  color: rgba(251, 245, 231, 0.95);
+  font-size: 10px;
+  line-height: 1.2;
+  pointer-events: none;
+}
+.cell-xfer .qy-progress {
+  background: rgba(251, 245, 231, 0.22);
+}
+.cell-xfer .qy-progress > span {
+  background: rgba(251, 245, 231, 0.92);
 }
 .shelf-cell-cloud .qy-cover {
   opacity: 0.88;

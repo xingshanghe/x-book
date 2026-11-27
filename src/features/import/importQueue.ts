@@ -5,23 +5,23 @@
  */
 
 import { create } from 'zustand';
+import { useSettings } from '@/app/store';
 import { fingerprint } from '@/core/parser/indexer';
 import { runIndex } from '@/core/worker/client';
 import { probePdfMeta } from '@/features/comic/pdfEngine';
 import { formatBytes } from '@/lib/format';
 import { nanoid } from '@/lib/id';
-import { putBookFile, getBookBlob, deleteBookFile } from '@/storage/blobStore';
+import { deleteBookFile, getBookBlob, putBookFile } from '@/storage/blobStore';
 import { putBookCover } from '@/storage/coverStore';
 import {
-  newBookRecord,
   findByFingerprint,
+  newBookRecord,
   putBook,
   saveIndex,
 } from '@/storage/repositories/bookRepo';
 import { loadUserRules } from '@/storage/repositories/defaults';
-import { useSettings } from '@/app/store';
-import { toast } from '@/ui';
 import type { Book } from '@/types/models';
+import { toast } from '@/ui';
 
 export type TaskStatus = 'queued' | 'running' | 'done' | 'error' | 'duplicate' | 'cancelled';
 
@@ -165,7 +165,9 @@ async function importPdf(file: File, taskId: string): Promise<void> {
   patchTask(taskId, { status: 'running', ratio: 0.05 });
   try {
     if (file.size > MAX_PDF_BYTES) {
-      throw new Error(`文件过大（${formatBytes(file.size)}），请控制在 ${formatBytes(MAX_PDF_BYTES)} 以内`);
+      throw new Error(
+        `文件过大（${formatBytes(file.size)}），请控制在 ${formatBytes(MAX_PDF_BYTES)} 以内`,
+      );
     }
     if (file.size > LARGE_PDF_BYTES) {
       toast(`${file.name} 约 ${formatBytes(file.size)}，导入与翻页可能较慢`, 'warn');
@@ -193,6 +195,10 @@ async function importPdf(file: File, taskId: string): Promise<void> {
       cover = meta.cover;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      // 旧版 pdf.js + 旧 WebView 会冒这个错；不是权限/文件损坏
+      if (/getOrInsertComputed/i.test(msg)) {
+        throw new Error('当前环境无法解析 PDF，请更新到最新版客户端后重试');
+      }
       throw new Error(`无法解析 PDF：${msg}`);
     }
     if (pageCount < 1) throw new Error('PDF 没有可阅读的页面');

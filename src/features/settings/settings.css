@@ -50,6 +50,15 @@
 }
 
 /* 表单行：标签不换行，输入占余下宽度 */
+.settings-section .qy-row > .qy-row-label {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  max-width: none;
+  width: max-content;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
+}
 .settings-section .qy-row > input,
 .settings-section .qy-row > .qy-seg,
 .settings-section .qy-row > .qy-slider {
@@ -69,10 +78,18 @@
   .settings-section {
     padding: 16px 14px;
   }
-  /* 窄屏允许换行：短标签+输入仍同行；分段/滑条不够宽时落到下一行 */
+  /* 窄屏：短标签+输入仍同行；分段/滑条不够宽时落到下一行 */
   .settings-section .qy-row {
     flex-wrap: wrap;
     gap: 10px 12px;
+  }
+  .settings-section .qy-row > .qy-row-label {
+    flex: 0 0 auto;
+    max-width: none;
+    white-space: nowrap;
+  }
+  .settings-section .qy-row > input {
+    flex: 1 1 12rem;
   }
   .settings-section .qy-row > .qy-seg,
   .settings-section .qy-row > .qy-slider {
@@ -162,6 +179,9 @@
   flex-wrap: wrap;
   gap: 8px;
   margin: 8px 0;
+}
+#account .tts-actions {
+  justify-content: flex-end;
 }
 .pronounce {
   margin: 16px 0 4px;

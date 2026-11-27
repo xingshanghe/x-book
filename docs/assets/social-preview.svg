@@ -11,17 +11,17 @@
 
   <!-- 右侧：纸页意象 -->
   <g transform="translate(880,96)" opacity="0.06">
-    <path d="M16 4H48L70 26V94a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z"
+    <path d="M16 4H48L70 26V74a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z"
           fill="none" stroke="#E8E4D8" stroke-width="2" stroke-linejoin="round"/>
     <path d="M48 4l22 22H48Z" fill="#D2704F"/>
   </g>
 
   <!-- 主标 -->
   <g transform="translate(96,168) scale(1.55)">
-    <path d="M16 4H48L70 26V94a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z"
+    <path d="M16 4H48L70 26V74a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z"
           fill="none" stroke="#E8E4D8" stroke-width="4.5" stroke-linejoin="round"/>
     <path d="M48 4l22 22H48Z" fill="#D2704F"/>
-    <path d="M30 42h20M30 56h20M30 70h12" stroke="#E8E4D8" stroke-width="4"
+    <path d="M30 38h20M30 50h20M30 62h12" stroke="#E8E4D8" stroke-width="4"
           stroke-linecap="round" opacity=".24"/>
   </g>
 

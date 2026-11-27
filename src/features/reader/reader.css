@@ -582,6 +582,7 @@
   display: flex;
   justify-content: center;
   overflow: hidden;
+  touch-action: pan-y;
 }
 
 .paged-view {
@@ -591,6 +592,14 @@
 }
 .paged-view::-webkit-scrollbar {
   display: none;
+}
+
+/* 点按 / 滑动翻页：外层淡入，不动正文 flow 的 top / transform */
+.paged-view[data-flip='on'].flip-next {
+  animation: qy-page-next 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.paged-view[data-flip='on'].flip-prev {
+  animation: qy-page-prev 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* 一屏一栏或两栏。每栏裁切到整数行，正文用 top 对齐到该栏的第一行。
@@ -760,9 +769,24 @@
   }
 }
 
-/* ---------- 窄窗口：目录改为浮层 ---------- */
+/* ---------- 窄窗口：顶栏收紧；目录改走 TocSheet，不再常驻侧栏 ---------- */
 
 @media (max-width: 820px) {
+  .reader-bar.top {
+    flex-shrink: 0;
+    gap: 4px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  .reader-bar .title {
+    font-size: 15px;
+    min-width: 0;
+  }
+  .reader-bar.bottom .reader-tools {
+    gap: 2px;
+  }
+
+  /* 兜底：若仍带 with-toc（旧状态），侧栏改浮层且勿挤掉顶栏 */
   .reader.with-toc {
     display: flex;
     flex-direction: column;
@@ -776,6 +800,35 @@
     z-index: 6;
     box-shadow: var(--shadow-lg);
   }
+}
+
+/* 横屏矮窗：顶底栏压矮，给正文多留高度（含 ArkWeb data-landscape-compact 兜底） */
+@media (orientation: landscape) and (max-height: 560px) {
+  .reader-bar.top,
+  html[data-os='harmony'] .reader-bar.top,
+  html[data-arkweb='1'] .reader-bar.top {
+    padding-top: calc(4px + min(14px, var(--safe-t, 0px)) + var(--chrome-top, 0px));
+    padding-bottom: 4px;
+  }
+  .reader-bar.bottom {
+    padding-bottom: calc(4px + min(12px, var(--safe-b, 0px)));
+  }
+  .reader-bar .hint {
+    display: none;
+  }
+}
+
+html[data-landscape-compact='1'] .reader-bar.top,
+html[data-landscape-compact='1'][data-os='harmony'] .reader-bar.top,
+html[data-landscape-compact='1'][data-arkweb='1'] .reader-bar.top {
+  padding-top: calc(4px + min(14px, var(--safe-t, 0px)) + var(--chrome-top, 0px));
+  padding-bottom: 4px;
+}
+html[data-landscape-compact='1'] .reader-bar.bottom {
+  padding-bottom: calc(4px + min(12px, var(--safe-b, 0px)));
+}
+html[data-landscape-compact='1'] .reader-bar .hint {
+  display: none;
 }
 
 .tts-panel {

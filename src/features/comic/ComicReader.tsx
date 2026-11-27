@@ -22,6 +22,7 @@ import {
 import { PdfEngine } from '@/features/comic/pdfEngine';
 import { PdfThumbRail } from '@/features/comic/PdfThumbRail';
 import { formatPercent } from '@/lib/format';
+import { useLandscapeCompact, useNarrowLayout } from '@/lib/useMediaQuery';
 import { getBookBlob } from '@/storage/blobStore';
 import { putBookCover } from '@/storage/coverStore';
 import { addBookmark, listBookmarks, removeBookmark } from '@/storage/repositories/bookmarkRepo';
@@ -48,6 +49,8 @@ const FIT_OPTIONS: { id: ComicFitMode; label: string }[] = [
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 4;
 const SWIPE_THRESHOLD = 56;
+/** 手机横屏：工具栏闲置后自动收起，把高度还给画面 */
+const LANDSCAPE_BARS_HIDE_MS = 2800;
 
 type LoadState = 'loading' | 'ready' | 'error' | 'absent';
 
@@ -56,6 +59,9 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
   const [, navigate] = useLocation();
   const settings = useSettings((s) => s.settings);
   const updateSettings = useSettings((s) => s.update);
+  const narrow = useNarrowLayout();
+  /** 手机横屏：顶底栏压矮并占位；闲置后自动收起 */
+  const landscapeCompact = useLandscapeCompact();
 
   const [book, setBook] = useState<Book | null>(null);
   const [loadState, setLoadState] = useState<LoadState>('loading');
@@ -63,6 +69,8 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
   const [pageIndex, setPageIndex] = useState(0);
   const [pageCount, setPageCount] = useState(0);
   const [barsVisible, setBarsVisible] = useState(true);
+  /** 窄屏临时打开缩略图浮层（不写进 tocDocked，避免竖屏默认挡顶栏） */
+  const [thumbsSheetOpen, setThumbsSheetOpen] = useState(false);
   /** 用户可见缩放（捏合过程中实时更新，用 CSS 表达） */
   const [zoom, setZoom] = useState(1);
   /** 已栅格化的缩放；捏合结束后再对齐，避免每帧重渲 */
@@ -217,8 +225,16 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
     };
   }, [bookId]);
 
-  /* ── 视口尺寸（含侧栏开合：依赖 tocDocked，避免布局未稳时漏测） ── */
-  const thumbsDocked = settings.tocDocked;
+  /* ── 手机横屏：工具栏显出后闲置自动收起，避免一直挡住画面 ── */
+  useEffect(() => {
+    if (!landscapeCompact || !barsVisible || thumbsSheetOpen) return;
+    const timer = window.setTimeout(() => setBarsVisible(false), LANDSCAPE_BARS_HIDE_MS);
+    return () => window.clearTimeout(timer);
+  }, [landscapeCompact, barsVisible, thumbsSheetOpen, pageIndex, fitMode, zoom]);
+
+  /* ── 视口尺寸（含侧栏开合：依赖 dock 状态，避免布局未稳时漏测） ── */
+  const thumbsDocked = settings.tocDocked && !narrow;
+  const showThumbsRail = (thumbsDocked || (narrow && thumbsSheetOpen)) && loadState === 'ready';
   useLayoutEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
@@ -237,7 +253,7 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
       window.cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [loadState, thumbsDocked]);
+  }, [loadState, thumbsDocked, thumbsSheetOpen, narrow, landscapeCompact, barsVisible]);
 
   /* ── 取页尺寸 + 渲染（同一效应，避免翻页闪旧尺寸） ── */
   useEffect(() => {
@@ -541,13 +557,20 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
   };
 
   const toggleThumbs = useCallback(() => {
+    if (narrow) {
+      setThumbsSheetOpen((open) => !open);
+      setZoom(1);
+      setRasterZoom(1);
+      setPan({ x: 0, y: 0 });
+      return;
+    }
     const next = !useSettings.getState().settings.tocDocked;
     updateSettings({ tocDocked: next });
     // 可用宽度变化后回到适屏，避免沿用旧缩放把页裁切在半屏外
     setZoom(1);
     setRasterZoom(1);
     setPan({ x: 0, y: 0 });
-  }, [updateSettings]);
+  }, [narrow, updateSettings]);
 
   const currentBookmark = bookmarks.find((b) => b.blockIndex === pageIndex);
 
@@ -607,11 +630,12 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
 
   const percent = pagePercent(pageIndex, pageCount);
   const engine = engineRef.current;
-  const showThumbs = thumbsDocked && loadState === 'ready' && engine != null;
+  const showThumbs = showThumbsRail && engine != null;
+  const thumbsActive = thumbsDocked || (narrow && thumbsSheetOpen);
 
   return (
     <div
-      className={`comic-reader${barsVisible ? '' : ' bars-hidden'}${showThumbs ? ' with-thumbs' : ''}`}
+      className={`comic-reader${barsVisible ? '' : ' bars-hidden'}${showThumbs ? ' with-thumbs' : ''}${narrow && thumbsSheetOpen ? ' thumbs-sheet' : ''}${landscapeCompact ? ' landscape-compact' : ''}`}
     >
       {showThumbs ? (
         <PdfThumbRail
@@ -619,8 +643,19 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
           pageCount={pageCount}
           currentIndex={pageIndex}
           bookmarks={bookmarks}
-          onJump={(index) => turnTo(index)}
+          onJump={(index) => {
+            turnTo(index);
+            if (narrow) setThumbsSheetOpen(false);
+          }}
           onClose={toggleThumbs}
+        />
+      ) : null}
+      {narrow && thumbsSheetOpen ? (
+        <button
+          type="button"
+          className="comic-thumbs-backdrop"
+          aria-label="关闭缩略图"
+          onClick={() => setThumbsSheetOpen(false)}
         />
       ) : null}
 
@@ -631,10 +666,10 @@ export function ComicReader({ id, params }: { id?: string; params?: { id: string
           </button>
           <button
             type="button"
-            className={`comic-icon-btn${thumbsDocked ? ' on' : ''}`}
+            className={`comic-icon-btn${thumbsActive ? ' on' : ''}`}
             onClick={toggleThumbs}
-            aria-label={thumbsDocked ? '收起缩略图' : '展开缩略图'}
-            aria-pressed={thumbsDocked}
+            aria-label={thumbsActive ? '收起缩略图' : '展开缩略图'}
+            aria-pressed={thumbsActive}
           >
             <IconList size={18} />
           </button>

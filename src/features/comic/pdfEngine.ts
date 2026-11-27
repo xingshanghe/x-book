@@ -1,6 +1,10 @@
 /**
  * pdf.js 封装：打开文档、按页渲染、邻页 LRU 缓存。
  * 页码对外一律 0-based；内部转 pdf.js 的 1-based。
+ *
+ * 必须用 legacy 构建：现代构建依赖 Map.getOrInsertComputed（Chrome 145+），
+ * Android / 鸿蒙 WebView 与较旧桌面内核会直接抛
+ * 「this[#t].getOrInsertComputed is not a function」，表现为「无法解析 PDF」。
  */
 
 import {
@@ -9,10 +13,29 @@ import {
   type PDFDocumentProxy,
   type PDFPageProxy,
   type RenderTask,
-} from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+} from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfWorker from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { cappedDpr, thumbCssSize } from './fit';
 
+/** 再补一层运行时 polyfill，避免 worker 外主线程仍踩到裸 Map */
+function polyfillMapGetOrInsertComputed(): void {
+  const proto = Map.prototype as Map<unknown, unknown> & {
+    getOrInsertComputed?: (key: unknown, fn: (key: unknown) => unknown) => unknown;
+  };
+  if (typeof proto.getOrInsertComputed === 'function') return;
+  Object.defineProperty(proto, 'getOrInsertComputed', {
+    configurable: true,
+    writable: true,
+    value(this: Map<unknown, unknown>, key: unknown, fn: (key: unknown) => unknown) {
+      if (this.has(key)) return this.get(key);
+      const value = fn(key);
+      this.set(key, value);
+      return value;
+    },
+  });
+}
+
+polyfillMapGetOrInsertComputed();
 GlobalWorkerOptions.workerSrc = pdfWorker;
 
 const CACHE_LIMIT = 5;
@@ -59,14 +82,16 @@ export class PdfEngine {
 
   async open(source: Blob | ArrayBuffer | Uint8Array): Promise<number> {
     await this.close();
-    let loading;
-    if (source instanceof Blob) {
-      this.objectUrl = URL.createObjectURL(source);
-      loading = getDocument({ url: this.objectUrl, useSystemFonts: true });
-    } else {
-      const data = source instanceof ArrayBuffer ? new Uint8Array(source) : source;
-      loading = getDocument({ data, useSystemFonts: true });
-    }
+    const loading =
+      source instanceof Blob
+        ? (() => {
+            this.objectUrl = URL.createObjectURL(source);
+            return getDocument({ url: this.objectUrl, useSystemFonts: true });
+          })()
+        : getDocument({
+            data: source instanceof ArrayBuffer ? new Uint8Array(source) : source,
+            useSystemFonts: true,
+          });
     this.doc = await loading.promise;
     return this.doc.numPages;
   }
@@ -179,11 +204,7 @@ export class PdfEngine {
    * 渲一页缩略图 JPEG。与主画面缓存/cancel 分轨，
    * 翻页时不会被 cancelAllRenders 打断。
    */
-  async renderThumbBlob(
-    pageIndex: number,
-    maxEdge = 144,
-    quality = 0.72,
-  ): Promise<Blob | null> {
+  async renderThumbBlob(pageIndex: number, maxEdge = 144, quality = 0.72): Promise<Blob | null> {
     if (!this.doc) return null;
     if (pageIndex < 0 || pageIndex >= this.doc.numPages) return null;
     const hit = this.thumbBlobs.get(pageIndex);
@@ -231,8 +252,8 @@ export class PdfEngine {
   ): Promise<RenderedPage> {
     const page = await this.getPage(pageIndex);
     const base = page.getViewport({ scale: 1 });
-    let scaleX = (cssW * dpr) / base.width;
-    let scaleY = (cssH * dpr) / base.height;
+    const scaleX = (cssW * dpr) / base.width;
+    const scaleY = (cssH * dpr) / base.height;
     let scale = Math.min(scaleX, scaleY);
     // 边长封顶
     const rawW = base.width * scale;
@@ -296,9 +317,7 @@ export class PdfEngine {
 }
 
 /** 导入：一次打开取页数 + 封面 */
-export async function probePdfMeta(
-  blob: Blob,
-): Promise<{ pageCount: number; cover: Blob | null }> {
+export async function probePdfMeta(blob: Blob): Promise<{ pageCount: number; cover: Blob | null }> {
   const engine = new PdfEngine();
   try {
     const pageCount = await engine.open(blob);

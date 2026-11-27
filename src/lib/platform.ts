@@ -57,14 +57,26 @@ export function detectOs(): OsName {
   return 'linux';
 }
 
+/** 矮横屏：手机横屏等，顶栏需要压高度（与 LANDSCAPE_COMPACT_QUERY 同阈值） */
+const LANDSCAPE_COMPACT_MAX_HEIGHT = 560;
+
+function isLandscapeViewport(): boolean {
+  return window.innerWidth > window.innerHeight;
+}
+
+function isLandscapeCompactViewport(): boolean {
+  return isLandscapeViewport() && window.innerHeight <= LANDSCAPE_COMPACT_MAX_HEIGHT;
+}
+
 /**
- * 把运行环境写到 <html data-os data-shell data-arkweb> 上，交给 CSS 适配窗口 chrome。
+ * 把运行环境写到 <html data-os data-shell data-arkweb data-landscape*> 上，交给 CSS 适配窗口 chrome。
  *
  * 为什么需要它：macOS 壳用 Overlay 标题栏，红绿灯是浮在网页内容之上的，
  * 页面必须自己让出左上角那条区域，否则品牌字会被圆点压住；
  * Windows / Linux 保留系统标题栏，内容从 0 开始，不让位。
  * 浏览器 / PWA 里没有任何系统按钮，同样不让位。
- * 鸿蒙 ArkWeb 全屏时 status bar 叠在内容上，且常不回报 safe-area，需 CSS 兜底。
+ * 鸿蒙 ArkWeb 全屏时 status bar 叠在内容上，且常不回报 safe-area，需 CSS 兜底；
+ * 其对 orientation 媒体查询也常失效，故用宽高比写 data-landscape* 给 CSS 兜底。
  */
 export function applyPlatformFlags(): void {
   if (!isBrowser()) return;
@@ -73,14 +85,39 @@ export function applyPlatformFlags(): void {
   el.dataset.shell = isTauri() ? 'tauri' : 'web';
   if (isArkWeb()) {
     el.dataset.arkweb = '1';
-    // ArkWeb 对 env(safe-area-*) / CSS max() 不可靠，直接写入可计算的安全区
-    const insetTop = readSafeInset('top');
-    const insetBottom = readSafeInset('bottom');
-    el.style.setProperty('--safe-t', `${Math.max(insetTop, 56)}px`);
-    el.style.setProperty('--safe-b', `${Math.max(insetBottom, 20)}px`);
   } else {
     delete el.dataset.arkweb;
   }
+  syncViewportFlags();
+  if (!viewportFlagsBound) {
+    viewportFlagsBound = true;
+    window.addEventListener('resize', syncViewportFlags, { passive: true });
+    window.addEventListener('orientationchange', syncViewportFlags, { passive: true });
+  }
+}
+
+let viewportFlagsBound = false;
+
+/** 横竖屏 / 矮窗变化时更新 data-* 与 ArkWeb 安全区保底。 */
+function syncViewportFlags(): void {
+  if (!isBrowser()) return;
+  const el = document.documentElement;
+  const landscape = isLandscapeViewport();
+  const compact = isLandscapeCompactViewport();
+  if (landscape) el.dataset.landscape = '1';
+  else delete el.dataset.landscape;
+  if (compact) el.dataset.landscapeCompact = '1';
+  else delete el.dataset.landscapeCompact;
+
+  if (!isArkWeb()) return;
+  // ArkWeb 对 env(safe-area-*) / CSS max() 不可靠，直接写入可计算的安全区。
+  // 竖屏保底 52，避免贴刘海；横屏状态栏明显变矮，保底降到 16，否则顶栏占掉半屏。
+  const insetTop = readSafeInset('top');
+  const insetBottom = readSafeInset('bottom');
+  const minTop = landscape ? 16 : 52;
+  const minBottom = landscape ? 10 : 20;
+  el.style.setProperty('--safe-t', `${Math.max(insetTop, minTop)}px`);
+  el.style.setProperty('--safe-b', `${Math.max(insetBottom, minBottom)}px`);
 }
 
 /** 读取 env(safe-area-inset-*)；解析失败或不支持时返回 0。 */

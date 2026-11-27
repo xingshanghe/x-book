@@ -61,6 +61,16 @@ export function IconSearch({ size, style, className }: P) {
   );
 }
 
+/** 用户 / 账号入口 */
+export function IconUser({ size, style, className }: P) {
+  return (
+    <svg {...base(size)} style={style} className={className} aria-hidden>
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M5 19.5c0-3.4 3-5.5 7-5.5s7 2.1 7 5.5" />
+    </svg>
+  );
+}
+
 export function IconList({ size, style, className }: P) {
   return (
     <svg {...base(size)} style={style} className={className} aria-hidden>
@@ -222,19 +232,19 @@ export function IconCloudDown({ size, style, className }: P) {
 }
 
 /**
- * 品牌符号（VI v2.0 §03）：一页纸的折角
- *   画布 80×104，页身 60×96，右上折角边长 22 严格 45°，填朱砂；
+ * 品牌符号（VI v2.1 §03）：一页纸的折角
+ *   画布 80×84，页身 60×76，右上折角边长 22 严格 45°，填朱砂；
  *   描边 4.5 随尺寸等比，线端圆角、拐角斜接。
  * 16px 以下改用「实心页身 + 折角负形」，保证 favicon / 小图标仍是一页纸。
- * size = 图形宽度（高度按 80:104 推出），注意图形比字标高半格。
+ * size = 图形宽度（高度按 80:84 推出），注意图形比字标高半格。
  */
 export function LogoMark({ size = 20, style, className }: P & { size?: number }) {
   const solid = size < 18;
   return (
     <svg
       width={size}
-      height={(size * 104) / 80}
-      viewBox="0 0 80 104"
+      height={(size * 84) / 80}
+      viewBox="0 0 80 84"
       style={style}
       className={className}
       aria-hidden
@@ -242,7 +252,7 @@ export function LogoMark({ size = 20, style, className }: P & { size?: number })
       {solid ? (
         <>
           <path
-            d="M14 2h34l30 30v70a2 2 0 0 1-2 2H14a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z"
+            d="M14 2h34l30 30v50a2 2 0 0 1-2 2H14a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z"
             fill="currentColor"
           />
           <path d="M48 2l30 30H48Z" fill="var(--paper-1)" />
@@ -250,7 +260,7 @@ export function LogoMark({ size = 20, style, className }: P & { size?: number })
       ) : (
         <>
           <path
-            d="M16 4H48L70 26V94a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z"
+            d="M16 4H48L70 26V74a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z"
             fill="none"
             stroke="currentColor"
             strokeWidth={4.5}
@@ -259,7 +269,7 @@ export function LogoMark({ size = 20, style, className }: P & { size?: number })
           <path d="M48 4l22 22H48Z" fill="var(--seal)" />
           {size >= 30 && (
             <path
-              d="M30 42h20M30 56h20M30 70h12"
+              d="M30 38h20M30 50h20M30 62h12"
               stroke="currentColor"
               strokeWidth={4}
               strokeLinecap="round"

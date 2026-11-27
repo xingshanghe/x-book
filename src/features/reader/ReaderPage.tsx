@@ -31,6 +31,7 @@ import { lineHeightPx } from '@/core/text/typography';
 import { readSegment, segmentOf } from '@/features/reader/paginate';
 import { clamp, formatPercent, formatRemaining } from '@/lib/format';
 import { debounce } from '@/lib/throttle';
+import { useNarrowLayout } from '@/lib/useMediaQuery';
 import { getBookBlob } from '@/storage/blobStore';
 import { listFonts } from '@/storage/fontStore';
 import { listBookmarks } from '@/storage/repositories/bookmarkRepo';
@@ -75,7 +76,13 @@ import {
 import { ChapterHeading } from './ChapterHeading';
 import { type PagedHandle, PagedView } from './PagedView';
 import { type ScrollChapterMark, scrollChapterBreaks } from './pageLayout';
-import { BookmarkSheet, LayoutSheet, NotePopover, SearchSheet } from './ReaderSheets';
+import {
+  BookmarkSheet,
+  LayoutSheet,
+  NotePopover,
+  SearchSheet,
+  TocSheet,
+} from './ReaderSheets';
 import { TitlePageView } from './TitlePage';
 import { TocSidebar } from './TocSidebar';
 import './reader.css';
@@ -104,6 +111,8 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   const settings = useSettings((s) => s.settings);
   const updateSettings = useSettings((s) => s.update);
   const updateTypography = useSettings((s) => s.updateTypography);
+  /** 窄屏/竖屏手机：目录走抽屉，不常驻侧栏（否则会盖住顶栏） */
+  const narrow = useNarrowLayout();
 
   const [data, setData] = useState<Loaded | null>(null);
   /** absent=书没了 / empty=正文为空（历史坏数据） */
@@ -139,6 +148,12 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
     return map;
   }, [data]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  /** 分页 / 滚动共用：滑动翻页绑在这里，分页模式没有 scrollRef */
+  const stageRef = useRef<HTMLDivElement>(null);
+  /** 滑动翻页后吞掉紧随其后的 click，否则松手点会把刚翻的页翻回去 */
+  const swallowClick = useRef(false);
+  const swallowTimer = useRef(0);
+  const snapTimer = useRef(0);
   const contentRef = useRef<HTMLDivElement>(null);
   const pendingSeek = useRef<number | null>(null);
   /** 上一帧把目标行放到的 scrollTop。连续两次一样才算落稳，避免章前空白把行顶出视口。 */
@@ -150,8 +165,8 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   const [pageInfo, setPageInfo] = useState({ index: 0, count: 1 });
   const [segLoading, setSegLoading] = useState(false);
 
-  // 浮层
-  const [sheet, setSheet] = useState<'search' | 'bookmark' | 'layout' | null>(null);
+  // 浮层（toc 仅窄屏使用；宽屏走 tocDocked 常驻侧栏）
+  const [sheet, setSheet] = useState<'search' | 'bookmark' | 'layout' | 'toc' | null>(null);
   const [footnote, setFootnote] = useState<{
     marker: string;
     text: string;
@@ -834,14 +849,15 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   /* ────────────── 翻页 ────────────── */
 
   const turnPage = useCallback(
-    (dir: 1 | -1) => {
+    (dir: 1 | -1): boolean => {
       const root = scrollRef.current;
-      if (!root) return;
+      if (!root) return false;
       const step = Math.max(120, root.clientHeight - typo.fontSize * 2.5);
-      const target = clamp(root.scrollTop + dir * step, 0, total);
-      root.scrollTop = target;
-      // 吸附到行首：翻页永不切断文字
-      requestAnimationFrame(() => {
+      const from = root.scrollTop;
+      const target = clamp(from + dir * step, 0, total);
+      if (Math.abs(target - from) < 1) return false;
+      const snapToLine = () => {
+        snapTimer.current = 0;
         const el = contentRef.current;
         if (!el) return;
         const lines = el.querySelectorAll<HTMLElement>('.qy-line[data-char]');
@@ -862,18 +878,39 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
           }
           if (last) root.scrollTop += last.getBoundingClientRect().top - rootTop;
         }
-      });
+      };
+      if (snapTimer.current) window.clearTimeout(snapTimer.current);
+      // 吸附到行首：翻页永不切断文字
+      const reduceMotion =
+        typeof window !== 'undefined' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (settings.flipAnimation && !reduceMotion) {
+        root.scrollTo({ top: target, behavior: 'smooth' });
+        snapTimer.current = window.setTimeout(snapToLine, 280);
+      } else {
+        root.scrollTop = target;
+        requestAnimationFrame(snapToLine);
+      }
+      return true;
     },
-    [total, typo.fontSize],
+    [total, typo.fontSize, settings.flipAnimation],
+  );
+
+  useEffect(
+    () => () => {
+      if (snapTimer.current) window.clearTimeout(snapTimer.current);
+      if (swallowTimer.current) window.clearTimeout(swallowTimer.current);
+    },
+    [],
   );
 
   /** 统一的「翻一页」：分页模式翻一屏（双页时两列），滚动模式滚一屏 */
   const turn = useCallback(
-    (dir: 1 | -1) => {
+    (dir: 1 | -1): boolean => {
       // 手动翻动时自动滚动让位，别让两层滚动叠加
       setAutoScrollPaused(true);
-      if (settings.pageMode === 'page') pagedRef.current?.turn(dir);
-      else turnPage(dir);
+      if (settings.pageMode === 'page') return pagedRef.current?.turn(dir) ?? false;
+      return turnPage(dir);
     },
     [settings.pageMode, setAutoScrollPaused, turnPage],
   );
@@ -907,36 +944,78 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
           turn(-1);
           break;
         case 't':
-          updateSettings({ tocDocked: !useSettings.getState().settings.tocDocked });
+          if (narrow) {
+            setSheet((s) => (s === 'toc' ? null : 'toc'));
+          } else {
+            updateSettings({ tocDocked: !useSettings.getState().settings.tocDocked });
+          }
           break;
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [aloudOpen, footnote, settings.enableShortcuts, sheet, stopAutoScroll, turn]);
+  }, [aloudOpen, footnote, narrow, settings.enableShortcuts, sheet, stopAutoScroll, turn, updateSettings]);
 
-  // 水平滑动翻页
+  // 水平滑动翻页（分页 / 滚动共用 stage；松手后的 click 必须吞掉）
   useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !isTouchDevice()) return;
+    const el = stageRef.current;
+    if (!el) return;
     let x0 = 0;
     let y0 = 0;
-    const ts = (e: TouchEvent) => {
-      x0 = e.touches[0].clientX;
-      y0 = e.touches[0].clientY;
+    let tracking = false;
+    let moved = false;
+    let pointerId: number | null = null;
+
+    const reset = () => {
+      tracking = false;
+      moved = false;
+      pointerId = null;
     };
-    const te = (e: TouchEvent) => {
-      const dx = e.changedTouches[0].clientX - x0;
-      const dy = e.changedTouches[0].clientY - y0;
-      if (Math.abs(dx) > 64 && Math.abs(dx) > Math.abs(dy) * 1.6) turn(dx < 0 ? 1 : -1);
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse') return;
+      if (sheet || footnote) return;
+      tracking = true;
+      moved = false;
+      x0 = e.clientX;
+      y0 = e.clientY;
+      pointerId = e.pointerId;
     };
-    el.addEventListener('touchstart', ts, { passive: true });
-    el.addEventListener('touchend', te, { passive: true });
+    const onMove = (e: PointerEvent) => {
+      if (!tracking || e.pointerId !== pointerId) return;
+      if (Math.hypot(e.clientX - x0, e.clientY - y0) > 10) moved = true;
+    };
+    const onUp = (e: PointerEvent) => {
+      if (!tracking || e.pointerId !== pointerId) return;
+      const dx = e.clientX - x0;
+      const dy = e.clientY - y0;
+      const swiped =
+        moved && Math.abs(dx) > SWIPE_THRESHOLD && Math.abs(dx) > Math.abs(dy) * 1.15;
+      reset();
+      if (!swiped) return;
+      if (!turn(dx < 0 ? 1 : -1)) return;
+      swallowClick.current = true;
+      if (swallowTimer.current) window.clearTimeout(swallowTimer.current);
+      swallowTimer.current = window.setTimeout(() => {
+        swallowTimer.current = 0;
+        swallowClick.current = false;
+      }, 400);
+    };
+    const onCancel = (e: PointerEvent) => {
+      if (e.pointerId !== pointerId) return;
+      reset();
+    };
+
+    el.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
     return () => {
-      el.removeEventListener('touchstart', ts);
-      el.removeEventListener('touchend', te);
+      el.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
     };
-  }, [turn]);
+  }, [turn, settings.pageMode, data, sheet, footnote]);
 
   /* ────────────── 进度落盘 ────────────── */
 
@@ -1076,14 +1155,30 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
   const chapterName = currentChapter?.title ?? (chapters.length ? '' : book.title);
 
   const onContentTap = (e: React.MouseEvent) => {
+    if (swallowClick.current) {
+      swallowClick.current = false;
+      return;
+    }
     if (window.getSelection()?.toString()) return;
-    const x = e.clientX / window.innerWidth;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('button, a, input, textarea, select, [role="button"]')) return;
+    const host = stageRef.current ?? (e.currentTarget as HTMLElement);
+    const rect = host.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const x = (e.clientX - rect.left) / rect.width;
+    // 触屏两侧翻页区略宽，中间约 30% 负责显隐工具栏；桌面仍保留约 40% 中区。
+    const touch = isTouchDevice();
+    const left = touch ? 0.35 : 0.3;
+    const right = touch ? 0.65 : 0.7;
     // 双击的第二下不再算单击：否则一次双击会把栏隐藏又显示回来。
     // 只拦中间区域；左右翻页区保留连点翻两页的手感。
-    if (e.detail > 1 && x >= 0.3 && x <= 0.7) return;
-    if (!settings.tapToTurn) return;
-    if (x < 0.3) turn(-1);
-    else if (x > 0.7) turn(1);
+    if (e.detail > 1 && x >= left && x <= right) return;
+    if (!settings.tapToTurn) {
+      setBarsVisible((v) => !v);
+      return;
+    }
+    if (x < left) turn(-1);
+    else if (x > right) turn(1);
     else setBarsVisible((v) => !v);
   };
 
@@ -1120,9 +1215,19 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
           ? 'var(--font-sans)'
           : `"${settings.bodyFont}", var(--font-kai)`;
 
+  const showDockedToc = settings.tocDocked && !narrow;
+  const tocOpen = narrow ? sheet === 'toc' : showDockedToc;
+  const toggleToc = () => {
+    if (narrow) {
+      setSheet((s) => (s === 'toc' ? null : 'toc'));
+      return;
+    }
+    updateSettings({ tocDocked: !settings.tocDocked });
+  };
+
   return (
-    <div className={`reader${settings.tocDocked ? ' with-toc' : ''}`}>
-      {settings.tocDocked && (
+    <div className={`reader${showDockedToc ? ' with-toc' : ''}`}>
+      {showDockedToc && (
         <TocSidebar
           chapters={chapters}
           bookmarks={bookmarksRef.current}
@@ -1148,10 +1253,10 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
           </button>
           <button
             type="button"
-            className={`qy-icon-btn${settings.tocDocked ? ' on' : ''}`}
-            onClick={() => updateSettings({ tocDocked: !settings.tocDocked })}
-            aria-label={settings.tocDocked ? '收起目录' : '展开目录'}
-            aria-pressed={settings.tocDocked}
+            className={`qy-icon-btn${tocOpen ? ' on' : ''}`}
+            onClick={toggleToc}
+            aria-label={tocOpen ? '收起目录' : '展开目录'}
+            aria-pressed={tocOpen}
           >
             <IconList />
           </button>
@@ -1170,6 +1275,7 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
 
         {settings.pageMode === 'page' ? (
           <div
+            ref={stageRef}
             className="reader-paged-wrap"
             onClick={onContentTap}
             onDoubleClick={onContentDoubleClick}
@@ -1192,7 +1298,10 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
           </div>
         ) : (
           <div
-            ref={scrollRef}
+            ref={(node) => {
+              scrollRef.current = node;
+              stageRef.current = node;
+            }}
             className="reader-scroll"
             onClick={onContentTap}
             onDoubleClick={onContentDoubleClick}
@@ -1277,10 +1386,10 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
             </button>
             <button
               type="button"
-              className={`qy-icon-btn${settings.tocDocked ? ' on' : ''}`}
-              onClick={() => updateSettings({ tocDocked: !settings.tocDocked })}
+              className={`qy-icon-btn${tocOpen ? ' on' : ''}`}
+              onClick={toggleToc}
               aria-label="目录"
-              aria-pressed={settings.tocDocked}
+              aria-pressed={tocOpen}
             >
               <IconList />
             </button>
@@ -1427,6 +1536,16 @@ export function ReaderPage({ id, params }: { id?: string; params?: { id: string 
         </div>
       </div>
 
+      <TocSheet
+        open={sheet === 'toc'}
+        onClose={() => setSheet(null)}
+        chapters={chapters}
+        idx={idx}
+        currentCharOffset={currentChar}
+        onJump={jumpTo}
+        bookmarks={bookmarksRef.current}
+        onJumpBookmark={(b) => jumpTo(b.charOffset)}
+      />
       <SearchSheet
         open={sheet === 'search'}
         onClose={() => setSheet(null)}
@@ -1652,6 +1771,8 @@ async function textAroundChar(
   }
   return '';
 }
+
+const SWIPE_THRESHOLD = 48;
 
 function isTouchDevice(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches;

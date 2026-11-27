@@ -1,6 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- maskable：安全区内仅 80% 内容，背景铺满 -->
+  <!-- maskable：靛蓝满铺，折角纸页缩在中央安全区内 -->
   <rect width="512" height="512" fill="#3E5C97"/>
-  <path d="M168 136h176v240l-88-50-88 50z" fill="#F7EFDC"/>
-  <path d="M262 300h82v76z" fill="#B44326"/>
+  <g transform="translate(104,96) scale(3.8)">
+    <path d="M16 4H48L70 26V74a6 6 0 0 1-6 6H16a6 6 0 0 1-6-6V10a6 6 0 0 1 6-6Z"
+          fill="none" stroke="#F7EFDC" stroke-width="4.5" stroke-linejoin="round"/>
+    <path d="M48 4l22 22H48Z" fill="#D2704F"/>
+  </g>
 </svg>

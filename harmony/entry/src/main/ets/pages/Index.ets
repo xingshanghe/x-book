@@ -14,8 +14,10 @@
 import common from '@ohos.app.ability.common';
 import fs from '@ohos.file.fs';
 import webview from '@ohos.web.webview';
+import { window } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { Load, LoadResult } from '../common/Load';
+import { NetBridge } from '../common/NetBridge';
 
 const TAG = 'QingYueIndex';
 /** 自定义离线源；勿与真实公网域名冲突 */
@@ -23,17 +25,29 @@ const ORIGIN = 'https://local.qingyue';
 // 必须用 / 而不是 /index.html：wouter 路由挂在 pathname===`/`，
 // 否则只会渲染 toast 容器，看起来像白屏。
 const ENTRY_URL = `${ORIGIN}/`;
+/** 读不到系统避让区时的兜底（vp）——宁多勿少，避免顶栏被状态栏压住 */
+const FALLBACK_SAFE_TOP = 44;
+const FALLBACK_SAFE_BOTTOM = 20;
 
 @Entry
 @Component
 struct Index {
   private webController: webview.WebviewController = new webview.WebviewController();
+  /** H5 账号 / 云书架走原生 HTTP，避开 https 页拦明文 http */
+  private netBridge: NetBridge = new NetBridge();
+  private progressBound: boolean = false;
   @State private ready: boolean = false;
   @State private cacheDir: string = '';
   @State private errorText: string = '';
+  /** 系统状态栏高度（vp），注入给 Web 的 --safe-t */
+  @State private safeTopVp: number = FALLBACK_SAFE_TOP;
+  @State private safeBottomVp: number = FALLBACK_SAFE_BOTTOM;
+  private avoidBound: boolean = false;
 
   aboutToAppear(): void {
     const context = getContext(this) as common.UIAbilityContext;
+    this.bindAvoidArea(context);
+    this.bindNetProgress();
     Load.prepare(context)
       .then((result: LoadResult) => {
         hilog.info(0x0000, TAG, `准备就绪 dir=${result.dir}`);
@@ -47,6 +61,88 @@ struct Index {
         this.errorText = `无法加载页面：${msg}`;
         this.ready = false;
       });
+  }
+
+  /** 原生 HTTP 进度 → H5 window.__QY_NET_PROGRESS__ */
+  private bindNetProgress(): void {
+    if (this.progressBound) {
+      return;
+    }
+    this.progressBound = true;
+    this.netBridge.setProgressEmitter((id: string, loaded: number, total: number) => {
+      try {
+        const script =
+          `try{window.__QY_NET_PROGRESS__&&window.__QY_NET_PROGRESS__(${JSON.stringify(id)},${loaded},${total})}catch(e){}`;
+        this.webController.runJavaScript(script);
+      } catch (e) {
+        hilog.warn(0x0000, TAG, `推送传输进度失败: ${JSON.stringify(e)}`);
+      }
+    });
+  }
+
+  /** 读系统避让区（状态栏 / 导航条），横竖屏变化时再推一次给 Web */
+  private bindAvoidArea(context: common.UIAbilityContext): void {
+    window.getLastWindow(context)
+      .then((win: window.Window) => {
+        this.applyAvoidArea(win);
+        if (this.avoidBound) {
+          return;
+        }
+        this.avoidBound = true;
+        win.on('avoidAreaChange', () => {
+          this.applyAvoidArea(win);
+          if (this.ready) {
+            this.injectSafeInsets();
+          }
+        });
+      })
+      .catch((e: Error) => {
+        hilog.warn(0x0000, TAG, `读取避让区失败: ${e?.message ?? String(e)}`);
+      });
+  }
+
+  private applyAvoidArea(win: window.Window): void {
+    try {
+      const system = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+      const nav = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
+      const ui = this.getUIContext();
+      const topPx = system.topRect.height;
+      const bottomPx = Math.max(system.bottomRect.height, nav.bottomRect.height);
+      const topVp = topPx > 0 ? Math.ceil(ui.px2vp(topPx)) : FALLBACK_SAFE_TOP;
+      const bottomVp = bottomPx > 0 ? Math.ceil(ui.px2vp(bottomPx)) : FALLBACK_SAFE_BOTTOM;
+      // 顶栏控件本身还有行高，再留 8vp 呼吸，避免字贴住系统时间
+      this.safeTopVp = Math.max(topVp, FALLBACK_SAFE_TOP);
+      this.safeBottomVp = Math.max(bottomVp, FALLBACK_SAFE_BOTTOM);
+      hilog.info(0x0000, TAG, `避让区 top=${this.safeTopVp}vp bottom=${this.safeBottomVp}vp (px ${topPx}/${bottomPx})`);
+    } catch (e) {
+      hilog.warn(0x0000, TAG, `解析避让区失败: ${JSON.stringify(e)}`);
+    }
+  }
+
+  /** 把实测安全区写进 CSS 变量 + 顶栏实值（ArkWeb 对 calc(var()) 不稳） */
+  private injectSafeInsets(): void {
+    const top = this.safeTopVp;
+    const bottom = this.safeBottomVp;
+    // 书架/设置只留 4vp 呼吸；阅读顶栏同样紧凑
+    const shelfPad = top + 4;
+    const readerPad = top + 4;
+    const script =
+      `(function(){try{window.__QY_HARMONY__=true;` +
+      `var el=document.documentElement;` +
+      `el.dataset.os='harmony';el.dataset.arkweb='1';` +
+      `el.style.setProperty('--safe-t','${top}px');` +
+      `el.style.setProperty('--safe-b','${bottom}px');` +
+      `var s=document.getElementById('qy-safe-dyn');` +
+      `if(!s){s=document.createElement('style');s.id='qy-safe-dyn';document.documentElement.appendChild(s);}` +
+      `s.textContent='html[data-arkweb="1"] .shelf-top,html[data-arkweb="1"] .settings-top{padding-top:${shelfPad}px!important}'` +
+      `+'html[data-arkweb="1"] .reader-bar.top,html[data-arkweb="1"] .comic-top{padding-top:${readerPad}px!important}'` +
+      `+'html[data-arkweb="1"] .toc-rail-head{padding-top:${readerPad}px!important}';` +
+      `}catch(e){}})()`;
+    try {
+      this.webController.runJavaScript(script);
+    } catch (e) {
+      hilog.warn(0x0000, TAG, `注入安全区失败: ${JSON.stringify(e)}`);
+    }
   }
 
   /** 把 https://local.qingyue/... 映射到 files/qy/... */
@@ -158,6 +254,15 @@ struct Index {
           .width('100%')
           .height('100%')
           .backgroundColor('#F7EFDC')
+          .javaScriptProxy({
+            object: this.netBridge,
+            name: '__QY_NET__',
+            methodList: ['request'],
+            controller: this.webController,
+            // 仅允许本壳虚拟源调用，避免第三方页蹭桥
+            permission:
+              '{"javascriptProxyPermission":{"urlPermissionList":[{"scheme":"https","host":"local.qingyue","port":"","path":""}],"methodList":[{"methodName":"request","urlPermissionList":[{"scheme":"https","host":"local.qingyue","port":"","path":""}]}]}}',
+          })
           .onInterceptRequest((event) => {
             if (!event) {
               return null;
@@ -166,23 +271,13 @@ struct Index {
           })
           .onPageBegin((event) => {
             hilog.info(0x0000, TAG, `页面开始加载 ${event?.url ?? ''}`);
-            // 尽早打上鸿蒙标记 + 安全区，避免首帧顶栏被状态栏压住
-            try {
-              this.webController.runJavaScript(
-                `(function(){try{window.__QY_HARMONY__=true;` +
-                  `var el=document.documentElement;` +
-                  `el.dataset.os='harmony';el.dataset.arkweb='1';` +
-                  `el.style.setProperty('--safe-t','56px');` +
-                  `el.style.setProperty('--safe-b','20px');` +
-                  `}catch(e){}})()`
-              );
-            } catch (e) {
-              hilog.warn(0x0000, TAG, `注入安全区失败: ${JSON.stringify(e)}`);
-            }
+            // 尽早注入实测安全区，避免首帧顶栏被状态栏压住
+            this.injectSafeInsets();
           })
           .onPageEnd((event) => {
             hilog.info(0x0000, TAG, `页面加载结束 ${event?.url ?? ''}`);
-            // 诊断：白屏时看 #root 是否挂上了 React、有无 JS 异常
+            // React 挂载后再推一次，覆盖首帧前可能被 CSS 回写的值
+            this.injectSafeInsets();
             try {
               this.webController.runJavaScript(
                 `(function(){try{var r=document.getElementById('root');` +

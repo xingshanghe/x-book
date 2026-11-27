@@ -3,6 +3,7 @@
  * 只有 register / login / refresh / logout / me / changePassword / enroll / listVoices / sponsor 会。
  */
 
+import { harmonyFetch, hasHarmonyNet } from '@/lib/harmonyNet';
 import { isTauri } from '@/lib/platform';
 import { accountFetch } from './accountTransport';
 
@@ -270,12 +271,25 @@ export function createAccountClient(opts: {
 }
 
 function desktopOrWebFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  // 桌面壳：WebView 拦明文 http，改走本机 curl
   if (isTauri()) return accountFetch(input, init);
+  // 鸿蒙壳：https://local.qingyue 同样拦明文 http，改走原生 HTTP 桥
+  if (hasHarmonyNet()) return harmonyFetch(input, init);
   return fetch(input, init);
 }
 
 function failureText(error: unknown): string {
-  if (typeof error === 'string' && error.trim()) return error;
-  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === 'string' && error.trim()) return friendlyNetMessage(error);
+  if (error instanceof Error && error.message.trim()) return friendlyNetMessage(error.message);
   return '连不上账号服务';
+}
+
+/** WebKit / ArkWeb 拦明文时常见英文文案，换成可读提示 */
+function friendlyNetMessage(raw: string): string {
+  const text = raw.trim();
+  if (!text) return '连不上账号服务';
+  if (/failed to fetch|load failed|networkerror|network request failed/i.test(text)) {
+    return '连不上账号服务，请检查网络后重试';
+  }
+  return text;
 }

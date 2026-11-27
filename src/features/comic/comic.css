@@ -52,7 +52,7 @@
 }
 
 .comic-top {
-  padding-top: calc(10px + var(--chrome-top, 0px));
+  padding-top: calc(10px + var(--safe-t, 0px) + var(--chrome-top, 0px));
   border-bottom: 1px solid var(--line-soft, rgb(0 0 0 / 8%));
 }
 
@@ -395,7 +395,107 @@
     left: 0;
     width: min(72vw, 200px);
     max-height: none;
-    z-index: 6;
+    z-index: 7;
     box-shadow: 0 12px 40px rgb(0 0 0 / 45%);
+  }
+
+  .comic-thumbs-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    background: rgb(0 0 0 / 32%);
+    cursor: pointer;
+  }
+}
+
+/*
+ * 手机横屏：顶底栏保持占位（不盖住画面），仅压矮；
+ * 隐藏时仍走 .bars-hidden 的绝对定位滑出，正文吃满高度。
+ * .landscape-compact 由组件 hook 加上；
+ * html[data-landscape-compact] / 媒体查询给 ArkWeb（orientation 常失效）兜底。
+ */
+.comic-reader.landscape-compact .comic-top,
+html[data-landscape-compact='1'] .comic-reader .comic-top,
+html[data-landscape-compact='1'][data-os='harmony'] .comic-reader .comic-top,
+html[data-landscape-compact='1'][data-arkweb='1'] .comic-reader .comic-top,
+html[data-os='harmony'] .comic-reader.landscape-compact .comic-top,
+html[data-arkweb='1'] .comic-reader.landscape-compact .comic-top {
+  /* 横屏刘海区远小于竖屏：把过大的 --safe-t（鸿蒙曾写死 52px）压住 */
+  padding: calc(4px + min(14px, var(--safe-t, 0px))) 10px 4px;
+  gap: 4px;
+}
+
+.comic-reader.landscape-compact .comic-foot,
+html[data-landscape-compact='1'] .comic-reader .comic-foot {
+  padding: 4px 8px calc(4px + min(12px, var(--safe-b, 0px)));
+  gap: 4px;
+}
+
+.comic-reader.landscape-compact .comic-title,
+html[data-landscape-compact='1'] .comic-reader .comic-title {
+  font-size: 14px;
+}
+
+.comic-reader.landscape-compact .comic-icon-btn,
+html[data-landscape-compact='1'] .comic-reader .comic-icon-btn {
+  width: 32px;
+  height: 32px;
+}
+
+.comic-reader.landscape-compact .comic-fit-seg button,
+html[data-landscape-compact='1'] .comic-reader .comic-fit-seg button {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.comic-reader.landscape-compact .comic-page-label,
+html[data-landscape-compact='1'] .comic-reader .comic-page-label {
+  font-size: 12px;
+}
+
+.comic-reader.landscape-compact .comic-stage img,
+.comic-reader.landscape-compact .comic-stage canvas,
+html[data-landscape-compact='1'] .comic-reader .comic-stage img,
+html[data-landscape-compact='1'] .comic-reader .comic-stage canvas {
+  box-shadow: 0 2px 12px rgb(0 0 0 / 22%);
+}
+
+@media (orientation: landscape) and (max-height: 560px) {
+  .comic-reader .comic-top,
+  html[data-os='harmony'] .comic-reader .comic-top,
+  html[data-arkweb='1'] .comic-reader .comic-top {
+    padding: calc(4px + min(14px, var(--safe-t, 0px))) 10px 4px;
+    gap: 4px;
+  }
+
+  .comic-reader .comic-foot {
+    padding: 4px 8px calc(4px + min(12px, var(--safe-b, 0px)));
+    gap: 4px;
+  }
+
+  .comic-reader .comic-title {
+    font-size: 14px;
+  }
+
+  .comic-reader .comic-icon-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .comic-reader .comic-fit-seg button {
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+
+  .comic-reader .comic-page-label {
+    font-size: 12px;
+  }
+
+  .comic-reader .comic-stage img,
+  .comic-reader .comic-stage canvas {
+    box-shadow: 0 2px 12px rgb(0 0 0 / 22%);
   }
 }

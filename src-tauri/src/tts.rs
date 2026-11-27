@@ -2,9 +2,11 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -526,6 +528,12 @@ pub(crate) struct CloudHttpRequest {
     url: String,
     body_base64: Option<String>,
     headers: HashMap<String, String>,
+    /// 前端监听 cloud-http-progress 时用的任务 id；空则不报进度
+    #[serde(default)]
+    progress_id: Option<String>,
+    /// 已知总字节（上传=body，下载=meta.size），用于把 curl 百分比换成真实字节
+    #[serde(default)]
+    expected_total: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -536,14 +544,22 @@ pub(crate) struct CloudHttpResponse {
     content_type: String,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CloudHttpProgress {
+    id: String,
+    loaded: u64,
+    total: u64,
+}
+
 #[tauri::command]
-pub async fn cloud_http(request: CloudHttpRequest) -> Result<CloudHttpResponse, String> {
-    tauri::async_runtime::spawn_blocking(move || cloud_http_blocking(request))
+pub async fn cloud_http(app: AppHandle, request: CloudHttpRequest) -> Result<CloudHttpResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || cloud_http_blocking(app, request))
         .await
         .map_err(|err| format!("连不上云书架：{err}"))?
 }
 
-fn cloud_http_blocking(request: CloudHttpRequest) -> Result<CloudHttpResponse, String> {
+fn cloud_http_blocking(app: AppHandle, request: CloudHttpRequest) -> Result<CloudHttpResponse, String> {
     let method = request.method.to_ascii_uppercase();
     if method != "GET" && method != "PUT" && method != "DELETE" && method != "POST" {
         return Err("不支持的云书架请求".into());
@@ -559,6 +575,19 @@ fn cloud_http_blocking(request: CloudHttpRequest) -> Result<CloudHttpResponse, S
     if body.as_ref().is_some_and(|bytes| bytes.len() > 300 * 1024 * 1024) {
         return Err("上传内容太大".into());
     }
+    let upload_total = body.as_ref().map(|bytes| bytes.len() as u64).unwrap_or(0);
+    let is_upload = upload_total > 0;
+    let progress_id = request
+        .progress_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty() && id.len() <= 128)
+        .map(str::to_string);
+    let expected_total = request
+        .expected_total
+        .filter(|n| *n > 0)
+        .unwrap_or(if is_upload { upload_total } else { 0 });
+
     let seq = FILE_SEQ.fetch_add(1, Ordering::Relaxed);
     let body_file = RemoveOnDrop(std::env::temp_dir().join(format!("qingyue-cloud-{seq}.bin")));
     let out_file = RemoveOnDrop(std::env::temp_dir().join(format!("qingyue-cloud-{seq}.out")));
@@ -567,9 +596,15 @@ fn cloud_http_blocking(request: CloudHttpRequest) -> Result<CloudHttpResponse, S
         fs::write(body_file.path(), bytes).map_err(|err| err.to_string())?;
     }
     const MAX_BYTES: u64 = 300 * 1024 * 1024;
+    let want_progress = progress_id.is_some();
     let mut cmd = tool("curl");
+    // -s 会关掉进度条；要真实进度时改用 --progress-bar，错误仍用 -S 显示
+    if want_progress {
+        cmd.args(["-S", "--progress-bar"]);
+    } else {
+        cmd.arg("-sS");
+    }
     cmd.args([
-        "-sS",
         "--proto",
         "=http,https",
         "--proto-redir",
@@ -594,19 +629,91 @@ fn cloud_http_blocking(request: CloudHttpRequest) -> Result<CloudHttpResponse, S
         cmd.arg("--data-binary").arg(format!("@{}", body_file.path().display()));
     }
     cmd.arg(&request.url);
-    let output = cmd.output().map_err(|_| "连不上云书架".to_string())?;
-    if !output.status.success() {
+
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(if want_progress { Stdio::piped() } else { Stdio::null() })
+        .spawn()
+        .map_err(|_| "连不上云书架".to_string())?;
+
+    let stderr_buf = Arc::new(Mutex::new(String::new()));
+    if want_progress {
+        if let Some(stderr) = child.stderr.take() {
+            let buf = Arc::clone(&stderr_buf);
+            thread::spawn(move || {
+                let mut reader = stderr;
+                let mut chunk = [0u8; 256];
+                loop {
+                    match reader.read(&mut chunk) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            if let Ok(mut guard) = buf.lock() {
+                                guard.push_str(&String::from_utf8_lossy(&chunk[..n]));
+                                if guard.len() > 4096 {
+                                    let keep = guard.len() - 2048;
+                                    guard.drain(..keep);
+                                }
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
+        }
+    }
+
+    let mut last_loaded = u64::MAX;
+    let mut last_total = u64::MAX;
+    let status = loop {
+        if let Some(id) = progress_id.as_deref() {
+            let (loaded, total) = cloud_transfer_progress(
+                is_upload,
+                expected_total,
+                out_file.path(),
+                hdr_file.path(),
+                &stderr_buf,
+            );
+            if loaded != last_loaded || total != last_total {
+                last_loaded = loaded;
+                last_total = total;
+                emit_cloud_progress(&app, id, loaded, total);
+            }
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => thread::sleep(Duration::from_millis(150)),
+            Err(_) => return Err("连不上云书架".into()),
+        }
+    };
+
+    let mut stdout = Vec::new();
+    if let Some(mut out) = child.stdout.take() {
+        let _ = out.read_to_end(&mut stdout);
+    }
+    if !status.success() {
         return Err("连不上云书架".into());
     }
-    let status = String::from_utf8_lossy(&output.stdout)
+    let http_status = String::from_utf8_lossy(&stdout)
         .trim()
         .parse::<u16>()
         .unwrap_or(0);
-    if status == 0 {
+    if http_status == 0 {
         return Err("连不上云书架".into());
     }
+    if let Some(id) = progress_id.as_deref() {
+        let total = if is_upload {
+            expected_total.max(upload_total)
+        } else {
+            fs::metadata(out_file.path())
+                .map(|meta| meta.len())
+                .unwrap_or(expected_total)
+                .max(expected_total)
+        };
+        emit_cloud_progress(&app, id, total, total.max(1));
+    }
     let content_type = read_content_type(hdr_file.path()).unwrap_or_else(|| {
-        if status >= 400 {
+        if http_status >= 400 {
             "application/json".into()
         } else {
             "application/octet-stream".into()
@@ -619,10 +726,83 @@ fn cloud_http_blocking(request: CloudHttpRequest) -> Result<CloudHttpResponse, S
     }
     let payload = fs::read(out_file.path()).map_err(|err| format!("读取云书架响应失败：{err}"))?;
     Ok(CloudHttpResponse {
-        status,
+        status: http_status,
         body_base64: encode_base64(&payload),
         content_type,
     })
+}
+
+fn emit_cloud_progress(app: &AppHandle, id: &str, loaded: u64, total: u64) {
+    let _ = app.emit(
+        "cloud-http-progress",
+        CloudHttpProgress {
+            id: id.to_string(),
+            loaded,
+            total,
+        },
+    );
+}
+
+/// 下载优先看落盘字节；上传看 curl 进度条百分比 × expected。
+fn cloud_transfer_progress(
+    is_upload: bool,
+    expected_total: u64,
+    out_path: &Path,
+    hdr_path: &Path,
+    stderr_buf: &Arc<Mutex<String>>,
+) -> (u64, u64) {
+    if !is_upload {
+        let loaded = fs::metadata(out_path).map(|meta| meta.len()).unwrap_or(0);
+        let header_total = read_content_length(hdr_path).unwrap_or(0);
+        let total = expected_total.max(header_total).max(loaded);
+        return (loaded, total);
+    }
+    // curl --progress-bar 是整次传输百分比；上传阶段用 body 大小封顶，避免响应阶段继续涨
+    let total = expected_total.max(1);
+    let pct = stderr_buf
+        .lock()
+        .ok()
+        .and_then(|guard| parse_curl_progress_pct(&guard))
+        .unwrap_or(0.0)
+        .clamp(0.0, 100.0);
+    let loaded = ((pct / 100.0) * total as f64).round() as u64;
+    (loaded.min(total), total)
+}
+
+fn read_content_length(path: &Path) -> Option<u64> {
+    let text = fs::read_to_string(path).ok()?;
+    for line in text.lines() {
+        let lower = line.to_ascii_lowercase();
+        if !lower.starts_with("content-length:") {
+            continue;
+        }
+        let raw = line.split_once(':').map(|(_, v)| v.trim()).unwrap_or("");
+        if let Ok(n) = raw.parse::<u64>() {
+            return Some(n);
+        }
+    }
+    None
+}
+
+/// curl --progress-bar 输出形如 `#### 45.2%`，取最近一次百分比。
+fn parse_curl_progress_pct(stderr: &str) -> Option<f64> {
+    let latest = stderr.rsplit('\r').next().unwrap_or(stderr);
+    let pct_at = latest.rfind('%')?;
+    let before = &latest[..pct_at];
+    let start = before
+        .rfind(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    let num = before[start..].trim();
+    if num.is_empty() {
+        return None;
+    }
+    let value: f64 = num.parse().ok()?;
+    if (0.0..=100.0).contains(&value) {
+        Some(value)
+    } else {
+        None
+    }
 }
 
 fn cloud_url_allowed(url: &str) -> bool {
@@ -872,7 +1052,7 @@ pub fn tts_host() -> SynthHost {
 mod tests {
     use super::{
         account_header_allowed, account_url_allowed, cloud_header_allowed, cloud_url_allowed,
-        decode_base64, encode_base64, lexicon_body, PronunciationEntry,
+        decode_base64, encode_base64, lexicon_body, parse_curl_progress_pct, PronunciationEntry,
     };
 
     #[test]
@@ -945,5 +1125,16 @@ mod tests {
         assert!(cloud_header_allowed("Content-Type"));
         assert!(cloud_header_allowed("Authorization"));
         assert!(!cloud_header_allowed("Cookie"));
+    }
+
+    #[test]
+    fn curl_progress_bar_pct_parses_latest_update() {
+        assert_eq!(parse_curl_progress_pct("#### 12.5%"), Some(12.5));
+        assert_eq!(
+            parse_curl_progress_pct("#### 10.0%\r######## 55.0%\r############ 90.0%"),
+            Some(90.0)
+        );
+        assert_eq!(parse_curl_progress_pct("no percent here"), None);
+        assert_eq!(parse_curl_progress_pct("########### 100.0%"), Some(100.0));
     }
 }

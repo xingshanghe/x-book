@@ -27,6 +27,7 @@ import { coverHue } from '@/lib/id';
 import { deleteBook, listBooks, touchBook } from '@/storage/repositories/bookRepo';
 import { allProgress } from '@/storage/repositories/progressRepo';
 import {
+  activeTransferByFingerprint,
   type CloudBookMeta,
   cloudConfigReady,
   cloudOpsReady,
@@ -35,18 +36,16 @@ import {
   listRemoteBooks,
   readCloudConfig,
   uploadBook,
+  useTransferQueue,
 } from '@/sync/cloudBooks';
 import type { Book, ShelfSort } from '@/types/models';
 import { Button, EmptyState, Menu, Progress, Segmented, useToast } from '@/ui';
 import {
   IconChevronRight,
-  IconClose,
   IconCloudDown,
   IconCloudUp,
-  IconGear,
   IconMore,
   IconPlus,
-  IconSearch,
   LogoMark,
 } from '@/ui/icons';
 import { BookCover } from './BookCover';
@@ -91,7 +90,6 @@ export function ShelfPage() {
   const [deleting, setDeleting] = useState(false);
   const [groupMutating, setGroupMutating] = useState(false);
   const [percentMap, setPercentMap] = useState<Record<string, number>>({});
-  const [query, setQuery] = useState('');
   const [activeGroup, setActiveGroup] = useState<ShelfGroupFilter>('all');
   /** 移到分组对话框目标（支持多本） */
   const [moveTargets, setMoveTargets] = useState<Book[] | null>(null);
@@ -113,6 +111,7 @@ export function ShelfPage() {
   /** fingerprint → 云端 meta；未启用或失败时为空 */
   const [remoteMap, setRemoteMap] = useState<Map<string, CloudBookMeta>>(() => new Map());
   const [cloudBusy, setCloudBusy] = useState<string | null>(null);
+  const transferTasks = useTransferQueue((s) => s.tasks);
 
   const reload = useCallback(async () => {
     const [list, prog] = await Promise.all([listBooks(), allProgress()]);
@@ -164,23 +163,15 @@ export function ShelfPage() {
 
   const cloudOnly = useMemo(() => {
     if (!cloudOps) return [] as CloudBookMeta[];
-    // 仅在「全部」或搜索时展示仅云端书，避免打乱分组
+    // 仅在「全部」展示仅云端书，避免打乱分组
     if (activeGroup !== 'all') return [] as CloudBookMeta[];
-    const q = query.trim().toLowerCase();
     const list: CloudBookMeta[] = [];
     for (const [fp, meta] of remoteMap) {
       if (localFingerprints.has(fp)) continue;
-      if (
-        q &&
-        !(meta.title ?? '').toLowerCase().includes(q) &&
-        !(meta.author ?? '').toLowerCase().includes(q)
-      ) {
-        continue;
-      }
       list.push(meta);
     }
     return list.sort((a, b) => (b.uploadedAt ?? 0) - (a.uploadedAt ?? 0));
-  }, [cloudOps, remoteMap, localFingerprints, activeGroup, query]);
+  }, [cloudOps, remoteMap, localFingerprints, activeGroup]);
 
   const cloudGateToast = () => {
     if (!cloudConfigReady(readCloudConfig())) {
@@ -217,7 +208,7 @@ export function ShelfPage() {
     setCloudBusy(meta.fingerprint);
     try {
       await downloadByFingerprint(meta.fingerprint);
-      toast('开始下载…');
+      toast('下载完成，正在导入…');
     } catch (err) {
       toast(err instanceof Error ? err.message : '下载失败', 'warn');
     } finally {
@@ -246,26 +237,19 @@ export function ShelfPage() {
 
   const filtered = useMemo(() => {
     if (!books) return null;
-    const q = query.trim().toLowerCase();
-    let list = filterBooksByGroup(books, activeGroup);
-    if (q) {
-      list = list.filter(
-        (b) =>
-          (b.title ?? '').toLowerCase().includes(q) || (b.author ?? '').toLowerCase().includes(q),
-      );
-    }
+    const list = filterBooksByGroup(books, activeGroup);
     return sortBooks(list, percentMap, settings.sortMode);
-  }, [books, query, percentMap, settings.sortMode, activeGroup]);
+  }, [books, percentMap, settings.sortMode, activeGroup]);
 
   const visibleIds = useMemo(() => (filtered ?? []).map((b) => b.id), [filtered]);
 
   const continueBook = useMemo(() => {
-    if (!books || activeGroup !== 'all' || query) return null;
+    if (!books || activeGroup !== 'all') return null;
     const reading = books
       .filter((b) => (percentMap[b.id] ?? 0) > 0.001 && (percentMap[b.id] ?? 0) < 0.995)
       .sort((a, b) => (b.lastOpenedAt ?? 0) - (a.lastOpenedAt ?? 0));
     return reading[0] ?? null;
-  }, [books, percentMap, activeGroup, query]);
+  }, [books, percentMap, activeGroup]);
 
   const pickFiles = () => fileInput.current?.click();
 
@@ -563,8 +547,8 @@ export function ShelfPage() {
     void reload();
   };
 
-  const emptyShelf = books !== null && books.length === 0 && cloudOnly.length === 0 && !query;
-  const sectionTitle = query ? '搜索结果' : groupSectionTitle(activeGroup);
+  const emptyShelf = books !== null && books.length === 0 && cloudOnly.length === 0;
+  const sectionTitle = groupSectionTitle(activeGroup);
   const gridEmpty = (filtered?.length ?? 0) === 0 && cloudOnly.length === 0;
   const selectedCount = selectedIds.size;
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
@@ -629,52 +613,18 @@ export function ShelfPage() {
             <small>QINGYUE</small>
           </span>
         </span>
-        <div className="shelf-search">
-          <IconSearch size={17} />
-          <input
-            placeholder="搜索书名或作者"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="搜索"
-          />
-          {query && (
-            <button
-              type="button"
-              className="qy-icon-btn"
-              style={{ width: 28, height: 28 }}
-              onClick={() => setQuery('')}
-            >
-              <IconClose size={15} />
-            </button>
-          )}
-        </div>
         <span className="spacer" data-tauri-drag-region="" />
+        {/* 宽屏与账号同排；移动端 / 鸿蒙用 CSS 折到 logo、账号下一整行，不截断 */}
         {!selectMode && (
-          <Segmented
-            size="sm"
-            value={settings.sortMode}
-            options={SORTS}
-            onChange={(v) => update({ sortMode: v })}
-          />
+          <div className="shelf-sort" role="toolbar" aria-label="排序">
+            <Segmented
+              size="sm"
+              value={settings.sortMode}
+              options={SORTS}
+              onChange={(v) => update({ sortMode: v })}
+            />
+          </div>
         )}
-        {!emptyShelf && books !== null && (
-          <button
-            type="button"
-            className={`shelf-select-toggle${selectMode ? ' active' : ''}`}
-            onClick={() => (selectMode ? exitSelectMode() : enterSelectMode())}
-            aria-pressed={selectMode}
-          >
-            {selectMode ? '完成' : '选择'}
-          </button>
-        )}
-        <button
-          type="button"
-          className="qy-icon-btn"
-          onClick={() => navigate('/settings')}
-          aria-label="个人中心"
-        >
-          <IconGear />
-        </button>
         <ShelfAccount />
       </header>
 
@@ -683,8 +633,8 @@ export function ShelfPage() {
           <EmptyState title="书页翻动中…" />
         ) : (
           <>
-            {!query && (
-              <div className="shelf-group-bar" role="toolbar" aria-label="书架分组">
+            <div className="shelf-group-bar" role="toolbar" aria-label="书架分组">
+              <div className="shelf-group-chips">
                 <button
                   type="button"
                   aria-pressed={activeGroup === 'all'}
@@ -729,7 +679,17 @@ export function ShelfPage() {
                   新建
                 </button>
               </div>
-            )}
+              {!emptyShelf && books !== null && (
+                <button
+                  type="button"
+                  className={`shelf-select-link${selectMode ? ' active' : ''}`}
+                  onClick={() => (selectMode ? exitSelectMode() : enterSelectMode())}
+                  aria-pressed={selectMode}
+                >
+                  {selectMode ? '完成' : '选择'}
+                </button>
+              )}
+            </div>
 
             {emptyShelf ? (
               <EmptyState
@@ -795,9 +755,8 @@ export function ShelfPage() {
               <small>
                 {filtered.length + cloudOnly.length} 本
                 {cloudOnly.length > 0 ? ` · 云端 ${cloudOnly.length}` : ''}
-                {query ? ` · “${query}”` : ''}
               </small>
-              {!query && activeGroup !== 'all' && activeGroup !== 'ungrouped' && (
+              {activeGroup !== 'all' && activeGroup !== 'ungrouped' && (
                 <span className="shelf-group-actions">
                   <button
                     type="button"
@@ -821,14 +780,15 @@ export function ShelfPage() {
 
             {gridEmpty ? (
               <EmptyState
-                title={query ? '没有匹配的书' : '这个分组还是空的'}
-                hint={query ? '换个关键词试试' : '把书拖到上方分组，或点「选择」批量移入'}
+                title="这个分组还是空的"
+                hint="把书拖到上方分组，或点「选择」批量移入"
               />
             ) : (
               <div className={`shelf-grid${settings.shelfDensity === 'compact' ? ' compact' : ''}`}>
                 {filtered.map((book) => {
                   const canUpload = cloudOps && !remoteMap.has(book.fingerprint);
-                  const busy = cloudBusy === book.fingerprint;
+                  const xfer = activeTransferByFingerprint(transferTasks, book.fingerprint);
+                  const busy = cloudBusy === book.fingerprint || Boolean(xfer);
                   const selected = selectedIds.has(book.id);
                   return (
                     <div className={`shelf-cell${selected ? ' selected' : ''}`} key={book.id}>
@@ -846,12 +806,21 @@ export function ShelfPage() {
                             selectMode ? toggleSelect(book.id) : void openBook(book.id)
                           }
                         />
+                        {xfer && (
+                          <div className="cell-xfer" aria-live="polite">
+                            <Progress value={xfer.ratio} thin />
+                            <span>
+                              {xfer.kind === 'upload' ? '上传' : '下载'}{' '}
+                              {Math.round(xfer.ratio * 100)}%
+                            </span>
+                          </div>
+                        )}
                         {selectMode && (
                           <span className={`cell-check${selected ? ' on' : ''}`} aria-hidden>
                             {selected ? '✓' : ''}
                           </span>
                         )}
-                        {canUpload && !selectMode && (
+                        {canUpload && !selectMode && !xfer && (
                           <button
                             type="button"
                             className="cell-cloud cell-cloud-up"
@@ -920,22 +889,33 @@ export function ShelfPage() {
                   );
                 })}
                 {cloudOnly.map((meta) => {
-                  const busy = cloudBusy === meta.fingerprint;
+                  const xfer = activeTransferByFingerprint(transferTasks, meta.fingerprint);
+                  const busy = cloudBusy === meta.fingerprint || Boolean(xfer);
                   const ghost = cloudMetaAsBook(meta);
                   return (
                     <div className="shelf-cell shelf-cell-cloud" key={`cloud:${meta.fingerprint}`}>
                       <div className="cell-cover">
                         <BookCover book={ghost} />
-                        <button
-                          type="button"
-                          className="cell-cloud cell-cloud-down"
-                          disabled={busy}
-                          aria-label={`下载《${meta.title}》`}
-                          title="从云端下载"
-                          onClick={() => void onDownload(meta)}
-                        >
-                          <IconCloudDown size={15} />
-                        </button>
+                        {xfer ? (
+                          <div className="cell-xfer" aria-live="polite">
+                            <Progress value={xfer.ratio} thin />
+                            <span>
+                              {xfer.kind === 'upload' ? '上传' : '下载'}{' '}
+                              {Math.round(xfer.ratio * 100)}%
+                            </span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="cell-cloud cell-cloud-down"
+                            disabled={busy}
+                            aria-label={`下载《${meta.title}》`}
+                            title="从云端下载"
+                            onClick={() => void onDownload(meta)}
+                          >
+                            <IconCloudDown size={15} />
+                          </button>
+                        )}
                       </div>
                       <span className="shelf-cell-title clamp-2">{meta.title}</span>
                       <span className="shelf-cell-sub">云端 · {formatBytes(meta.size)}</span>

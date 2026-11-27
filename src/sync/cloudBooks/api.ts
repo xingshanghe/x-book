@@ -4,6 +4,7 @@ import { accountSession } from '@/account/session';
 import type { CloudBookMeta } from './catalog';
 import { readCloudConfig } from './config';
 import { cloudFetch } from './nativeFetch';
+import { cloudFetchWithProgress, type ProgressCallback } from './progressFetch';
 
 export class CloudApiError extends Error {
   constructor(
@@ -113,9 +114,10 @@ export async function apiPutFile(
   fingerprint: string,
   blob: Blob,
   contentType: string,
+  onProgress?: ProgressCallback,
 ): Promise<void> {
   const token = await ensureAccessToken();
-  const res = await cloudFetch(
+  const res = await cloudFetchWithProgress(
     `${apiRoot()}/v1/books/cloud/${encodeURIComponent(fingerprint)}/file`,
     {
       method: 'PUT',
@@ -125,6 +127,8 @@ export async function apiPutFile(
       },
       body: blob,
     },
+    onProgress,
+    { expectedTotal: blob.size },
   );
   if (!res.ok) {
     let message = `上传失败（${res.status}）`;
@@ -158,13 +162,19 @@ export async function apiGetMeta(fingerprint: string): Promise<CloudBookMeta> {
   return result.data;
 }
 
-export async function apiGetFile(fingerprint: string): Promise<Blob> {
+export async function apiGetFile(
+  fingerprint: string,
+  onProgress?: ProgressCallback,
+  expectedTotal?: number,
+): Promise<Blob> {
   const token = await ensureAccessToken();
-  const res = await cloudFetch(
+  const res = await cloudFetchWithProgress(
     `${apiRoot()}/v1/books/cloud/${encodeURIComponent(fingerprint)}/file`,
     {
       headers: { Authorization: `Bearer ${token}` },
     },
+    onProgress,
+    { expectedTotal: expectedTotal && expectedTotal > 0 ? expectedTotal : undefined },
   );
   if (!res.ok) {
     let message = `下载失败（${res.status}）`;
@@ -176,7 +186,9 @@ export async function apiGetFile(fingerprint: string): Promise<Blob> {
     }
     throw new CloudApiError(message, res.status);
   }
-  return res.blob();
+  const blob = await res.blob();
+  onProgress?.({ loaded: blob.size, total: blob.size, ratio: 1 });
+  return blob;
 }
 
 /** 删除云端书籍（meta + file）；幂等，不存在也算成功 */

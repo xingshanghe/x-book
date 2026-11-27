@@ -46,7 +46,8 @@ const SKELETON_BARS = [
 const COLUMN_KEYS = ['primary', 'secondary'] as const;
 
 export interface PagedHandle {
-  turn: (dir: 1 | -1) => void;
+  /** 真正翻了一页（或换段）时返回 true */
+  turn: (dir: 1 | -1) => boolean;
   /** blockHint 来自章节记录，比 charOffset 稳（清洗过的书字符统计会有偏差） */
   seek: (charOffset: number, blockHint?: number) => void;
 }
@@ -222,6 +223,14 @@ export function PagedView({
   const [pageCount, setPageCount] = useState(1);
   const [offsets, setOffsets] = useState<(number | null)[]>([0]);
   const [seekGen, setSeekGen] = useState(0);
+  /** 翻页动画方向；null 表示静止 */
+  const [flip, setFlip] = useState<'next' | 'prev' | null>(null);
+  const flipAnimRef = useRef(flipAnimation);
+  flipAnimRef.current = flipAnimation;
+  /** 本帧即将播翻页动画时，跳过 visibility 闪烁，避免点按发硬 */
+  const pendingFlip = useRef(false);
+  const flipRaf = useRef(0);
+  const flipClearTimer = useRef(0);
 
   const pendingSeek = useRef<PendingSeek | null>({
     char: charOffset,
@@ -441,9 +450,17 @@ export function PagedView({
   }, [lines, metricsKey, metrics, seekGen, showScreen, reportPosition, pushes]);
 
   // top 写入 DOM 之后再标脏。写在 settle 里太早，那时位移还是上一帧的。
+  // 翻页动画当帧只做轻量标脏；动画结束后再完整 reveal，避免点按闪白。
   useLayoutEffect(() => {
     const view = viewRef.current;
     if (!view || offsets.every((value) => value == null)) return;
+    if (pendingFlip.current) {
+      pendingFlip.current = false;
+      for (const col of view.querySelectorAll<HTMLElement>('.paged-col')) {
+        void col.offsetHeight;
+      }
+      return;
+    }
     for (const col of view.querySelectorAll<HTMLElement>('.paged-col')) revealLayer(col);
   }, [offsets]);
 
@@ -466,21 +483,69 @@ export function PagedView({
     [idx, chapters],
   );
 
-  const turn = useCallback(
+  const clearFlip = useCallback(() => {
+    if (flipClearTimer.current) {
+      window.clearTimeout(flipClearTimer.current);
+      flipClearTimer.current = 0;
+    }
+    setFlip(null);
+  }, []);
+
+  const playFlip = useCallback(
     (dir: 1 | -1) => {
-      if (!lines?.length || seeking.current) return;
+      if (!flipAnimRef.current) return;
+      const next = dir === 1 ? 'next' : 'prev';
+      pendingFlip.current = true;
+      if (flipRaf.current) cancelAnimationFrame(flipRaf.current);
+      if (flipClearTimer.current) window.clearTimeout(flipClearTimer.current);
+      // 先卸掉 class 再挂上，连续同向翻页也能重新播动画
+      setFlip(null);
+      flipRaf.current = requestAnimationFrame(() => {
+        flipRaf.current = 0;
+        setFlip(next);
+        // 动画没走到 end（关动画开关 / reduced-motion）时也要清掉，别一直跳过 reveal
+        flipClearTimer.current = window.setTimeout(() => {
+          flipClearTimer.current = 0;
+          setFlip(null);
+        }, 360);
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!flipAnimation) clearFlip();
+  }, [flipAnimation, clearFlip]);
+
+  useEffect(
+    () => () => {
+      if (flipRaf.current) cancelAnimationFrame(flipRaf.current);
+      if (flipClearTimer.current) window.clearTimeout(flipClearTimer.current);
+    },
+    [],
+  );
+
+  const turn = useCallback(
+    (dir: 1 | -1): boolean => {
+      if (!lines?.length || seeking.current) return false;
       const { index, count } = pageRef.current;
       if (dir === 1 && index >= count - 1) {
-        if (seg.endChar < totalCharsOf(idx)) goToSegment(seg.endChar, 'char');
-        return;
+        if (seg.endChar >= totalCharsOf(idx)) return false;
+        playFlip(dir);
+        goToSegment(seg.endChar, 'char');
+        return true;
       }
       if (dir === -1 && index <= 0) {
-        if (seg.startChar > 0) goToSegment(Math.max(0, seg.startChar - 1), 'end');
-        return;
+        if (seg.startChar <= 0) return false;
+        playFlip(dir);
+        goToSegment(Math.max(0, seg.startChar - 1), 'end');
+        return true;
       }
+      playFlip(dir);
       showScreen(index + dir, pagesRef.current, metrics.cols);
+      return true;
     },
-    [lines, seg.startChar, seg.endChar, idx, goToSegment, metrics.cols, showScreen],
+    [lines, seg.startChar, seg.endChar, idx, goToSegment, metrics.cols, showScreen, playFlip],
   );
 
   useEffect(() => {
@@ -540,11 +605,17 @@ export function PagedView({
 
   return (
     <div
-      className={`paged-view${metrics.cols === 2 ? ' double' : ''}`}
+      className={`paged-view${metrics.cols === 2 ? ' double' : ''}${
+        flip ? ` flip-${flip}` : ''
+      }`}
       ref={viewRef}
       style={{ width: metrics.pageW || undefined }}
       data-page={pageIndex + 1}
       data-flip={flipAnimation ? 'on' : 'off'}
+      onAnimationEnd={(event) => {
+        if (event.target !== event.currentTarget) return;
+        clearFlip();
+      }}
     >
       <div
         className="paged-cols"

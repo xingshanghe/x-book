@@ -184,23 +184,63 @@ html[data-shell='tauri'][data-os='macos'] {
    因此变量 + 顶栏实值双写（JS / HAP boot 还会再兜一层）。 */
 html[data-os='harmony'],
 html[data-arkweb='1'] {
-  /* 状态栏约 40–48 CSS px；再留呼吸，避免品牌/账号贴住系统时间 */
-  --safe-t: 56px;
+  /* 兜底：真机由原生避让区覆写；书架顶栏宜紧凑，避免半屏留白 */
+  --safe-t: 44px;
   --safe-b: 20px;
 }
 
 /* 不用 calc(var(--safe-t))：部分 ArkWeb 会把整段 padding 算丢，顶栏仍贴到状态栏下 */
 html[data-os='harmony'] .shelf-top,
 html[data-arkweb='1'] .shelf-top {
-  padding-top: 72px;
+  padding-top: 48px;
 }
 html[data-os='harmony'] .settings-top,
 html[data-arkweb='1'] .settings-top {
-  padding-top: 72px;
+  padding-top: 48px;
 }
 html[data-os='harmony'] .reader-bar.top,
-html[data-arkweb='1'] .reader-bar.top {
-  padding-top: 64px;
+html[data-arkweb='1'] .reader-bar.top,
+html[data-os='harmony'] .comic-top,
+html[data-arkweb='1'] .comic-top {
+  padding-top: 48px;
+}
+
+/* 横屏：状态栏变矮；仍保留最小让位，避免贴边。
+   ArkWeb 常不认 orientation 媒体查询，故同时靠 JS 写的 data-landscape 兜底。 */
+@media (orientation: landscape) {
+  html[data-os='harmony'],
+  html[data-arkweb='1'] {
+    --safe-t: 20px;
+  }
+  html[data-os='harmony'] .shelf-top,
+  html[data-arkweb='1'] .shelf-top,
+  html[data-os='harmony'] .settings-top,
+  html[data-arkweb='1'] .settings-top {
+    padding-top: 22px;
+  }
+  html[data-os='harmony'] .reader-bar.top,
+  html[data-arkweb='1'] .reader-bar.top,
+  html[data-os='harmony'] .comic-top,
+  html[data-arkweb='1'] .comic-top {
+    padding-top: 18px;
+  }
+}
+
+html[data-landscape='1'][data-os='harmony'],
+html[data-landscape='1'][data-arkweb='1'] {
+  --safe-t: 20px;
+}
+html[data-landscape='1'][data-os='harmony'] .shelf-top,
+html[data-landscape='1'][data-arkweb='1'] .shelf-top,
+html[data-landscape='1'][data-os='harmony'] .settings-top,
+html[data-landscape='1'][data-arkweb='1'] .settings-top {
+  padding-top: 22px;
+}
+html[data-landscape='1'][data-os='harmony'] .reader-bar.top,
+html[data-landscape='1'][data-arkweb='1'] .reader-bar.top,
+html[data-landscape='1'][data-os='harmony'] .comic-top,
+html[data-landscape='1'][data-arkweb='1'] .comic-top {
+  padding-top: 18px;
 }
 
 /* 原生拖拽区（Tauri 识别 data-tauri-drag-region，双击即最大化） */

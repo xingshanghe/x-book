@@ -15,6 +15,7 @@ import {
 } from './api';
 import { type CloudBookMeta, listRemoteBooks } from './catalog';
 import { cloudConfigReady, readCloudConfig } from './config';
+import { useTransferQueue } from './transferQueue';
 
 /** 启用云书架且能拿到登录态，否则抛可读错误（避免先读本地文件再 401） */
 async function requireReady(): Promise<void> {
@@ -52,6 +53,19 @@ function suggestFileName(meta: CloudBookMeta): string {
   return meta.kind === 'pdf' ? `${safe}.pdf` : `${safe}.txt`;
 }
 
+const lastPatchAt = new Map<string, number>();
+
+/** 节流进度写入，避免 XHR 每帧触发整页重渲染 */
+function mapTransferProgress(taskId: string, ratio: number, scale = 1, offset = 0): void {
+  const next = Math.min(1, Math.max(0, offset + ratio * scale));
+  const now = Date.now();
+  const prevAt = lastPatchAt.get(taskId) ?? 0;
+  const cur = useTransferQueue.getState().tasks.find((t) => t.id === taskId)?.ratio ?? 0;
+  if (next < 0.999 && now - prevAt < 80 && Math.abs(next - cur) < 0.02) return;
+  lastPatchAt.set(taskId, now);
+  useTransferQueue.getState().patch(taskId, { ratio: next });
+}
+
 /** 上传本地书到云端（覆盖同 fingerprint） */
 export async function uploadBook(bookId: string): Promise<CloudBookMeta> {
   await requireReady();
@@ -62,14 +76,32 @@ export async function uploadBook(bookId: string): Promise<CloudBookMeta> {
 
   const fileName = suggestFileName(metaFromBook(book));
   const meta = metaFromBook(book, fileName);
+  const taskId = useTransferQueue.getState().begin({
+    kind: 'upload',
+    fingerprint: book.fingerprint,
+    title: book.title || fileName,
+    size: blob.size,
+  });
 
-  // 先文件后 meta
-  await apiPutFile(
-    book.fingerprint,
-    blob,
-    book.kind === 'pdf' ? 'application/pdf' : 'text/plain; charset=utf-8',
-  );
-  return apiPutMeta(book.fingerprint, meta);
+  try {
+    // 文件传输占 0–0.9，写 meta 占 0.9–1
+    await apiPutFile(
+      book.fingerprint,
+      blob,
+      book.kind === 'pdf' ? 'application/pdf' : 'text/plain; charset=utf-8',
+      (p) => mapTransferProgress(taskId, p.ratio, 0.9, 0),
+    );
+    mapTransferProgress(taskId, 0.95);
+    const saved = await apiPutMeta(book.fingerprint, meta);
+    useTransferQueue.getState().finish(taskId);
+    lastPatchAt.delete(taskId);
+    return saved;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '上传失败';
+    useTransferQueue.getState().fail(taskId, message);
+    lastPatchAt.delete(taskId);
+    throw err;
+  }
 }
 
 /** 从云端下载并丢进导入队列（复用现有索引 / 去重） */
@@ -89,13 +121,34 @@ export async function downloadByFingerprint(fingerprint: string): Promise<void> 
   }
   meta = { ...meta, fingerprint };
 
-  const fileBlob = await apiGetFile(fingerprint);
-  if (!fileBlob.size) throw new Error('云端文件为空');
+  const taskId = useTransferQueue.getState().begin({
+    kind: 'download',
+    fingerprint,
+    title: meta.title || suggestFileName(meta),
+    size: meta.size || 0,
+  });
 
-  const name = suggestFileName(meta);
-  const type = meta.kind === 'pdf' ? 'application/pdf' : 'text/plain';
-  const file = new File([fileBlob], name, { type });
-  useImportQueue.getState().add([file]);
+  try {
+    const fileBlob = await apiGetFile(
+      fingerprint,
+      (p) => mapTransferProgress(taskId, p.ratio, 0.95, 0),
+      meta.size || 0,
+    );
+    if (!fileBlob.size) throw new Error('云端文件为空');
+
+    const name = suggestFileName(meta);
+    const type = meta.kind === 'pdf' ? 'application/pdf' : 'text/plain';
+    const file = new File([fileBlob], name, { type });
+    // 先入导入队列，再结束下载任务，托盘可无缝衔接到「导入中」
+    useImportQueue.getState().add([file]);
+    useTransferQueue.getState().finish(taskId);
+    lastPatchAt.delete(taskId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '下载失败';
+    useTransferQueue.getState().fail(taskId, message);
+    lastPatchAt.delete(taskId);
+    throw err;
+  }
 }
 
 /** 仅云端、本地没有的书 */

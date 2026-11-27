@@ -34,7 +34,8 @@ export function defaultSettings(): AppSettings {
     },
 
     pageMode: 'page',
-    tocDocked: true,
+    /** 桌面可常驻；窄屏/竖屏运行时会改走抽屉，避免一进来挡顶栏 */
+    tocDocked: false,
     flipAnimation: true,
     showTitlePage: true,
     showProgressHints: true,

@@ -41,10 +41,21 @@ if (existsSync(indexPath)) {
     html = html.replace(
       '<script type="module"',
       `<style id="qy-harmony-safe">
-html[data-arkweb="1"] .shelf-top{padding-top:72px!important}
-html[data-arkweb="1"] .settings-top{padding-top:72px!important}
-html[data-arkweb="1"] .reader-bar.top{padding-top:64px!important}
-html[data-arkweb="1"]{--safe-t:56px;--safe-b:20px}
+html[data-arkweb="1"] .shelf-top{padding-top:48px!important}
+html[data-arkweb="1"] .settings-top{padding-top:48px!important}
+html[data-arkweb="1"] .reader-bar.top,html[data-arkweb="1"] .comic-top{padding-top:48px!important}
+html[data-arkweb="1"]{--safe-t:44px;--safe-b:20px}
+@media (orientation:landscape){
+html[data-arkweb="1"]{--safe-t:20px}
+html[data-arkweb="1"] .shelf-top,html[data-arkweb="1"] .settings-top{padding-top:22px!important}
+html[data-arkweb="1"] .reader-bar.top,html[data-arkweb="1"] .comic-top{padding-top:18px!important}
+}
+html[data-landscape="1"][data-arkweb="1"]{--safe-t:20px}
+html[data-landscape="1"][data-arkweb="1"] .shelf-top,html[data-landscape="1"][data-arkweb="1"] .settings-top{padding-top:22px!important}
+html[data-landscape="1"][data-arkweb="1"] .reader-bar.top,html[data-landscape="1"][data-arkweb="1"] .comic-top{padding-top:18px!important}
+html[data-landscape-compact="1"][data-arkweb="1"] .shelf-top{padding-top:18px!important;padding-bottom:6px!important;flex-wrap:nowrap!important;row-gap:0!important}
+html[data-landscape-compact="1"][data-arkweb="1"] .settings-top{padding-top:18px!important}
+html[data-landscape-compact="1"][data-arkweb="1"] .reader-bar.top,html[data-landscape-compact="1"][data-arkweb="1"] .comic-top{padding-top:14px!important;padding-bottom:4px!important}
 </style>
     <script>
       window.__qyErr = null;
@@ -53,8 +64,17 @@ html[data-arkweb="1"]{--safe-t:56px;--safe-b:20px}
         var el = document.documentElement;
         el.dataset.os = 'harmony';
         el.dataset.arkweb = '1';
-        el.style.setProperty('--safe-t', '56px');
-        el.style.setProperty('--safe-b', '20px');
+        function syncSafe() {
+          var landscape = window.innerWidth > window.innerHeight;
+          var compact = landscape && window.innerHeight <= 560;
+          if (landscape) el.dataset.landscape = '1'; else delete el.dataset.landscape;
+          if (compact) el.dataset.landscapeCompact = '1'; else delete el.dataset.landscapeCompact;
+          el.style.setProperty('--safe-t', landscape ? '16px' : '52px');
+          el.style.setProperty('--safe-b', landscape ? '10px' : '20px');
+        }
+        syncSafe();
+        window.addEventListener('resize', syncSafe, { passive: true });
+        window.addEventListener('orientationchange', syncSafe, { passive: true });
       })();
       window.addEventListener('error', function (e) {
         window.__qyErr = String(e.message || e.error || e);
@@ -110,7 +130,7 @@ const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const stringJson = join(root, 'harmony', 'entry', 'src', 'main', 'resources', 'base', 'element', 'string.json');
 const s = JSON.parse(readFileSync(stringJson, 'utf8'));
 // 带修复后缀，强制已安装用户重新拷贝沙箱资产（修空白目录 / 旧 CORS 缓存）
-const webVersion = `${pkg.version}-h10`;
+const webVersion = `${pkg.version}-h16`;
 s.string = s.string.map((x) => (x.name === 'web_version' ? { ...x, value: webVersion } : x));
 writeFileSync(stringJson, `${JSON.stringify(s, null, 2)}\n`);
 

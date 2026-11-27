@@ -33,25 +33,22 @@
   }
 }
 
+/* 只用透明度：overflow:hidden 祖先上做 translate 会在 WebKit 里把字画丢 */
 @keyframes qy-page-next {
   from {
-    opacity: 0;
-    transform: translateX(24px);
+    opacity: 0.42;
   }
   to {
     opacity: 1;
-    transform: translateX(0);
   }
 }
 
 @keyframes qy-page-prev {
   from {
-    opacity: 0;
-    transform: translateX(-24px);
+    opacity: 0.42;
   }
   to {
     opacity: 1;
-    transform: translateX(0);
   }
 }
 

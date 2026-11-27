@@ -15,3 +15,11 @@ export {
   writeCloudConfig,
 } from './config';
 export { deleteCloudBook, downloadByFingerprint, listCloudOnly, uploadBook } from './transfer';
+export {
+  activeTransferByFingerprint,
+  describeTransfer,
+  type TransferKind,
+  type TransferStatus,
+  type TransferTask,
+  useTransferQueue,
+} from './transferQueue';
