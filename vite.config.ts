@@ -11,6 +11,8 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // 偶发 workbox 生成卡住时：QY_SKIP_PWA=1 pnpm build
+      disable: process.env.QY_SKIP_PWA === '1',
       registerType: 'autoUpdate',
       // 「渐进增强」的分界线：PWA 只是外壳交付形式，
       // 离线能力来自数据全在本地，而非任何 runtimeCaching 外部域名。
